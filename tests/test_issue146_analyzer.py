@@ -339,3 +339,102 @@ def test_issue146_smoke_acceptance_reports_each_item_without_verdict() -> None:
 def test_issue146_plan_bytes_are_unchanged() -> None:
     digest = hashlib.sha256(PLAN_PATH.read_bytes()).hexdigest()
     assert digest == "84ea24fc4533237f82a60cf7936c7f960f6cbc6449dcf427530eab34bad840b8"
+
+
+def test_issue146_plan_digest_rejects_mutation_with_rebound_record_hash() -> None:
+    records = _records()
+    plan = _plan()
+    configurations = plan["configurations"]
+    assert isinstance(configurations, list)
+    configurations[0]["role"] = "mutated"
+    records[0]["plan_sha256"] = analyzer.plan_sha256(plan)
+    with pytest.raises(analyzer.AnalysisError, match="immutable|canonical|plan"):
+        analyzer.analyze_runs(records, plan=plan)
+
+
+def test_issue146_pre_configuration_mismatch_does_not_load_trace(monkeypatch) -> None:
+    records = _records()
+    records[0]["pre_run_snapshot"] = _snapshot("C018", board_power_limit=299)
+    records[0]["trace"] = {"path": "missing-malformed-trace.json"}
+
+    original_loader = analyzer._load_trace
+
+    def fail_if_loaded(record, **kwargs):
+        if record.get("trace", {}).get("path") == "missing-malformed-trace.json":
+            raise AssertionError("trace loader must not run after pre-configuration mismatch")
+        return original_loader(record, **kwargs)
+
+    monkeypatch.setattr(analyzer, "_load_trace", fail_if_loaded)
+    result = analyzer.analyze_runs(records, plan=_plan())
+    report = result["runs"][0]
+    assert result["classification"] == "not_evaluable"
+    assert any("configuration" in field for field in report["missing_fields"])
+    assert not any("telemetry" in field for field in report["missing_fields"])
+    assert report["trace_rows"] == []
+
+
+def test_issue146_snapshot_alias_and_conflicting_serial_are_checked() -> None:
+    record = _records()[0]
+    snapshot = record["pre_run_snapshot"]
+    assert isinstance(snapshot, dict)
+    device_info = snapshot["snapshot"]["device_info"]
+    assert isinstance(device_info, list)
+    board_info = device_info[0]["board_info"]
+    assert isinstance(board_info, dict)
+    del board_info["serial"]
+    result = analyzer.analyze_runs([record], plan=_plan())
+    report = result["runs"][0]
+    assert not any("configuration.snapshot" in field for field in report["missing_fields"])
+    board_info["serial"] = "other-board"
+    result = analyzer.analyze_runs([record], plan=_plan())
+    assert any("pre_run_snapshot" in field and "serial" in field for field in result["runs"][0]["missing_fields"])
+
+
+def test_issue146_snapshot_schema_and_duplicate_identity_fail_closed() -> None:
+    record = _records()[0]
+    record["pre_run_snapshot"]["schema"] = "wrong-snapshot-schema"
+    result = analyzer.analyze_runs([record], plan=_plan())
+    assert any("pre_run_snapshot.schema" in field for field in result["runs"][0]["missing_fields"])
+
+    record = _records()[0]
+    snapshot = record["pre_run_snapshot"]["snapshot"]
+    device_info = snapshot["device_info"]
+    device_info.append(dict(device_info[0]))
+    result = analyzer.analyze_runs([record], plan=_plan())
+    assert any("pre_run_snapshot.snapshot.identity" in field for field in result["runs"][0]["missing_fields"])
+
+
+def test_issue146_snapshot_sidecar_hash_and_byte_count_are_exposed_and_checked(
+    tmp_path: Path,
+) -> None:
+    record = _records()[0]
+    snapshot = record["pre_run_snapshot"]
+    assert isinstance(snapshot, dict)
+    raw = json.dumps(snapshot, separators=(",", ":")).encode("utf-8")
+    (tmp_path / "pre.json").write_bytes(raw)
+    record["pre_run_snapshot"] = {
+        "path": "pre.json",
+        "schema": analyzer.ISSUE146_SNAPSHOT_SCHEMA,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "byte_count": len(raw),
+    }
+    record_path = tmp_path / "record.json"
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    result = analyzer.analyze_runs([record_path], plan=_plan())
+    report = result["runs"][0]
+    assert report["source"]["pre_run_snapshot_sha256"] == hashlib.sha256(raw).hexdigest()
+    assert report["source"]["pre_run_snapshot_byte_count"] == len(raw)
+    (tmp_path / "pre.json").write_bytes(raw + b"tampered")
+    result = analyzer.analyze_runs([record_path], plan=_plan())
+    assert any("snapshot_sha256" in field for field in result["runs"][0]["missing_fields"])
+
+    descriptor = record["pre_run_snapshot"]
+    assert isinstance(descriptor, dict)
+    descriptor.pop("sha256")
+    descriptor.pop("byte_count")
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    (tmp_path / "pre.json").write_bytes(raw)
+    result = analyzer.analyze_runs([record_path], plan=_plan())
+    missing = result["runs"][0]["missing_fields"]
+    assert "pre_run_snapshot.snapshot_sha256" in missing
+    assert "pre_run_snapshot.snapshot_byte_count" in missing

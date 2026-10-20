@@ -53,6 +53,8 @@ GROUPS_SCHEMA = "issue146-group-timings-v1"
 SNAPSHOT_SCHEMA = "issue146-tt-smi-snapshot-v1"
 LOAD_MODE = "host-duration-bounded"
 DEFAULT_PLAN_PATH = Path("docs/measurements/2026-10-20-host-newton-schulz-issue146-plan.json")
+AUTHORITATIVE_PLAN_RAW_SHA256 = "84ea24fc4533237f82a60cf7936c7f960f6cbc6449dcf427530eab34bad840b8"
+AUTHORITATIVE_PLAN_CANONICAL_SHA256 = "b48e1a8dfdeb8ab3bde3208ae68f85371e52108413d6d14f3c8629ad58509d4e"
 ISSUE146_RECORD_SCHEMA = RECORD_SCHEMA
 ISSUE146_SNAPSHOT_SCHEMA = SNAPSHOT_SCHEMA
 PLATEAU_START_SECONDS = 60.0
@@ -104,6 +106,8 @@ class _PlanSpec:
     asic_temperature_limit: float
     gddr_temperature_limit: float
     regulated_interval: tuple[float, float]
+    outer_repetitions: int
+    launches_per_sync: int
 
 
 @dataclass(frozen=True)
@@ -134,6 +138,17 @@ class _LoadedGroups:
     errors: list[str]
     missing: set[str]
     payload: Mapping[str, Any] | None
+
+
+@dataclass
+class _LoadedSnapshot:
+    snapshot: Mapping[str, Any] | None
+    device: Mapping[str, Any] | None
+    source_name: str | None
+    source_sha256: str | None
+    source_byte_count: int | None
+    capture_timestamp: int | None
+    errors: list[str]
 
 
 def _safe_public(value: Any) -> Any:
@@ -228,6 +243,21 @@ def plan_sha256(plan: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _verify_authoritative_plan_file() -> Mapping[str, Any]:
+    """Verify the checked-in owner plan before accepting any caller mapping."""
+    path = _REPOSITORY_ROOT / DEFAULT_PLAN_PATH
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise AnalysisError("authoritative Issue #146 plan cannot be read") from exc
+    if hashlib.sha256(raw).hexdigest() != AUTHORITATIVE_PLAN_RAW_SHA256:
+        raise AnalysisError("authoritative Issue #146 plan bytes have drifted")
+    if not isinstance(payload, Mapping) or plan_sha256(payload) != AUTHORITATIVE_PLAN_CANONICAL_SHA256:
+        raise AnalysisError("authoritative Issue #146 plan canonical digest has drifted")
+    return payload
+
+
 def _canonical_source_bytes(payload: Mapping[str, Any], *, hash_fields: set[str]) -> bytes:
     normalized = {key: value for key, value in payload.items() if key not in hash_fields}
     return strict_json_dumps(_safe_public(normalized), sort_keys=True).encode("utf-8")
@@ -248,6 +278,9 @@ def canonical_groups_bytes(payload: Mapping[str, Any]) -> bytes:
 
 
 def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
+    _verify_authoritative_plan_file()
+    if plan_sha256(plan) != AUTHORITATIVE_PLAN_CANONICAL_SHA256:
+        raise AnalysisError("supplied Issue #146 plan is not the immutable revision-3 plan")
     if plan.get("record_schema") != PLAN_SCHEMA:
         raise AnalysisError("unsupported Issue #146 plan schema")
     if plan.get("status") != "planned" or plan.get("board_run") is not False:
@@ -319,6 +352,10 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
     ):
         raise AnalysisError("Issue #146 execution mode is unsupported")
     overrun = finite(execution.get("overrun_limit_seconds"), field="overrun limit")
+    outer_repetitions = integer(execution.get("outer_repetitions"), field="outer repetitions")
+    launches_per_sync = integer(execution.get("launches_per_sync"), field="launches per sync")
+    if outer_repetitions <= 0 or launches_per_sync <= 0:
+        raise AnalysisError("Issue #146 grouped load settings must be positive")
     if (target, guard, smoke_target, smoke_guard, overrun) != (180.0, 230.0, 40.0, 90.0, 10.0):
         raise AnalysisError("Issue #146 timing contract is not revision 3")
     limits = plan.get("limits")
@@ -370,12 +407,16 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         asic_temperature_limit=thm_limit,
         gddr_temperature_limit=gddr_limit,
         regulated_interval=regulated_interval,
+        outer_repetitions=outer_repetitions,
+        launches_per_sync=launches_per_sync,
     )
 
 
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> Mapping[str, Any]:
     """Load the immutable revision-3 plan without changing its bytes."""
-    payload, _raw = _read_json(Path(path), purpose="Issue #146 plan")
+    payload, raw = _read_json(Path(path), purpose="Issue #146 plan")
+    if hashlib.sha256(raw).hexdigest() != AUTHORITATIVE_PLAN_RAW_SHA256:
+        raise AnalysisError("Issue #146 plan bytes are not the immutable owner revision")
     _plan_spec(payload)
     return payload
 
@@ -496,9 +537,9 @@ def _environment_errors(
         for field, value in expected.items():
             if values[field] != value:
                 errors.append(f"environment.{field}.binding")
-    if values["outer_repetitions"] != 16:
+    if values["outer_repetitions"] != spec.outer_repetitions:
         errors.append("environment.outer_repetitions.binding")
-    if values["launches_per_sync"] != 8:
+    if values["launches_per_sync"] != spec.launches_per_sync:
         errors.append("environment.launches_per_sync.binding")
     return list(dict.fromkeys(errors))
 
@@ -534,51 +575,112 @@ def _unwrap_snapshot(payload: Mapping[str, Any]) -> Mapping[str, Any]:
 def _snapshot_device(
     snapshot: Mapping[str, Any], spec: _PlanSpec
 ) -> tuple[Mapping[str, Any] | None, list[str]]:
+    """Select one board by independent board and bus identities."""
     devices = snapshot.get("device_info")
     if not isinstance(devices, list):
         return None, ["snapshot.device_info"]
-    matches: list[Mapping[str, Any]] = []
+    board_matches: list[Mapping[str, Any]] = []
+    bus_matches: list[Mapping[str, Any]] = []
+    pair_matches: list[Mapping[str, Any]] = []
+    serial_errors: list[str] = []
     for device in devices:
         if not isinstance(device, Mapping):
             continue
         board = device.get("board_info")
         if not isinstance(board, Mapping):
             continue
-        board_id = board.get("board_id") or board.get("serial")
+        explicit_serial = board.get("serial") if "serial" in board else _MISSING
+        board_id = board.get("board_id")
+        if board_id is None:
+            # tt-smi does not promise a raw serial field; retain the established
+            # board_id-as-serial alias when the planned identity is present.
+            board_id = explicit_serial if explicit_serial is not _MISSING else None
         bus_id = board.get("bus_id") or board.get("pci_bus_id")
-        if str(board_id) == spec.board_id and str(bus_id) == spec.bus_id:
-            matches.append(device)
-    if len(matches) != 1:
-        return None, ["snapshot.identity"]
-    return matches[0], []
+        board_matches_identity = str(board_id) == spec.board_id
+        bus_matches_identity = str(bus_id) == spec.bus_id
+        if board_matches_identity:
+            board_matches.append(device)
+        if bus_matches_identity:
+            bus_matches.append(device)
+        if board_matches_identity and bus_matches_identity:
+            pair_matches.append(device)
+            if explicit_serial is not _MISSING and str(explicit_serial) != spec.board_serial:
+                serial_errors.append("snapshot.serial")
+    errors = list(serial_errors)
+    if len(board_matches) != 1 or len(bus_matches) != 1 or len(pair_matches) != 1:
+        errors.append("snapshot.identity")
+    if errors:
+        return None, list(dict.fromkeys(errors))
+    return pair_matches[0], []
 
 
 def _load_snapshot(
     record: Mapping[str, Any], key: str, *, base_dir: Path | None, spec: _PlanSpec
-) -> tuple[
-    Mapping[str, Any] | None,
-    Mapping[str, Any] | None,
-    str | None,
-    int | None,
-    list[str],
-]:
+) -> _LoadedSnapshot:
     value = record.get(key)
     if not isinstance(value, Mapping):
-        return None, None, None, None, [key]
+        return _LoadedSnapshot(None, None, None, None, None, None, [key])
     source_name: str | None = None
+    source_sha256: str | None = None
+    source_byte_count: int | None = None
     payload: Mapping[str, Any] = value
     errors: list[str] = []
-    if (
+    sidecar = (
         isinstance(value.get("path"), str)
         and "device_info" not in value
         and "snapshot" not in value
-    ):
+    )
+    raw: bytes | None = None
+    if sidecar:
         try:
             path = _safe_artifact_path(value["path"], base_dir=base_dir, purpose=key)
-            payload, _raw = _read_json(path, purpose=key)
+            raw = path.read_bytes()
             source_name = path.name
-        except AnalysisError as exc:
-            return None, None, Path(str(value.get("path"))).name, None, [str(exc)]
+            source_sha256, source_byte_count, hash_errors = _source_metadata(
+                value, raw, purpose="snapshot"
+            )
+            errors.extend(f"{key}.{error}" for error in hash_errors)
+            try:
+                decoded = json.loads(raw.decode("utf-8"))
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                errors.append(f"{key}.read: {type(exc).__name__}")
+                return _LoadedSnapshot(
+                    None,
+                    None,
+                    source_name,
+                    source_sha256,
+                    source_byte_count,
+                    None,
+                    list(dict.fromkeys(errors)),
+                )
+            if not isinstance(decoded, Mapping):
+                errors.append(f"{key}.object")
+                return _LoadedSnapshot(
+                    None,
+                    None,
+                    source_name,
+                    source_sha256,
+                    source_byte_count,
+                    None,
+                    list(dict.fromkeys(errors)),
+                )
+            payload = decoded
+        except (AnalysisError, OSError) as exc:
+            return _LoadedSnapshot(
+                None,
+                None,
+                Path(str(value.get("path"))).name,
+                None,
+                None,
+                None,
+                [str(exc)],
+            )
+        if value.get("schema") != SNAPSHOT_SCHEMA:
+            errors.append(f"{key}.descriptor_schema")
+    elif value.get("schema") != SNAPSHOT_SCHEMA:
+        errors.append(f"{key}.schema")
+    if payload.get("schema") != SNAPSHOT_SCHEMA:
+        errors.append(f"{key}.schema")
     capture_timestamp = payload.get("timestamp_monotonic_ns")
     if not isinstance(capture_timestamp, int):
         capture_timestamp = None
@@ -587,7 +689,18 @@ def _load_snapshot(
     snapshot = _unwrap_snapshot(payload)
     device, identity_errors = _snapshot_device(snapshot, spec)
     errors.extend(f"{key}.{error}" for error in identity_errors)
-    return snapshot, device, source_name, capture_timestamp, list(dict.fromkeys(errors))
+    unique_errors = list(dict.fromkeys(errors))
+    if unique_errors:
+        device = None
+    return _LoadedSnapshot(
+        snapshot,
+        device,
+        source_name,
+        source_sha256,
+        source_byte_count,
+        capture_timestamp,
+        unique_errors,
+    )
 
 
 def _raw_word(value: Any, *, field: str) -> int | None:
@@ -1504,12 +1617,11 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
     )
     base_errors = _configuration_errors(record, configuration_id, spec)
     environment_errors = _environment_errors(record.get("environment"), configuration, spec)
-    pre_snapshot, pre_device, pre_name, _pre_capture_timestamp, pre_errors = _load_snapshot(
+    pre_loaded = _load_snapshot(
         record, "pre_run_snapshot", base_dir=record_input.base_dir, spec=spec
     )
-    post_snapshot, post_device, post_name, post_capture_timestamp, post_errors = _load_snapshot(
-        record, "post_run_snapshot", base_dir=record_input.base_dir, spec=spec
-    )
+    pre_snapshot = pre_loaded.snapshot
+    pre_device = pre_loaded.device
     limits, pre_configuration_errors = _pre_configuration(pre_device, spec)
     first_value = _record_value(
         record,
@@ -1521,12 +1633,40 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
         first = None if first_value is None else integer(first_value, field="first launch")
     except Issue146AnalysisError:
         first = None
-    groups = _load_groups(record, base_dir=record_input.base_dir)
-    duration, duration_errors, _result = _duration_binding(
-        record, groups, mode=mode, first=first, spec=spec
-    )
-    target_end = duration.get("workload_end_monotonic_ns")
-    trace = _load_trace(record, base_dir=record_input.base_dir, first=first, target_end=target_end)
+    configuration_only = bool(pre_configuration_errors)
+    if configuration_only:
+        # Revision 3 makes the pre-run configuration gate authoritative.  Do
+        # not open any trace or group sidecar after it fails: malformed
+        # telemetry must not contaminate the configuration-only result.
+        post_loaded = _LoadedSnapshot(None, None, None, None, None, None, [])
+        groups = _LoadedGroups([], None, None, None, [], set(), None)
+        target = spec.target_seconds if mode == "long" else spec.smoke_target_seconds
+        duration = {
+            "target_seconds": target,
+            "guard_seconds": spec.guard_seconds if mode == "long" else spec.smoke_guard_seconds,
+            "first_launch_start_monotonic_ns": first,
+            "workload_end_monotonic_ns": None,
+            "last_group_end_monotonic_ns": None,
+            "observed_duration_seconds": None,
+            "groups": [],
+        }
+        duration_errors: list[str] = []
+        trace = _LoadedTrace([], None, None, None, [], set(), False, None)
+    else:
+        post_loaded = _load_snapshot(
+            record, "post_run_snapshot", base_dir=record_input.base_dir, spec=spec
+        )
+        groups = _load_groups(record, base_dir=record_input.base_dir)
+        duration, duration_errors, _result = _duration_binding(
+            record, groups, mode=mode, first=first, spec=spec
+        )
+        target_end = duration.get("workload_end_monotonic_ns")
+        trace = _load_trace(
+            record, base_dir=record_input.base_dir, first=first, target_end=target_end
+        )
+    post_snapshot = post_loaded.snapshot
+    post_device = post_loaded.device
+    post_capture_timestamp = post_loaded.capture_timestamp
     rows = trace.rows
     plateau_rows = (
         select_plateau_rows(
@@ -1541,20 +1681,21 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
     missing: set[str] = set(
         base_errors
         + environment_errors
-        + pre_errors
-        + post_errors
+        + pre_loaded.errors
+        + post_loaded.errors
         + pre_configuration_errors
         + duration_errors
     )
-    missing.update(trace.missing)
-    missing.update(f"telemetry.{error}" for error in trace.errors)
-    if (
-        duration.get("idle_fraction") is not None
-        and duration["idle_fraction"] > spec.idle_fraction_limit
-    ):
-        missing.add("load_contract.idle_fraction")
-    if not trace.gddr_provenance:
-        missing.add("gddr_provenance")
+    if not configuration_only:
+        missing.update(trace.missing)
+        missing.update(f"telemetry.{error}" for error in trace.errors)
+        if (
+            duration.get("idle_fraction") is not None
+            and duration["idle_fraction"] > spec.idle_fraction_limit
+        ):
+            missing.add("load_contract.idle_fraction")
+        if not trace.gddr_provenance:
+            missing.add("gddr_provenance")
     if not expected_position and mode == "long":
         missing.add("ordered_evidence")
     if mode == "long" and run_number is None:
@@ -1650,13 +1791,13 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
     else:
         missing.update(glitch_errors)
         exploratory = _empty_exploratory(duration_weighted)
-    if glitch_errors:
+    if glitch_errors and not configuration_only:
         missing.update(f"telemetry.{error}" for error in glitch_errors)
-    if not plateau_rows:
+    if not plateau_rows and not configuration_only:
         missing.add("plateau.samples")
-    if mode == "long" and not isinstance(post_snapshot, Mapping):
+    if not configuration_only and mode == "long" and not isinstance(post_snapshot, Mapping):
         missing.add("post_run_snapshot")
-    if mode == "long" and not isinstance(pre_snapshot, Mapping):
+    if not configuration_only and mode == "long" and not isinstance(pre_snapshot, Mapping):
         missing.add("pre_run_snapshot")
     failed = [
         f"run_{run_number}.{configuration_id}.{name}"
@@ -1682,8 +1823,12 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
             "groups": groups.source_name,
             "groups_sha256": groups.source_sha256,
             "groups_byte_count": groups.source_byte_count,
-            "pre_run_snapshot": pre_name,
-            "post_run_snapshot": post_name,
+            "pre_run_snapshot": pre_loaded.source_name,
+            "pre_run_snapshot_sha256": pre_loaded.source_sha256,
+            "pre_run_snapshot_byte_count": pre_loaded.source_byte_count,
+            "post_run_snapshot": post_loaded.source_name,
+            "post_run_snapshot_sha256": post_loaded.source_sha256,
+            "post_run_snapshot_byte_count": post_loaded.source_byte_count,
         },
         "duration": duration,
         "group_timings": duration.get("groups", []),
@@ -1960,11 +2105,47 @@ def _smoke_rows(report: dict[str, Any], *, first: int) -> list[Mapping[str, Any]
     )
 
 
+def _smoke_rows_at_or_after(report: dict[str, Any], *, first: int) -> list[Mapping[str, Any]]:
+    threshold = first + round(SMOKE_START_SECONDS * 1_000_000_000.0)
+    rows = report.get("trace_rows", [])
+    if not isinstance(rows, list):
+        return []
+    return [
+        row
+        for row in rows
+        if isinstance(row, Mapping)
+        and isinstance(row.get("timestamp_monotonic_ns"), int)
+        and not isinstance(row.get("timestamp_monotonic_ns"), bool)
+        and row["timestamp_monotonic_ns"] >= threshold
+    ]
+
+
+def _numeric_smoke_values(
+    rows: Sequence[Mapping[str, Any]], field: str
+) -> tuple[list[float] | None, str | None]:
+    values: list[float] = []
+    for index, row in enumerate(rows):
+        if field not in row:
+            return None, f"{field} is missing at row {index}"
+        try:
+            values.append(finite(row[field], field=field))
+        except Issue146AnalysisError as exc:
+            return None, str(exc)
+    if not values:
+        return None, f"{field} has no samples"
+    return values, None
+
+
 def _smoke_acceptance(report: dict[str, Any], spec: _PlanSpec) -> list[dict[str, Any]]:
     first = report.get("duration", {}).get("first_launch_start_monotonic_ns")
-    rows = _smoke_rows(report, first=first) if isinstance(first, int) else []
+    rows_10_40 = _smoke_rows(report, first=first) if isinstance(first, int) else []
+    rows_at_or_after_10 = (
+        _smoke_rows_at_or_after(report, first=first) if isinstance(first, int) else []
+    )
     groups = report.get("group_timings", [])
     try:
+        if not isinstance(first, int):
+            raise Issue146AnalysisError("first launch clock is unavailable")
         group_facts = group_timing_facts(
             groups,
             first_launch_start_monotonic_ns=first,
@@ -1974,11 +2155,11 @@ def _smoke_acceptance(report: dict[str, Any], spec: _PlanSpec) -> list[dict[str,
             idle_fraction_limit=spec.idle_fraction_limit,
             overrun_limit_seconds=spec.overrun_limit_seconds,
         )
-        idle_pass = group_facts["idle_fraction"] <= spec.idle_fraction_limit
+        idle_pass: bool | None = group_facts["idle_fraction"] <= spec.idle_fraction_limit
         idle_detail: Any = group_facts
-    except (Issue146AnalysisError, TypeError):
-        idle_pass = False
-        idle_detail = {"reason": "group timings unavailable"}
+    except (Issue146AnalysisError, KeyError, TypeError, ValueError, OverflowError) as exc:
+        idle_pass = None
+        idle_detail = {"reason": f"group timings unavailable: {exc}"}
     acceptance: list[dict[str, Any]] = [
         _criterion(
             "idle_fraction_[10,40)",
@@ -1987,50 +2168,118 @@ def _smoke_acceptance(report: dict[str, Any], spec: _PlanSpec) -> list[dict[str,
             idle_fraction=idle_detail.get("idle_fraction")
             if isinstance(idle_detail, Mapping)
             else None,
+            reason=idle_detail.get("reason") if isinstance(idle_detail, Mapping) else None,
         )
     ]
-    if report.get("configuration_id") in {"C081", "C108"}:
-        currents = [
-            finite(row.get("current_a"), field="current_a") for row in rows if "current_a" in row
-        ]
-        powers = [
-            finite(row.get("board_power_w"), field="board_power_w")
-            for row in rows
-            if "board_power_w" in row
-        ]
-        power_sd = statistics.stdev(powers) if len(powers) >= 2 else 0.0 if powers else math.inf
-        current_pass = bool(currents) and min(currents) >= 150.0 and power_sd < 20.0
+    configuration_id = report.get("configuration_id")
+    if configuration_id not in spec.configurations:
+        reason = "unknown smoke configuration"
+        acceptance[0] = _criterion(
+            "idle_fraction_[10,40)", None, window="[10,40)", reason=reason
+        )
+        acceptance.extend(
+            [
+                _criterion(
+                    "regulated_current_and_power_[10,40)",
+                    None,
+                    window="[10,∞)",
+                    current_window="[10,∞)",
+                    power_sd_window="[10,40)",
+                    reason=reason,
+                ),
+                _criterion("arbiter_words_and_enabled_max", None, reason=reason),
+                _criterion("R5_residual_[10,40)", None, window="[10,∞)", reason=reason),
+                _criterion("R7_index_distribution_[10,40)", None, window="[10,∞)", reason=reason),
+            ]
+        )
         acceptance.append(
             _criterion(
-                "regulated_current_and_power_[10,40)",
-                current_pass,
-                window="[10,40)",
-                minimum_current_a=min(currents) if currents else None,
-                board_power_sample_sd_w=power_sd if powers else None,
+                "smoke_failure_requires_plan_revision",
+                False,
+                reason="smoke configuration is not in the immutable plan",
             )
         )
+        return acceptance
+    if configuration_id in {"C081", "C108"}:
+        currents, current_error = _numeric_smoke_values(rows_at_or_after_10, "current_a")
+        powers, power_error = _numeric_smoke_values(rows_10_40, "board_power_w")
+        if current_error or power_error:
+            acceptance.append(
+                _criterion(
+                    "regulated_current_and_power_[10,40)",
+                    None,
+                    window="[10,∞)",
+                    current_window="[10,∞)",
+                    power_sd_window="[10,40)",
+                    reason=current_error or power_error,
+                )
+            )
+        else:
+            assert currents is not None and powers is not None
+            power_sd = statistics.stdev(powers) if len(powers) >= 2 else 0.0
+            current_pass = min(currents) >= 150.0 and power_sd < 20.0
+            acceptance.append(
+                _criterion(
+                    "regulated_current_and_power_[10,40)",
+                    current_pass,
+                    window="[10,∞)",
+                    current_window="[10,∞)",
+                    power_sd_window="[10,40)",
+                    minimum_current_a=min(currents),
+                    current_sample_count=len(currents),
+                    power_sample_count=len(powers),
+                    board_power_sample_sd_w=power_sd,
+                )
+            )
     else:
         acceptance.append(
             _criterion(
                 "regulated_current_and_power_[10,40)",
                 True,
                 status="not_applicable",
-                window="[10,40)",
+                window="[10,∞)",
+                current_window="[10,∞)",
+                power_sd_window="[10,40)",
             )
         )
     trace_rows = report.get("trace_rows", [])
-    words_present = bool(trace_rows) and all(
-        all(field in row for field in ARBITER_FIELDS) for row in trace_rows
-    )
-    max_mask_pass = all(
-        decode_arbiter_row(row)["enabled_max_arb"] == EXPECTED_ENABLED_MAX
-        for row in report.get("trace_rows", [])
-        if all(field in row for field in ARBITER_FIELDS)
-    )
-    acceptance.append(_criterion("arbiter_words_and_enabled_max", words_present and max_mask_pass))
+    if not isinstance(trace_rows, list) or not trace_rows:
+        acceptance.append(
+            _criterion(
+                "arbiter_words_and_enabled_max",
+                None,
+                reason="trace rows are unavailable",
+            )
+        )
+    else:
+        decoded_trace: list[dict[str, Any]] = []
+        word_error: str | None = None
+        for index, row in enumerate(trace_rows):
+            if not isinstance(row, Mapping) or not all(field in row for field in ARBITER_FIELDS):
+                word_error = f"arbiter words are missing at row {index}"
+                break
+            try:
+                decoded_trace.append(decode_arbiter_row(row))
+            except (Issue146AnalysisError, KeyError, TypeError, ValueError) as exc:
+                word_error = f"arbiter words are malformed at row {index}: {exc}"
+                break
+        acceptance.append(
+            _criterion(
+                "arbiter_words_and_enabled_max",
+                None if word_error else all(
+                    decoded["enabled_max_arb"] == EXPECTED_ENABLED_MAX
+                    for decoded in decoded_trace
+                ),
+                reason=word_error,
+            )
+        )
     residuals: list[float] = []
-    for row in rows:
-        if all(field in row for field in ARBITER_FIELDS):
+    residual_error: str | None = None
+    for index, row in enumerate(rows_at_or_after_10):
+        if not isinstance(row, Mapping) or not all(field in row for field in ARBITER_FIELDS):
+            residual_error = f"arbiter words are missing at row {index}"
+            break
+        try:
             decoded = decode_arbiter_row(row)
             residuals.append(
                 abs(
@@ -2038,29 +2287,45 @@ def _smoke_acceptance(report: dict[str, Any], spec: _PlanSpec) -> list[dict[str,
                     - decoded["aiclk_arb_max_frequency_mhz"]
                 )
             )
-    residual_max = max(residuals) if residuals else math.inf
+        except (Issue146AnalysisError, KeyError, TypeError, ValueError) as exc:
+            residual_error = f"R5 inputs are malformed at row {index}: {exc}"
+            break
     acceptance.append(
         _criterion(
             "R5_residual_[10,40)",
-            residual_max <= 2.0,
-            window="[10,40)",
-            max_residual_mhz=residual_max,
+            None if residual_error or not residuals else max(residuals) <= 2.0,
+            window="[10,∞)",
+            max_residual_mhz=max(residuals) if residuals else None,
+            reason=residual_error or ("no samples at or after 10 s" if not residuals else None),
         )
     )
     indices: list[int] = []
-    for row in rows:
-        if all(field in row for field in ARBITER_FIELDS):
-            indices.append(decode_arbiter_row(row)["aiclk_arb_max_index"])
-    if report.get("configuration_id") == "C018":
-        index_pass = all(
-            decode_arbiter_row(row)["aiclk_arb_max_raw_int"] == EXPECTED_CONTROL_MAX
-            for row in rows
-            if all(field in row for field in ARBITER_FIELDS)
-        ) and bool(indices)
+    index_error: str | None = None
+    decoded_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(rows_at_or_after_10):
+        if not isinstance(row, Mapping) or not all(field in row for field in ARBITER_FIELDS):
+            index_error = f"arbiter words are missing at row {index}"
+            break
+        try:
+            decoded_rows.append(decode_arbiter_row(row))
+            indices.append(decoded_rows[-1]["aiclk_arb_max_index"])
+        except (Issue146AnalysisError, KeyError, TypeError, ValueError) as exc:
+            index_error = f"R7 inputs are malformed at row {index}: {exc}"
+            break
+    if index_error or not indices:
+        index_pass: bool | None = None
+    elif configuration_id == "C018":
+        index_pass = all(decoded["aiclk_arb_max_raw_int"] == EXPECTED_CONTROL_MAX for decoded in decoded_rows)
     else:
-        index_pass = bool(indices) and all(index in {7, 8} for index in indices)
+        index_pass = all(index in {7, 8} for index in indices)
     acceptance.append(
-        _criterion("R7_index_distribution_[10,40)", index_pass, window="[10,40)", indices=indices)
+        _criterion(
+            "R7_index_distribution_[10,40)",
+            index_pass,
+            window="[10,∞)",
+            indices=indices,
+            reason=index_error or ("no samples at or after 10 s" if not indices else None),
+        )
     )
     acceptance.append(
         _criterion(

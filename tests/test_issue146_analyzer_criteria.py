@@ -218,4 +218,38 @@ def test_issue146_smoke_acceptance_each_failure_is_reported(failure: str) -> Non
         "residual": "R5_residual_[10,40)",
         "index": "R7_index_distribution_[10,40)",
     }[failure]
-    assert acceptance[expected]["pass"] is False
+    if failure == "words":
+        assert acceptance[expected]["status"] == "not_evaluable"
+    else:
+        assert acceptance[expected]["pass"] is False
+
+
+def test_issue146_smoke_current_residual_and_index_include_post_40_rows() -> None:
+    record = _record("C081", 1)
+    record["run"]["mode"] = "smoke"
+    record["run"]["observed_duration_seconds"] = 40.0
+    rows = record["trace"]["samples"]
+    assert isinstance(rows, list)
+    post_40 = next(row for row in rows if row["timestamp_monotonic_ns"] == 60_000_000_000)
+    post_40["current_a"] = 100.0
+    post_40["aiclk_mhz"] = 1205.0
+    post_40["aiclk_arb_max_raw"] = "0x904b0"
+    _rehash(record)
+    result = analyzer.analyze_smoke([record], plan=_plan())
+    acceptance = {item["name"]: item for item in result["acceptance"]}
+    assert acceptance["regulated_current_and_power_[10,40)"]["pass"] is False
+    assert acceptance["R5_residual_[10,40)"]["pass"] is False
+    assert acceptance["R7_index_distribution_[10,40)"]["pass"] is False
+    assert acceptance["regulated_current_and_power_[10,40)"]["power_sd_window"] == "[10,40)"
+    assert acceptance["R5_residual_[10,40)"]["window"] == "[10,∞)"
+
+
+def test_issue146_smoke_unknown_configuration_is_not_evaluable() -> None:
+    record = _record("C081", 1)
+    record["run"]["mode"] = "smoke"
+    record["configuration"]["id"] = "C999"
+    _rehash(record)
+    result = analyzer.analyze_smoke([record], plan=_plan())
+    acceptance = result["acceptance"]
+    assert all(item["pass"] is not True for item in acceptance)
+    assert all(item["status"] in {"not_evaluable", "fail"} for item in acceptance)
