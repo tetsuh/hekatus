@@ -171,11 +171,11 @@ def test_issue146_output_collision_is_rejected_before_command(tmp_path: Path) ->
     plan = issue146.load_plan(PLAN)
     config = issue146.configuration(plan, "C018")
     (tmp_path / "run-issue146-collision.json").write_text("old", encoding="utf-8")
+    options = issue146.Issue146RunOptions(command_runner=lambda *_a, **_k: None)
     with pytest.raises(issue146.Issue146Error, match="collision"):
         issue146.run_one(
             plan=plan, configuration=config, mode="smoke", output_dir=tmp_path,
-            run_id="issue146-collision",
-            options=issue146.Issue146RunOptions(command_runner=lambda *_a, **_k: None),
+            run_id="issue146-collision", options=options,
         )
 
 
@@ -208,6 +208,94 @@ def test_issue146_main_returns_nonzero_for_nonaccepted_run_status(
     assert exit_code == expected_exit
     assert len(captured) == 1
     assert captured[0]["options"].capture_fn is fake_capture
+
+
+def test_issue146_main_loads_preceding_snapshot_for_later_long_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preceding = _capture_factory("C108", "long")(stage="pre_run")
+    snapshot_path = tmp_path / "preceding-pre-run.json"
+    snapshot_path.write_text(json.dumps(preceding), encoding="utf-8")
+    captured: list[dict[str, object]] = []
+    command_calls: list[object] = []
+
+    def fake_command(*args: object, **kwargs: object) -> None:
+        command_calls.append((args, kwargs))
+
+    def fake_run_one(**kwargs: object) -> dict[str, object]:
+        captured.append(kwargs)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(issue146, "run_one", fake_run_one)
+    monkeypatch.setattr(issue146, "capture_readonly_snapshot", lambda **_kwargs: preceding)
+    monkeypatch.setattr(issue146.issue137, "_run_issue137_workload", fake_command)
+
+    exit_code = issue146.main(
+        [
+            "--plan", str(PLAN), "--mode", "long", "--configuration", "C108",
+            "--run-id", "issue146-cli-long-2", "--run-number", "2",
+            "--approve-long-run", "--out-dir", str(tmp_path), "--execute",
+            "--preceding-pre-snapshot", str(snapshot_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert len(captured) == 1
+    options = captured[0]["options"]
+    assert isinstance(options, issue146.Issue146RunOptions)
+    assert options.preceding_pre_snapshot == preceding
+    assert options.capture_fn is issue146.capture_readonly_snapshot
+    assert options.command_runner is fake_command
+    assert command_calls == []
+
+
+@pytest.mark.parametrize("case", ("missing", "wrong-stage", "wrong-board", "malformed", "unsafe"))
+def test_issue146_main_rejects_invalid_preceding_snapshot_before_run_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str,
+) -> None:
+    preceding = _capture_factory("C108", "long")(stage="pre_run")
+    snapshot_path = tmp_path / "preceding-pre-run.json"
+    if case == "wrong-stage":
+        preceding["stage"] = "post_run"
+        snapshot_path.write_text(json.dumps(preceding), encoding="utf-8")
+    elif case == "wrong-board":
+        preceding["snapshot"]["device_info"][0]["board_info"]["bus_id"] = "0000:0a:00.0"
+        snapshot_path.write_text(json.dumps(preceding), encoding="utf-8")
+    elif case == "malformed":
+        snapshot_path.write_text("{not-json", encoding="utf-8")
+    elif case == "unsafe":
+        snapshot_path = Path("/etc/issue146-preceding-pre-run.json")
+    captured: list[dict[str, object]] = []
+    capture_calls: list[object] = []
+    command_calls: list[object] = []
+
+    def fake_run_one(**kwargs: object) -> dict[str, object]:
+        captured.append(kwargs)
+        return {"status": "ok"}
+
+    def fake_capture(**kwargs: object) -> dict[str, object]:
+        capture_calls.append(kwargs)
+        return preceding
+
+    def fake_command(*args: object, **kwargs: object) -> None:
+        command_calls.append((args, kwargs))
+
+    monkeypatch.setattr(issue146, "run_one", fake_run_one)
+    monkeypatch.setattr(issue146, "capture_readonly_snapshot", fake_capture)
+    monkeypatch.setattr(issue146.issue137, "_run_issue137_workload", fake_command)
+
+    argv = [
+        "--plan", str(PLAN), "--mode", "long", "--configuration", "C108",
+        "--run-id", "issue146-cli-long-invalid", "--run-number", "2",
+        "--approve-long-run", "--out-dir", str(tmp_path), "--execute",
+    ]
+    if case != "missing":
+        argv.extend(("--preceding-pre-snapshot", str(snapshot_path)))
+
+    assert issue146.main(argv) == 2
+    assert captured == []
+    assert capture_calls == []
+    assert command_calls == []
 
 
 def test_issue146_main_plan_mode_remains_success(monkeypatch: pytest.MonkeyPatch) -> None:

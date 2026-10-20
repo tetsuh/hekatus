@@ -93,6 +93,11 @@ uv run python tools/issue146.py --mode smoke --configuration C018 \
 uv run python tools/issue146.py --mode long --configuration C018 \
   --run-id issue146-long-c018-1 --run-number 1 --approve-long-run \
   --out-dir out/issue146 --execute
+# Every later long instance must name the preceding selected-device pre-run snapshot.
+uv run python tools/issue146.py --mode long --configuration C108 \
+  --run-id issue146-long-c108-2 --run-number 2 --approve-long-run \
+  --preceding-pre-snapshot out/issue146/pre-run-snapshot-issue146-long-c018-1.json \
+  --out-dir out/issue146 --execute
 ```
 
 Execution is opt-in only. The wrapper binds host device 1

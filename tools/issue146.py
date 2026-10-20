@@ -57,6 +57,10 @@ COOLDOWN_CAP_SECONDS = 600.0
 COOLDOWN_POWER_TOLERANCE_W = 5.0
 COOLDOWN_TEMPERATURE_TOLERANCE_C = 3.0
 TRACE_INTERVAL_SECONDS = 2.0
+_ENV_BOARD_SERIAL_FIELD = "board.serial"
+_ENV_BOARD_ID_FIELD = "board.identity.board_id"
+_ENV_BUS_ID_FIELD = "board.identity.bus_id"
+_ENV_FIRMWARE_BUNDLE_FIELD = "firmware.bundle"
 ISSUE146_POWER_TRACE_SCHEMA = power_trace_issue146.ISSUE146_POWER_TRACE_SCHEMA
 ISSUE146_POWER_TRACE_COLUMNS = power_trace_issue146.ISSUE146_POWER_TRACE_COLUMNS
 SMOKE_IDLE_WINDOW = (10.0, 40.0)
@@ -483,10 +487,10 @@ def _environment_provenance_values(
     if not isinstance(firmware, Mapping):
         firmware = {}
     return {
-        "board.serial": identity.get("serial"),
-        "board.identity.board_id": identity.get("board_id"),
-        "board.identity.bus_id": identity.get("bus_id"),
-        "firmware.bundle": firmware.get("bundle") or firmware.get("fw_bundle_version"),
+        _ENV_BOARD_SERIAL_FIELD: identity.get("serial"),
+        _ENV_BOARD_ID_FIELD: identity.get("board_id"),
+        _ENV_BUS_ID_FIELD: identity.get("bus_id"),
+        _ENV_FIRMWARE_BUNDLE_FIELD: firmware.get("bundle") or firmware.get("fw_bundle_version"),
         "kernel": environment.get("kernel"),
         "kernel_driver_version": environment.get("kernel_driver_version") or environment.get("kmd_version"),
         "image_digest": _environment_digest(environment),
@@ -500,16 +504,7 @@ def _environment_provenance_values(
     }
 
 
-def validate_environment_for_run(
-    environment: Mapping[str, Any], *, configuration: Issue146Configuration | None = None,
-    plan: Mapping[str, Any] | None = None,
-) -> None:
-    """Validate every required provenance field before importing or opening TTNN."""
-    if not isinstance(environment, Mapping):
-        raise Issue146Error("environment must be an object")
-    effective_plan = load_plan() if plan is None else plan
-    _plan_hash(effective_plan)
-    outer_repetitions, launches_per_sync = grouped_load_settings(effective_plan)
+def _validate_environment_identity(environment: Mapping[str, Any]) -> dict[str, Any]:
     if environment.get("device_node") != DEVICE_NODE:
         raise Issue146Error(f"Issue #146 requires device_node {DEVICE_NODE}")
     identity = _environment_identity(environment)
@@ -523,22 +518,30 @@ def validate_environment_for_run(
         board_id=identity["board_id"],
         bus_id=identity["bus_id"],
     )
-    try:
-        validate_harness_preflight(environment, pushed=environment.get("harness_pushed"))
-    except Exception as exc:
-        raise Issue146Error(str(exc)) from exc
-    if configuration is not None:
-        if environment.get("worker_core_count") != configuration.worker_core_count:
-            raise Issue146Error("environment worker_core_count does not match the plan")
-        if environment.get("total_blocks") != configuration.total_blocks:
-            raise Issue146Error("environment total_blocks does not match the plan")
-        if environment.get("worker_core_coordinates") != [
-            list(core) for core in configuration.core_plan.worker_cores
-        ]:
-            raise Issue146Error("environment worker_core_coordinates do not match the plan")
+    return identity
+
+
+def _validate_environment_configuration(
+    environment: Mapping[str, Any], configuration: Issue146Configuration | None,
+) -> None:
+    if configuration is None:
+        return
+    if environment.get("worker_core_count") != configuration.worker_core_count:
+        raise Issue146Error("environment worker_core_count does not match the plan")
+    if environment.get("total_blocks") != configuration.total_blocks:
+        raise Issue146Error("environment total_blocks does not match the plan")
+    expected_coordinates = [list(core) for core in configuration.core_plan.worker_cores]
+    if environment.get("worker_core_coordinates") != expected_coordinates:
+        raise Issue146Error("environment worker_core_coordinates do not match the plan")
+
+
+def _validate_environment_fields(
+    environment: Mapping[str, Any], *, plan: Mapping[str, Any], identity: Mapping[str, Any],
+    outer_repetitions: int, launches_per_sync: int,
+) -> None:
     values = _environment_provenance_values(environment, identity)
     missing = [
-        field for field in _required_environment_fields(effective_plan)
+        field for field in _required_environment_fields(plan)
         if values.get(field) is None or values.get(field) == "" or values.get(field) == []
     ]
     if missing:
@@ -547,6 +550,9 @@ def validate_environment_for_run(
         raise Issue146Error("environment outer_repetitions does not match the owner plan")
     if environment.get("launches_per_sync") != launches_per_sync:
         raise Issue146Error("environment launches_per_sync does not match the owner plan")
+
+
+def _validate_environment_versions(environment: Mapping[str, Any]) -> None:
     digest = _environment_digest(environment)
     if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
         raise Issue146Error("environment image_digest is not a pinned SHA-256")
@@ -567,6 +573,29 @@ def validate_environment_for_run(
         raise Issue146Error("telemetry_sampler provenance must be an object")
 
 
+def validate_environment_for_run(
+    environment: Mapping[str, Any], *, configuration: Issue146Configuration | None = None,
+    plan: Mapping[str, Any] | None = None,
+) -> None:
+    """Validate every required provenance field before importing or opening TTNN."""
+    if not isinstance(environment, Mapping):
+        raise Issue146Error("environment must be an object")
+    effective_plan = load_plan() if plan is None else plan
+    _plan_hash(effective_plan)
+    outer_repetitions, launches_per_sync = grouped_load_settings(effective_plan)
+    identity = _validate_environment_identity(environment)
+    try:
+        validate_harness_preflight(environment, pushed=environment.get("harness_pushed"))
+    except Exception as exc:
+        raise Issue146Error(str(exc)) from exc
+    _validate_environment_configuration(environment, configuration)
+    _validate_environment_fields(
+        environment, plan=effective_plan, identity=identity,
+        outer_repetitions=outer_repetitions, launches_per_sync=launches_per_sync,
+    )
+    _validate_environment_versions(environment)
+
+
 def build_environment_record(
     environment: Mapping[str, Any], configuration: Issue146Configuration,
     *, plan: Mapping[str, Any] | None = None,
@@ -581,10 +610,10 @@ def build_environment_record(
         raise Issue146Error("environment firmware provenance is missing")
     kernel_driver = environment.get("kernel_driver_version") or environment.get("kmd_version")
     facts = {
-        "board.serial": identity["serial"],
-        "board.identity.board_id": identity["board_id"],
-        "board.identity.bus_id": identity["bus_id"],
-        "firmware.bundle": firmware.get("bundle") or firmware.get("fw_bundle_version"),
+        _ENV_BOARD_SERIAL_FIELD: identity["serial"],
+        _ENV_BOARD_ID_FIELD: identity["board_id"],
+        _ENV_BUS_ID_FIELD: identity["bus_id"],
+        _ENV_FIRMWARE_BUNDLE_FIELD: firmware.get("bundle") or firmware.get("fw_bundle_version"),
         "kernel": environment.get("kernel"),
         "kernel_driver_version": kernel_driver,
         "image_digest": _environment_digest(environment),
@@ -597,13 +626,13 @@ def build_environment_record(
     safe = _safe_json_value(environment)
     record: dict[str, Any] = {
         "board": {
-            "serial": facts["board.serial"],
+            "serial": facts[_ENV_BOARD_SERIAL_FIELD],
             "identity": {
-                "board_id": facts["board.identity.board_id"],
-                "bus_id": facts["board.identity.bus_id"],
+                "board_id": facts[_ENV_BOARD_ID_FIELD],
+                "bus_id": facts[_ENV_BUS_ID_FIELD],
             },
         },
-        "firmware": {"bundle": facts["firmware.bundle"]},
+        "firmware": {"bundle": facts[_ENV_FIRMWARE_BUNDLE_FIELD]},
         "kernel": facts["kernel"],
         "kernel_driver_version": facts["kernel_driver_version"],
         "image_digest": facts["image_digest"],
@@ -737,6 +766,23 @@ def capture_readonly_snapshot(*, stage: str, **kwargs: Any) -> dict[str, Any]:
     return capture
 
 
+def _load_preceding_pre_snapshot(path: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
+    source = _trusted_path(path, field="Issue #146 preceding pre-run snapshot")
+    if not source.is_file():
+        raise Issue146Error("Issue #146 preceding pre-run snapshot is not a file")
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise Issue146Error("Issue #146 preceding pre-run snapshot is malformed") from exc
+    if not isinstance(payload, Mapping):
+        raise Issue146Error("Issue #146 preceding pre-run snapshot must be an object")
+    if payload.get("stage") != "pre_run":
+        raise Issue146Error("Issue #146 preceding pre-run snapshot stage must be pre_run")
+    board_id, bus_id = _selected_ids(plan, Issue146RunOptions())
+    validate_capture(payload, stage="pre_run", board_id=board_id, bus_id=bus_id)
+    return dict(payload)
+
+
 def _snapshot_baseline(capture: Mapping[str, Any], *, board_id: str, bus_id: str) -> dict[str, float]:
     device = _snapshot_device(capture, board_id=board_id, bus_id=bus_id)
     telemetry = device.get("telemetry")
@@ -760,9 +806,13 @@ def _cooldown_settings(plan: Mapping[str, Any]) -> tuple[float, float, float]:
     except (KeyError, TypeError, ValueError) as exc:
         raise Issue146Error("Issue #146 cooldown cap is invalid") from exc
     criterion = str(cooldown.get("criterion", ""))
-    power_match = re.search(r"power_w\s*<=\s*baseline\s*\+\s*([0-9]+(?:\.[0-9]+)?)", criterion)
+    power_match = re.search(
+        r"power_w\s*<=\s*baseline\s*\+\s*(\d+(?:\.\d+)?)",
+        criterion, flags=re.ASCII,
+    )
     temperature_match = re.search(
-        r"asic_temp_c\s*<=\s*baseline\s*\+\s*([0-9]+(?:\.[0-9]+)?)", criterion
+        r"asic_temp_c\s*<=\s*baseline\s*\+\s*(\d+(?:\.\d+)?)",
+        criterion, flags=re.ASCII,
     )
     if not power_match or not temperature_match:
         raise Issue146Error("Issue #146 cooldown tolerances are missing")
@@ -1160,7 +1210,7 @@ def _capture_pre_run(prepared: _PreparedRun, state: _ExecutionState, capture_fn:
             configured = validate_pre_snapshot_configuration(
                 capture, plan=plan, board_id=prepared.board_id, bus_id=prepared.bus_id
             )
-        except (Issue146Error, OSError, TypeError, ValueError, KeyError) as exc:
+        except (OSError, TypeError, ValueError, KeyError) as exc:
             if _pre_snapshot_configuration_mismatch(exc):
                 descriptor["configuration"] = {
                     "status": "not_evaluable",
@@ -1196,14 +1246,14 @@ def _capture_pre_run(prepared: _PreparedRun, state: _ExecutionState, capture_fn:
         plan_limits = dict(plan.get("limits", {}))
         plan_limits.update(configured)
         prepared.record["limits"] = plan_limits
-    except (Issue146Error, OSError, TypeError, ValueError, KeyError) as exc:
+    except (OSError, TypeError, ValueError, KeyError) as exc:
         failed = _failure_record(prepared.record, kind="pre_run_snapshot_failure", message=str(exc))
         _persist_record(prepared.output_dir, prepared.safe_run_id, failed)
         return failed
     return None
 
 
-def _start_trace_sampler(prepared: _PreparedRun, state: _ExecutionState, options: Issue146RunOptions, capture_fn: Callable[..., dict[str, Any]]) -> float:
+def _start_trace_sampler(state: _ExecutionState, options: Issue146RunOptions, capture_fn: Callable[..., dict[str, Any]]) -> float:
     interval = float(options.trace_interval_seconds)
     if not math.isfinite(interval) or interval <= 0.0:
         raise Issue146Error("trace interval must be positive")
@@ -1279,13 +1329,18 @@ def _capture_post_run(prepared: _PreparedRun, state: _ExecutionState, capture_fn
         validate_capture(capture, stage="post_run", board_id=prepared.board_id, bus_id=prepared.bus_id)
         state.captures.append(dict(capture))
         prepared.record["post_run_snapshot"] = _store_capture(prepared.output_dir, run_id=prepared.safe_run_id, stage="post_run", capture=capture)
-    except (Issue146Error, OSError, TypeError, ValueError, KeyError) as exc:
+    except (OSError, TypeError, ValueError, KeyError) as exc:
         prepared.record["post_run_snapshot"] = {"status": "unavailable", "reason": str(exc)}
         state.cleanup_failure = state.cleanup_failure or f"post-run snapshot failure: {type(exc).__name__}"
 
 
 def _extract_result_name(stdout: Any) -> str | None:
-    text = stdout.decode("utf-8", "replace") if isinstance(stdout, bytes) else stdout if isinstance(stdout, str) else ""
+    if isinstance(stdout, bytes):
+        text = stdout.decode("utf-8", "replace")
+    elif isinstance(stdout, str):
+        text = stdout
+    else:
+        text = ""
     matches = _RESULT_MARKER_RE.findall(text)
     if not matches:
         return None
@@ -1319,10 +1374,9 @@ def _read_json(path: Path, *, field: str) -> tuple[dict[str, Any], bytes]:
     return payload, raw
 
 
-def _validate_runner_result(
-    result: Mapping[str, Any], *, plan: Mapping[str, Any], configuration: Issue146Configuration,
-    mode: str, requested_run_id: str | None = None,
-) -> tuple[dict[str, Any], list[dict[str, int]]]:
+def _validate_runner_identity(
+    result: Mapping[str, Any], *, mode: str, requested_run_id: str | None,
+) -> None:
     if result.get("record_schema") != ISSUE146_DEVICE_RESULT_SCHEMA:
         raise Issue146Error("runner result schema is unsupported")
     if result.get("status") != "ok":
@@ -1347,15 +1401,22 @@ def _validate_runner_result(
         raise Issue146Error("runner result requested run identity does not match the requested run")
     if result.get("mode") != mode or result.get("load_mode") != ISSUE146_LOAD_MODE:
         raise Issue146Error("runner result mode binding is invalid")
+
+
+def _validate_runner_metadata(
+    result: Mapping[str, Any], *, plan: Mapping[str, Any], configuration: Issue146Configuration,
+    mode: str,
+) -> dict[str, Any]:
     timing = run_timing(plan, mode)
     outer_repetitions, launches_per_sync = grouped_load_settings(plan)
-    for field, expected in (
+    expected_values = (
         ("target_seconds", timing["load_seconds"]),
         ("guard_seconds", timing["guard_seconds"]),
         ("overrun_limit_seconds", DEFAULT_OVERRUN_LIMIT_SECONDS),
         ("outer_repetitions", outer_repetitions),
         ("launches_per_sync", launches_per_sync),
-    ):
+    )
+    for field, expected in expected_values:
         if float(result.get(field)) != expected:
             raise Issue146Error(f"runner result {field} does not match the plan")
     if result.get("plan_sha256") != _plan_hash(plan):
@@ -1366,6 +1427,10 @@ def _validate_runner_result(
     if not isinstance(environment, Mapping):
         raise Issue146Error("runner result environment provenance is missing")
     validate_environment_for_run(environment, configuration=configuration, plan=plan)
+    return timing
+
+
+def _parse_runner_groups(result: Mapping[str, Any]) -> list[dict[str, int]]:
     raw_groups = result.get("group_timings")
     if not isinstance(raw_groups, list):
         raise Issue146Error("runner result group_timings are missing")
@@ -1377,6 +1442,12 @@ def _validate_runner_result(
         if isinstance(start, bool) or not isinstance(start, int) or isinstance(end, bool) or not isinstance(end, int):
             raise Issue146Error(f"runner result group {index} bounds are invalid")
         groups.append({"start_monotonic_ns": start, "end_monotonic_ns": end})
+    return groups
+
+
+def _runner_group_facts(
+    result: Mapping[str, Any], groups: Sequence[Mapping[str, int]], timing: Mapping[str, Any],
+) -> dict[str, Any]:
     first = result.get("first_launch_start_monotonic_ns")
     if isinstance(first, bool) or not isinstance(first, int):
         raise Issue146Error("runner result first launch clock is invalid")
@@ -1404,7 +1475,17 @@ def _validate_runner_result(
         "launch_count": launch_count,
         "overrun_seconds": facts["overrun_seconds"],
         "idle_fraction": facts["idle_fraction"],
-    }, groups
+    }
+
+
+def _validate_runner_result(
+    result: Mapping[str, Any], *, plan: Mapping[str, Any], configuration: Issue146Configuration,
+    mode: str, requested_run_id: str | None = None,
+) -> tuple[dict[str, Any], list[dict[str, int]]]:
+    _validate_runner_identity(result, mode=mode, requested_run_id=requested_run_id)
+    timing = _validate_runner_metadata(result, plan=plan, configuration=configuration, mode=mode)
+    groups = _parse_runner_groups(result)
+    return _runner_group_facts(result, groups, timing), groups
 
 
 def validate_runner_result(
@@ -1694,13 +1775,17 @@ def _execute_run(prepared: _PreparedRun, *, plan: Mapping[str, Any], configurati
     failed = _capture_pre_run(prepared, state, capture_fn, plan)
     if failed is not None:
         return failed
-    interval = _start_trace_sampler(prepared, state, options, capture_fn) if prepared.trace_path is not None else float(options.trace_interval_seconds)
+    interval = (
+        _start_trace_sampler(state, options, capture_fn)
+        if prepared.trace_path is not None
+        else float(options.trace_interval_seconds)
+    )
     before = _run_command(prepared, state, options, interval)
     _capture_post_run(prepared, state, capture_fn)
     if state.result is None:
         try:
             facts, groups, _device_descriptor = _ingest_result(prepared, state, before=before, plan=plan, configuration=configuration)
-        except (Issue146Error, OSError, TypeError, ValueError, KeyError) as exc:
+        except (OSError, TypeError, ValueError, KeyError) as exc:
             return _finish(prepared, state, failure=str(exc))
     else:
         return _finish(prepared, state, failure=state.result_error or "runner result was already consumed")
@@ -1712,7 +1797,7 @@ def _execute_run(prepared: _PreparedRun, *, plan: Mapping[str, Any], configurati
         prepared.record["provenance"]["unit_provenance"] = power_trace_issue146.ISSUE146_UNIT_PROVENANCE if verified else None
         prepared.record["provenance"]["unit_provenance_status"] = "established" if verified else "unknown"
         prepared.record["trace"] = _write_trace(prepared, state, facts=facts, source_verified=verified)
-    except (Issue146Error, OSError, TypeError, ValueError, KeyError) as exc:
+    except (OSError, TypeError, ValueError, KeyError) as exc:
         return _finish(prepared, state, failure=str(exc))
     return _finish(prepared, state)
 
@@ -1766,6 +1851,7 @@ def _parser() -> Any:
     parser.add_argument("--run-id")
     parser.add_argument("--run-number", type=int)
     parser.add_argument("--out-dir", type=Path, default=Path("out/issue146"))
+    parser.add_argument("--preceding-pre-snapshot", type=Path, default=None)
     parser.add_argument("--approve-long-run", action="store_true")
     parser.add_argument("--execute", action="store_true")
     return parser
@@ -1781,6 +1867,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.configuration is None or args.run_id is None:
             raise Issue146Error("measurement modes require --configuration and --run-id")
         selected = configuration(plan, args.configuration)
+        preceding = None
+        if args.preceding_pre_snapshot is not None:
+            preceding = _load_preceding_pre_snapshot(args.preceding_pre_snapshot, plan)
+        elif args.mode == "long" and (args.run_number or 0) > 1:
+            raise Issue146Error("long runs after the first require --preceding-pre-snapshot")
         output = _safe_output_dir(args.out_dir)
         record = run_one(
             plan=plan, configuration=selected, mode=args.mode, output_dir=output,
@@ -1789,12 +1880,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 run_number=args.run_number, approve_long_run=args.approve_long_run,
                 command_runner=issue137._run_issue137_workload if args.execute else None,
                 capture_fn=capture_readonly_snapshot if args.execute else None,
+                preceding_pre_snapshot=preceding,
                 trace_path=output / f"issue146-power-trace-{args.run_id}.csv" if args.execute else None,
             ),
         )
         print(strict_json_dumps(_safe_json_value(record), indent=2))
-        return 0 if record.get("status") not in {"failed", "not_evaluable"} else 2
-    except (Issue146Error, OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        return 0 if record.get("status") in {"planned", "ok"} else 2
+    except (OSError, ValueError, TypeError) as exc:
         print(f"issue146: {type(exc).__name__}: {exc}", file=os.sys.stderr)
         return 2
 
