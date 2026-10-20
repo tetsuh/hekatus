@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -234,13 +235,24 @@ def test_issue146_wrapper_diagnostics_persist_on_success_and_redact_paths(
     wrapper_id = "wrapper-diagnostics-success"
     result = _device_result(plan, config, environment, "smoke", wrapper_id, run_id)
     local_path = str(tmp_path / "private-output" / "result.json")
+    runtime_hostname = socket.gethostname()
+    runtime_fqdn = socket.getfqdn()
+    short_host = runtime_hostname.split(".", 1)[0]
     stdout = (
         f"issue146 result -> /out/runner-result-{wrapper_id}.json\n"
-        f"local={local_path}\n"
+        f"host={runtime_hostname} fqdn={runtime_fqdn} short={short_host}\n"
+        f"relative-host-path=relative/{short_host}.py\n"
+        f"local={local_path} var=/var/lib/issue146-private/data "
+        "link=/var/lib/issue146-link/trace opt=/opt/issue146-private/log\n"
+        "safe-work=/work/tools/issue146_device.py safe-out=/out/result.json\n"
+        "url=https://example.test/var/lib/remote\n"
         "ModuleNotFoundError: No module named 'scipy'\n"
         + "diagnostic line\n" * 25
     )
-    stderr = f"Traceback (most recent call last): File \"{local_path}\"\n"
+    stderr = (
+        f"Traceback (most recent call): File \"{local_path}\"\n"
+        f"host={runtime_hostname} /var/lib/issue146-private/error\n"
+    )
 
     def command_runner(*_args: object, **_kwargs: object):
         _write_valid_wrapper_artifacts(tmp_path, result=result)
@@ -255,10 +267,35 @@ def test_issue146_wrapper_diagnostics_persist_on_success_and_redact_paths(
     saved_stderr = (tmp_path / diagnostics["stderr_path"]).read_text(encoding="utf-8")
     assert local_path not in saved_stdout
     assert local_path not in saved_stderr
+    for token in {runtime_hostname, runtime_fqdn, short_host}:
+        if len(token) >= 2:
+            assert token not in saved_stdout
+            assert token not in saved_stderr
+    for path in (
+        "/var/lib/issue146-private/data",
+        "/var/lib/issue146-link/trace",
+        "/opt/issue146-private/log",
+    ):
+        assert path not in saved_stdout
+    assert "/work/tools/issue146_device.py" in saved_stdout
+    assert "/out/result.json" in saved_stdout
+    assert "https://example.test/var/lib/remote" in saved_stdout
     assert "/out/runner-result-wrapper-diagnostics-success.json" in saved_stdout
     assert "ModuleNotFoundError: No module named 'scipy'" in saved_stdout
     assert len(diagnostics["stdout_tail"]) <= 20
     assert str(tmp_path) not in json.dumps(record)
+
+
+def test_issue146_diagnostic_redaction_root_prefix_keeps_safe_text() -> None:
+    prefixes = issue146._diagnostic_path_prefixes(Path("/"))
+    assert "" not in prefixes
+    text = (
+        "keep /work/tools/issue146.py /out/result.json /dev/tenstorrent/1 "
+        "https://example.test/remote relative/tools/issue146.py "
+        "relative/tmp/source.py relative/home/source.py"
+    )
+    redacted = issue146._redact_diagnostic_text(text, output_dir=Path("/"))
+    assert redacted == text
 
 
 def test_issue146_wrapper_diagnostics_keep_nonzero_failure_and_tails(tmp_path: Path) -> None:
@@ -324,14 +361,27 @@ def test_issue146_wrapper_diagnostics_keep_timeout_bytes_and_exception(tmp_path:
 
 def test_issue146_wrapper_diagnostics_keep_oserror_exception(tmp_path: Path) -> None:
     run_id = "issue146-diagnostics-oserror"
+    runtime_hostname = socket.gethostname()
+    private_paths = "/var/lib/issue146-private/error /opt/issue146-private/error"
 
     def command_runner(*_args: object, **_kwargs: object):
-        raise OSError("wrapper executable is unavailable")
+        raise OSError(
+            f"wrapper executable is unavailable on {runtime_hostname}: {private_paths}"
+        )
 
     record = _diagnostic_run(tmp_path, run_id=run_id, command_runner=command_runner)
     assert record["status"] == "failed"
     assert record["failure"]["exception_type"] == "OSError"
     assert "wrapper executable is unavailable" in record["failure"]["message"]
+    assert runtime_hostname not in record["failure"]["message"]
+    for path in private_paths.split():
+        assert path not in record["failure"]["message"]
+    persisted = json.loads(
+        (tmp_path / f"run-{run_id}.json").read_text(encoding="utf-8")
+    )
+    assert runtime_hostname not in json.dumps(persisted)
+    for path in private_paths.split():
+        assert path not in json.dumps(persisted)
     assert (tmp_path / f"wrapper-stdout-{run_id}.txt").read_bytes() == b""
     assert (tmp_path / f"wrapper-stderr-{run_id}.txt").read_bytes() == b""
 

@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import socket
 import subprocess
 import threading
 import time
@@ -68,6 +69,15 @@ DIAGNOSTIC_TAIL_CHARS = 2000
 AUTHORITATIVE_PLAN_RAW_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_RAW_SHA256
 AUTHORITATIVE_PLAN_CANONICAL_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_CANONICAL_SHA256
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+_DIAGNOSTIC_URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'<>]+")
+_DIAGNOSTIC_ABSOLUTE_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])(?<!/)/(?!/)(?!(?:work|out)(?:/|$)|dev/tenstorrent(?:/|$))"
+    r"(?=[A-Za-z0-9_.~+-])[^\s\"'<>()[\]{};,]*"
+)
+_DIAGNOSTIC_SAFE_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])/(?:work|out)(?:/[^\s\"'<>()[\]{};,]*)?"
+    r"|(?<![A-Za-z0-9_.-])/dev/tenstorrent(?:/[^\s\"'<>()[\]{};,]*)?"
+)
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{7,64}$")
@@ -299,8 +309,41 @@ def _diagnostic_path_prefixes(output_dir: Path) -> tuple[str, ...]:
             path = Path(candidate).resolve()
         except OSError:
             path = Path(candidate)
-        prefixes.add(path.as_posix().rstrip("/"))
+        normalized = path.as_posix().rstrip("/")
+        if normalized:
+            prefixes.add(normalized)
     return tuple(sorted(prefixes, key=len, reverse=True))
+
+
+def _diagnostic_host_tokens() -> tuple[str, ...]:
+    values: set[str] = set()
+    for getter in (socket.gethostname, socket.getfqdn):
+        try:
+            value = getter()
+        except OSError:
+            continue
+        if not isinstance(value, str):
+            continue
+        token = value.strip().rstrip(".")
+        if len(token) >= 2:
+            values.add(token)
+            short = token.split(".", 1)[0]
+            if len(short) >= 2:
+                values.add(short)
+    return tuple(sorted(values, key=len, reverse=True))
+
+
+def _redact_diagnostic_hostnames(text: str) -> str:
+    tokens = _diagnostic_host_tokens()
+    if not tokens:
+        return text
+    pattern = re.compile(
+        r"(?<![A-Za-z0-9_.-])(?:"
+        + "|".join(re.escape(token) for token in tokens)
+        + r")(?![A-Za-z0-9_-])",
+        re.IGNORECASE,
+    )
+    return pattern.sub("<redacted>", text)
 
 
 def _redact_diagnostic_text(value: Any, *, output_dir: Path) -> str:
@@ -312,12 +355,50 @@ def _redact_diagnostic_text(value: Any, *, output_dir: Path) -> str:
         text = value
     else:
         text = str(value)
+    protected_urls: list[str] = []
+    protected_safe_paths: list[str] = []
+
+    def protect_url(match: re.Match[str]) -> str:
+        protected_urls.append(_redact_diagnostic_hostnames(match.group(0)))
+        return f"\\x00issue146-url-{len(protected_urls) - 1}\\x00"
+
+    def protect_safe_path(match: re.Match[str]) -> str:
+        protected_safe_paths.append(match.group(0))
+        return f"\\x00issue146-safe-path-{len(protected_safe_paths) - 1}\\x00"
+
+    text = _DIAGNOSTIC_URL_RE.sub(protect_url, text)
+    text = _DIAGNOSTIC_SAFE_PATH_RE.sub(protect_safe_path, text)
     for prefix in _diagnostic_path_prefixes(output_dir):
         pattern = re.compile(
-            re.escape(prefix) + r"(?:/[^\s\"'<>()[\]{};,]*)?"
+            r"(?<![A-Za-z0-9_.-])(?<!/)"
+            + re.escape(prefix)
+            + r"(?:/[^\s\"'<>()[\]{};,]*)?"
         )
         text = pattern.sub("<redacted-path>", text)
+    text = _DIAGNOSTIC_ABSOLUTE_PATH_RE.sub("<redacted-path>", text)
+    text = _redact_diagnostic_hostnames(text)
+    for index, url in enumerate(protected_urls):
+        text = text.replace(f"\\x00issue146-url-{index}\\x00", url)
+    for index, path in enumerate(protected_safe_paths):
+        text = text.replace(
+            f"\\x00issue146-safe-path-{index}\\x00",
+            _redact_diagnostic_hostnames(path),
+        )
     return text
+
+
+def _redact_diagnostic_value(value: Any, *, output_dir: Path) -> Any:
+    safe = _safe_json_value(value)
+    if isinstance(safe, Mapping):
+        return {
+            str(key): _redact_diagnostic_value(child, output_dir=output_dir)
+            for key, child in safe.items()
+        }
+    if isinstance(safe, list):
+        return [_redact_diagnostic_value(child, output_dir=output_dir) for child in safe]
+    if isinstance(safe, str):
+        return _redact_diagnostic_text(safe, output_dir=output_dir)
+    return safe
 
 
 def _diagnostic_tail(text: str) -> list[str]:
@@ -1197,7 +1278,7 @@ def _failure_record(record: Mapping[str, Any], *, kind: str, message: str, retur
 
 def _persist_record(output_dir: Path, run_id: str, record: Mapping[str, Any]) -> Path:
     path = _safe_artifact_path(output_dir, f"run-{run_id}.json", field="record")
-    _write_artifact(path, record)
+    _write_artifact(path, _redact_diagnostic_value(record, output_dir=output_dir))
     return path
 
 
@@ -1900,7 +1981,9 @@ def _ingest_result(prepared: _PreparedRun, state: _ExecutionState, *, before: se
     path, name = _resolve_result(prepared.output_dir, before=before, completed=state.completed)
     result, raw = _read_json(path, field="Issue #146 runner result")
     state.result = result
-    prepared.record["runner_result"] = _safe_json_value(result)
+    prepared.record["runner_result"] = _redact_diagnostic_value(
+        result, output_dir=prepared.output_dir
+    )
     descriptor = {"path": name, "sha256": hashlib.sha256(raw).hexdigest(), "byte_count": len(raw), "schema": result.get("record_schema")}
     prepared.record["provenance"]["device_result"] = descriptor
     facts, groups = _validate_runner_result(
@@ -1950,6 +2033,7 @@ def _finish(
         )
         if failure and state.command_error and state.command_error != failure:
             message = f"{failure}; {state.command_error}"
+        message = _redact_diagnostic_text(message, output_dir=prepared.output_dir)
         record = _failure_record(
             prepared.record,
             kind="runner_execution_failure",

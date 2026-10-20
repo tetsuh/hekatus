@@ -151,10 +151,13 @@ artifacts beside the record: `wrapper-stdout-<run-id>.txt` and
 invocations, including nonzero exits, missing result artifacts, timeouts, and
 process-start errors. The record's `wrapper_diagnostics` descriptor names only
 those basenames and carries bounded redacted tail lines for failure review.
-Local absolute repository, home, temporary, and selected output-root paths are
-redacted before either file or tail is persisted; useful exception class and
-`ModuleNotFoundError` text and container-relative paths such as `/out/...`
-remain. Artifact creation is exclusive and rejects collisions or symlinks.
+All local absolute paths are redacted before either file, tail, or
+exception-derived failure field is persisted, including paths outside the
+repository and paths whose components are unresolved symlinks. The runtime
+host name and FQDN are redacted as well. Useful exception class and
+`ModuleNotFoundError` text, URLs, relative source paths, and safe
+container-relative paths such as `/work/...` and `/out/...` remain. Artifact
+creation is exclusive and rejects collisions or symlinks.
 
 ## Issue #102 raw-record rebuild
 
