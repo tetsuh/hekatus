@@ -63,8 +63,11 @@ ISSUE146_POWER_TRACE_SCHEMA = power_trace_issue146.ISSUE146_POWER_TRACE_SCHEMA
 ISSUE146_POWER_TRACE_COLUMNS = power_trace_issue146.ISSUE146_POWER_TRACE_COLUMNS
 SMOKE_IDLE_WINDOW = (10.0, 40.0)
 LONG_IDLE_WINDOW = (60.0, 180.0)
+DIAGNOSTIC_TAIL_LINES = 20
+DIAGNOSTIC_TAIL_CHARS = 2000
 AUTHORITATIVE_PLAN_RAW_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_RAW_SHA256
 AUTHORITATIVE_PLAN_CANONICAL_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_CANONICAL_SHA256
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{7,64}$")
@@ -151,6 +154,8 @@ class _PreparedRun:
     output_dir: Path
     trace_path: Path | None
     groups_path: Path
+    wrapper_stdout_path: Path
+    wrapper_stderr_path: Path
     command: tuple[str, ...]
     record: dict[str, Any]
 
@@ -168,6 +173,12 @@ class _ExecutionState:
     timed_out: bool = False
     cleanup_failure: str | None = None
     result_error: str | None = None
+    command_error: str | None = None
+    command_exception_type: str | None = None
+    stdout: Any = None
+    stderr: Any = None
+    wrapper_diagnostics: dict[str, Any] | None = None
+    diagnostics_error: str | None = None
     device_groups: dict[str, Any] | None = None
     companion_power_trace: dict[str, Any] | None = None
 
@@ -258,6 +269,92 @@ def _write_artifact(path: Path, payload: Any) -> bytes:
     except (OSError, TypeError, ValueError) as exc:
         raise Issue146Error(f"Issue #146 artifact could not be written: {destination.name}") from exc
     return encoded
+
+
+def _write_bytes_artifact(path: Path, payload: bytes, *, field: str) -> bytes:
+    destination = _trusted_path(path, field=field)
+    if destination.exists() or destination.is_symlink():
+        raise Issue146Error(f"{field} collides with an existing artifact: {destination.name}")
+    descriptor = -1
+    try:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+        descriptor = os.open(destination, flags, 0o666)
+        with os.fdopen(descriptor, "wb") as stream:
+            descriptor = -1
+            stream.write(payload)
+    except (OSError, TypeError, ValueError) as exc:
+        raise Issue146Error(f"{field} could not be written: {destination.name}") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    return payload
+
+
+def _diagnostic_path_prefixes(output_dir: Path) -> tuple[str, ...]:
+    candidates: list[Path | str] = list(issue137._private_path_prefixes())
+    candidates.extend((_REPOSITORY_ROOT, output_dir, Path.cwd()))
+    prefixes: set[str] = set()
+    for candidate in candidates:
+        try:
+            path = Path(candidate).resolve()
+        except OSError:
+            path = Path(candidate)
+        prefixes.add(path.as_posix().rstrip("/"))
+    return tuple(sorted(prefixes, key=len, reverse=True))
+
+
+def _redact_diagnostic_text(value: Any, *, output_dir: Path) -> str:
+    if value is None:
+        text = ""
+    elif isinstance(value, bytes):
+        text = value.decode("utf-8", errors="replace")
+    elif isinstance(value, str):
+        text = value
+    else:
+        text = str(value)
+    for prefix in _diagnostic_path_prefixes(output_dir):
+        pattern = re.compile(
+            re.escape(prefix) + r"(?:/[^\s\"'<>()[\]{};,]*)?"
+        )
+        text = pattern.sub("<redacted-path>", text)
+    return text
+
+
+def _diagnostic_tail(text: str) -> list[str]:
+    lines = text.splitlines()
+    bounded = lines[-DIAGNOSTIC_TAIL_LINES:]
+    return [
+        line if len(line) <= DIAGNOSTIC_TAIL_CHARS
+        else line[:DIAGNOSTIC_TAIL_CHARS] + "..."
+        for line in bounded
+    ]
+
+
+def _persist_wrapper_diagnostics(
+    prepared: _PreparedRun, state: _ExecutionState
+) -> dict[str, Any]:
+    stdout = _redact_diagnostic_text(state.stdout, output_dir=prepared.output_dir)
+    stderr = _redact_diagnostic_text(state.stderr, output_dir=prepared.output_dir)
+    stdout_bytes = stdout.encode("utf-8")
+    stderr_bytes = stderr.encode("utf-8")
+    _write_bytes_artifact(
+        prepared.wrapper_stdout_path,
+        stdout_bytes,
+        field="Issue #146 wrapper stdout",
+    )
+    _write_bytes_artifact(
+        prepared.wrapper_stderr_path,
+        stderr_bytes,
+        field="Issue #146 wrapper stderr",
+    )
+    return {
+        "stdout_path": prepared.wrapper_stdout_path.name,
+        "stderr_path": prepared.wrapper_stderr_path.name,
+        "stdout_byte_count": len(stdout_bytes),
+        "stderr_byte_count": len(stderr_bytes),
+        "stdout_tail": _diagnostic_tail(stdout),
+        "stderr_tail": _diagnostic_tail(stderr),
+    }
 
 
 def _load_plan_path(path: Path) -> Path:
@@ -943,16 +1040,28 @@ def _safe_trace_or_groups_path(path: Path | None, *, output_dir: Path, field: st
     return resolved
 
 
-def _reject_output_collisions(output_dir: Path, *, run_id: str, trace_path: Path | None, groups_path: Path) -> None:
-    names = {
+def _reject_output_collisions(
+    output_dir: Path,
+    *,
+    run_id: str,
+    trace_path: Path | None,
+    groups_path: Path,
+    wrapper_stdout_path: Path,
+    wrapper_stderr_path: Path,
+) -> None:
+    names = [
         f"run-{run_id}.json",
         f"pre-run-snapshot-{run_id}.json",
         f"post-run-snapshot-{run_id}.json",
         groups_path.name,
         f"{groups_path.stem}-envelope.json",
-    }
+        wrapper_stdout_path.name,
+        wrapper_stderr_path.name,
+    ]
     if trace_path is not None:
-        names.add(trace_path.name)
+        names.append(trace_path.name)
+    if len(names) != len(set(names)):
+        raise Issue146Error("Issue #146 output collision: artifact names overlap")
     for name in names:
         path = output_dir / name
         if path.exists() or path.is_symlink():
@@ -1061,6 +1170,7 @@ def _base_record(
         "post_run_snapshot": None,
         "groups": None,
         "trace": None,
+        "wrapper_diagnostics": None,
         "provenance": {
             "wrapper_entrypoint": WRAPPER_SCRIPT,
             "runner_entrypoint": ISSUE146_DEVICE_RUNNER,
@@ -1134,7 +1244,20 @@ def _prepare_run(
     groups = _safe_trace_or_groups_path(options.groups_path, output_dir=output, field="Issue #146 groups")
     if groups is None:
         groups = output / f"group-timings-{safe_id}.json"
-    _reject_output_collisions(output, run_id=safe_id, trace_path=trace, groups_path=groups)
+    wrapper_stdout = _safe_artifact_path(
+        output, f"wrapper-stdout-{safe_id}.txt", field="Issue #146 wrapper stdout"
+    )
+    wrapper_stderr = _safe_artifact_path(
+        output, f"wrapper-stderr-{safe_id}.txt", field="Issue #146 wrapper stderr"
+    )
+    _reject_output_collisions(
+        output,
+        run_id=safe_id,
+        trace_path=trace,
+        groups_path=groups,
+        wrapper_stdout_path=wrapper_stdout,
+        wrapper_stderr_path=wrapper_stderr,
+    )
     command = build_run_command(
         plan=plan, configuration=configuration, mode=mode, output_dir=output,
         run_id=safe_id, run_number=options.run_number, approve_long_run=options.approve_long_run,
@@ -1147,7 +1270,19 @@ def _prepare_run(
         record["environment"] = build_environment_record(
             options.environment, configuration, plan=plan
         )
-    return _PreparedRun(safe_id, timing, board_id, bus_id, output, trace, groups, command, record)
+    return _PreparedRun(
+        safe_id,
+        timing,
+        board_id,
+        bus_id,
+        output,
+        trace,
+        groups,
+        wrapper_stdout,
+        wrapper_stderr,
+        command,
+        record,
+    )
 
 
 def _apply_cooldown_gate(plan: Mapping[str, Any], prepared: _PreparedRun, options: Issue146RunOptions) -> dict[str, Any] | None:
@@ -1265,28 +1400,62 @@ def _start_trace_sampler(state: _ExecutionState, options: Issue146RunOptions, ca
     return interval
 
 
-def _run_command(prepared: _PreparedRun, state: _ExecutionState, options: Issue146RunOptions, interval: float) -> set[str]:
+def _run_command(
+    prepared: _PreparedRun,
+    state: _ExecutionState,
+    options: Issue146RunOptions,
+    interval: float,
+) -> set[str]:
     if options.command_runner is None:
         raise Issue146Error("Issue #146 command runner is required for execution")
     before = issue137._artifact_names(prepared.output_dir)
     try:
         state.completed = options.command_runner(
-            prepared.command, capture_output=True, text=True,
-            timeout=prepared.timing["guard_seconds"], check=False,
+            prepared.command,
+            capture_output=True,
+            text=True,
+            timeout=prepared.timing["guard_seconds"],
+            check=False,
             env=_execution_environment(
                 options.environment,
                 guard_seconds=prepared.timing["guard_seconds"],
                 requested_run_id=prepared.safe_run_id,
             ),
         )
+        state.stdout = getattr(state.completed, "stdout", None)
+        state.stderr = getattr(state.completed, "stderr", None)
         code = getattr(state.completed, "returncode", None)
-        state.returncode = code if isinstance(code, int) and not isinstance(code, bool) else None
-    except subprocess.TimeoutExpired:
-        state.completed = SimpleNamespace(returncode=None, stdout="")
+        if isinstance(code, int) and not isinstance(code, bool):
+            state.returncode = code
+            if code != 0:
+                state.command_error = f"wrapper exited with return code {code}"
+        else:
+            state.command_error = "wrapper return code is missing"
+    except subprocess.TimeoutExpired as exc:
+        state.completed = SimpleNamespace(
+            returncode=None,
+            stdout=getattr(exc, "stdout", None) or getattr(exc, "output", None),
+            stderr=getattr(exc, "stderr", None),
+        )
+        state.stdout = state.completed.stdout
+        state.stderr = state.completed.stderr
         state.timed_out = True
+        state.command_exception_type = type(exc).__name__
+        state.command_error = _redact_diagnostic_text(
+            f"{type(exc).__name__}: {exc}", output_dir=prepared.output_dir
+        )
     except (OSError, subprocess.SubprocessError) as exc:
-        state.completed = SimpleNamespace(returncode=None, stdout="")
-        state.cleanup_failure = type(exc).__name__
+        state.completed = SimpleNamespace(
+            returncode=None,
+            stdout=getattr(exc, "stdout", None) or getattr(exc, "output", None),
+            stderr=getattr(exc, "stderr", None),
+        )
+        state.stdout = state.completed.stdout
+        state.stderr = state.completed.stderr
+        state.command_exception_type = type(exc).__name__
+        state.command_error = _redact_diagnostic_text(
+            f"{type(exc).__name__}: {exc}", output_dir=prepared.output_dir
+        )
     finally:
         state.publication_state.revoke()
         state.trace_stop.set()
@@ -1295,6 +1464,12 @@ def _run_command(prepared: _PreparedRun, state: _ExecutionState, options: Issue1
             state.captures.extend(state.publication_state.drain_late_captures())
             if state.trace_thread.is_alive():
                 state.cleanup_failure = "power sampler thread did not stop within the bounded cleanup interval"
+        try:
+            state.wrapper_diagnostics = _persist_wrapper_diagnostics(prepared, state)
+        except (OSError, TypeError, ValueError) as exc:
+            state.diagnostics_error = _redact_diagnostic_text(
+                f"{type(exc).__name__}: {exc}", output_dir=prepared.output_dir
+            )
     return before
 
 
@@ -1757,10 +1932,39 @@ def _ingest_result(prepared: _PreparedRun, state: _ExecutionState, *, before: se
     return facts, groups, descriptor
 
 
-def _finish(prepared: _PreparedRun, state: _ExecutionState, *, failure: str | None = None) -> dict[str, Any]:
-    if failure or state.cleanup_failure or state.returncode not in {None, 0} or state.timed_out:
-        message = failure or state.cleanup_failure or ("device runner reached the fixed guard" if state.timed_out else "device runner did not return status zero")
-        record = _failure_record(prepared.record, kind="runner_execution_failure", message=message, returncode=state.returncode)
+def _finish(
+    prepared: _PreparedRun,
+    state: _ExecutionState,
+    *,
+    failure: str | None = None,
+) -> dict[str, Any]:
+    if state.wrapper_diagnostics is not None:
+        prepared.record["wrapper_diagnostics"] = state.wrapper_diagnostics
+    if failure or state.cleanup_failure or state.command_error or state.diagnostics_error or state.returncode not in {None, 0} or state.timed_out:
+        message = (
+            failure
+            or state.command_error
+            or state.cleanup_failure
+            or state.diagnostics_error
+            or ("device runner reached the fixed guard" if state.timed_out else "device runner did not return status zero")
+        )
+        if failure and state.command_error and state.command_error != failure:
+            message = f"{failure}; {state.command_error}"
+        record = _failure_record(
+            prepared.record,
+            kind="runner_execution_failure",
+            message=message,
+            returncode=state.returncode,
+        )
+        details = record["failure"]
+        if state.command_exception_type is not None:
+            details["exception_type"] = state.command_exception_type
+        if state.command_error is not None and state.command_error != message:
+            details["wrapper_error"] = state.command_error
+        if state.wrapper_diagnostics is not None:
+            details["wrapper_diagnostics"] = state.wrapper_diagnostics
+        if state.diagnostics_error is not None:
+            details["diagnostics_error"] = state.diagnostics_error
     else:
         record = prepared.record
         record["status"] = "ok"

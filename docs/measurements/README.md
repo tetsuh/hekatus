@@ -145,6 +145,17 @@ pytest coverage uses fake capture/clock/TTNN seams and inert local wrapper
 stubs; no hardware, Docker container, or telemetry utility invocation is part
 of the default validation.
 
+Every executed Issue #146 wrapper invocation also retains two run-bound text
+artifacts beside the record: `wrapper-stdout-<run-id>.txt` and
+`wrapper-stderr-<run-id>.txt`. They are written for successful and failed
+invocations, including nonzero exits, missing result artifacts, timeouts, and
+process-start errors. The record's `wrapper_diagnostics` descriptor names only
+those basenames and carries bounded redacted tail lines for failure review.
+Local absolute repository, home, temporary, and selected output-root paths are
+redacted before either file or tail is persisted; useful exception class and
+`ModuleNotFoundError` text and container-relative paths such as `/out/...`
+remain. Artifact creation is exclusive and rejects collisions or symlinks.
+
 ## Issue #102 raw-record rebuild
 
 The Issue #101 runner writes a self-contained raw run artifact before record

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -173,6 +176,182 @@ def test_issue146_snapshot_serial_binding_allows_alias_but_rejects_conflict() ->
     with pytest.raises(issue146.Issue146Error, match="serial"):
         issue146.validate_capture(
             conflicting, stage="pre_run", board_id=issue146.BOARD_ID, bus_id=issue146.BUS_ID
+        )
+
+
+def _diagnostic_run(
+    tmp_path: Path,
+    *,
+    run_id: str,
+    command_runner,
+) -> dict[str, object]:
+    plan = issue146.load_plan(PLAN)
+    config = issue146.configuration(plan, "C018")
+    environment = _environment(config)
+    return issue146.run_one(
+        plan=plan,
+        configuration=config,
+        mode="smoke",
+        output_dir=tmp_path,
+        run_id=run_id,
+        options=issue146.Issue146RunOptions(
+            command_runner=command_runner,
+            environment=environment,
+            capture_fn=_capture_factory("C018", "smoke"),
+            trace_path=tmp_path / f"trace-{run_id}.csv",
+            trace_interval_seconds=0.001,
+        ),
+    )
+
+
+def _write_valid_wrapper_artifacts(
+    tmp_path: Path,
+    *,
+    result: dict[str, object],
+) -> None:
+    time.sleep(0.005)
+    wrapper_id = str(result["wrapper_run_id"])
+    (tmp_path / f"runner-result-{wrapper_id}.json").write_text(
+        json.dumps(result), encoding="utf-8"
+    )
+    (tmp_path / str(result["groups_path"])).write_bytes(
+        (strict_json_dumps(result["group_timings"], indent=2) + "\n").encode("utf-8")
+    )
+    (tmp_path / str(result["power_trace_path"])).write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2026-10-20T00:00:00+00:00,250,1350,70\n",
+        encoding="utf-8",
+    )
+
+
+def test_issue146_wrapper_diagnostics_persist_on_success_and_redact_paths(
+    tmp_path: Path,
+) -> None:
+    plan = issue146.load_plan(PLAN)
+    config = issue146.configuration(plan, "C018")
+    environment = _environment(config)
+    run_id = "issue146-diagnostics-success"
+    wrapper_id = "wrapper-diagnostics-success"
+    result = _device_result(plan, config, environment, "smoke", wrapper_id, run_id)
+    local_path = str(tmp_path / "private-output" / "result.json")
+    stdout = (
+        f"issue146 result -> /out/runner-result-{wrapper_id}.json\n"
+        f"local={local_path}\n"
+        "ModuleNotFoundError: No module named 'scipy'\n"
+        + "diagnostic line\n" * 25
+    )
+    stderr = f"Traceback (most recent call last): File \"{local_path}\"\n"
+
+    def command_runner(*_args: object, **_kwargs: object):
+        _write_valid_wrapper_artifacts(tmp_path, result=result)
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr=stderr)
+
+    record = _diagnostic_run(tmp_path, run_id=run_id, command_runner=command_runner)
+    assert record["status"] == "ok"
+    diagnostics = record["wrapper_diagnostics"]
+    assert diagnostics["stdout_path"] == f"wrapper-stdout-{run_id}.txt"
+    assert diagnostics["stderr_path"] == f"wrapper-stderr-{run_id}.txt"
+    saved_stdout = (tmp_path / diagnostics["stdout_path"]).read_text(encoding="utf-8")
+    saved_stderr = (tmp_path / diagnostics["stderr_path"]).read_text(encoding="utf-8")
+    assert local_path not in saved_stdout
+    assert local_path not in saved_stderr
+    assert "/out/runner-result-wrapper-diagnostics-success.json" in saved_stdout
+    assert "ModuleNotFoundError: No module named 'scipy'" in saved_stdout
+    assert len(diagnostics["stdout_tail"]) <= 20
+    assert str(tmp_path) not in json.dumps(record)
+
+
+def test_issue146_wrapper_diagnostics_keep_nonzero_failure_and_tails(tmp_path: Path) -> None:
+    plan = issue146.load_plan(PLAN)
+    config = issue146.configuration(plan, "C018")
+    environment = _environment(config)
+    run_id = "issue146-diagnostics-nonzero"
+    wrapper_id = "wrapper-diagnostics-nonzero"
+    result = _device_result(plan, config, environment, "smoke", wrapper_id, run_id)
+
+    def command_runner(*_args: object, **_kwargs: object):
+        _write_valid_wrapper_artifacts(tmp_path, result=result)
+        return SimpleNamespace(
+            returncode=17,
+            stdout=f"issue146 result -> /out/runner-result-{wrapper_id}.json\n",
+            stderr="wrapper failed after writing its result\n",
+        )
+
+    record = _diagnostic_run(tmp_path, run_id=run_id, command_runner=command_runner)
+    assert record["status"] == "failed"
+    assert record["failure"]["returncode"] == 17
+    assert record["failure"]["wrapper_diagnostics"]["stderr_tail"] == [
+        "wrapper failed after writing its result"
+    ]
+    assert (tmp_path / f"wrapper-stdout-{run_id}.txt").is_file()
+    assert (tmp_path / f"wrapper-stderr-{run_id}.txt").is_file()
+
+
+def test_issue146_wrapper_diagnostics_keep_missing_result_failure(tmp_path: Path) -> None:
+    run_id = "issue146-diagnostics-missing"
+
+    def command_runner(*_args: object, **_kwargs: object):
+        return SimpleNamespace(returncode=0, stdout="wrapper completed\n", stderr="no result\n")
+
+    record = _diagnostic_run(tmp_path, run_id=run_id, command_runner=command_runner)
+    assert record["status"] == "failed"
+    assert "runner result artifact" in record["failure"]["message"]
+    assert record["failure"]["wrapper_diagnostics"]["stdout_path"] == (
+        f"wrapper-stdout-{run_id}.txt"
+    )
+
+
+def test_issue146_wrapper_diagnostics_keep_timeout_bytes_and_exception(tmp_path: Path) -> None:
+    run_id = "issue146-diagnostics-timeout"
+    private_path = str(tmp_path / "timeout-output" / "traceback.py")
+
+    def command_runner(*_args: object, **_kwargs: object):
+        raise subprocess.TimeoutExpired(
+            ["wrapper"], 90, output=f"partial {private_path}\n".encode(),
+            stderr=b"Traceback: ModuleNotFoundError: No module named 'scipy'\n",
+        )
+
+    record = _diagnostic_run(tmp_path, run_id=run_id, command_runner=command_runner)
+    assert record["status"] == "failed"
+    assert record["failure"]["exception_type"] == "TimeoutExpired"
+    assert "TimeoutExpired" in record["failure"]["message"]
+    stdout = (tmp_path / f"wrapper-stdout-{run_id}.txt").read_text(encoding="utf-8")
+    stderr = (tmp_path / f"wrapper-stderr-{run_id}.txt").read_text(encoding="utf-8")
+    assert private_path not in stdout
+    assert "ModuleNotFoundError: No module named 'scipy'" in stderr
+    assert record["failure"]["wrapper_diagnostics"]["stderr_tail"]
+
+
+def test_issue146_wrapper_diagnostics_keep_oserror_exception(tmp_path: Path) -> None:
+    run_id = "issue146-diagnostics-oserror"
+
+    def command_runner(*_args: object, **_kwargs: object):
+        raise OSError("wrapper executable is unavailable")
+
+    record = _diagnostic_run(tmp_path, run_id=run_id, command_runner=command_runner)
+    assert record["status"] == "failed"
+    assert record["failure"]["exception_type"] == "OSError"
+    assert "wrapper executable is unavailable" in record["failure"]["message"]
+    assert (tmp_path / f"wrapper-stdout-{run_id}.txt").read_bytes() == b""
+    assert (tmp_path / f"wrapper-stderr-{run_id}.txt").read_bytes() == b""
+
+
+def test_issue146_diagnostics_collision_is_rejected_before_command(tmp_path: Path) -> None:
+    plan = issue146.load_plan(PLAN)
+    config = issue146.configuration(plan, "C018")
+    run_id = "issue146-diagnostics-collision"
+    (tmp_path / f"wrapper-stdout-{run_id}.txt").write_text("old", encoding="utf-8")
+    with pytest.raises(issue146.Issue146Error, match="collision"):
+        issue146.run_one(
+            plan=plan,
+            configuration=config,
+            mode="smoke",
+            output_dir=tmp_path,
+            run_id=run_id,
+            options=issue146.Issue146RunOptions(
+                command_runner=lambda *_a, **_k: None,
+                capture_fn=_capture_factory("C018", "smoke"),
+            ),
         )
 
 
