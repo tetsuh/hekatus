@@ -324,6 +324,7 @@ def _execute_ttnn(
     prepared: Any = None
     device: Any = None
     ttnn_module: Any = None
+    execution_result = result
     try:
         # This is the first TTNN import in the process and follows all checks.
         import ttnn as ttnn_module
@@ -336,14 +337,14 @@ def _execute_ttnn(
             profile=True,
             outer_repetitions=args.outer_repetitions,
         )
-        result = _run_duration(
+        execution_result = _run_duration(
             args, config, environment, plan, wrapper_run_id,
             ttnn_module, device, prepared, should_stop,
         )
-        _write_group_result(result, group_path, args.power_trace)
+        _write_group_result(execution_result, group_path, args.power_trace)
     except Exception as execution_error:  # noqa: BLE001 - publish diagnostics after cleanup
-        _record_execution_failure(result, execution_error)
-    return result, prepared, device, ttnn_module
+        _record_execution_failure(execution_result, execution_error)
+    return execution_result, prepared, device, ttnn_module
 
 
 def _cleanup_device(

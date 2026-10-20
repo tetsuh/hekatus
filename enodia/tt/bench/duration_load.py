@@ -522,6 +522,120 @@ def _raise_grouped_duration_error(
     raise DurationLoadError(reason, result=result) from cause
 
 
+def _grouped_clock_or_raise(
+    monotonic_ns: Callable[[], int],
+    *,
+    previous_clock_ns: int | None,
+    name: str,
+    target_seconds: float,
+    overrun_limit_seconds: float,
+    launches_per_sync: int,
+    idle_window_seconds: tuple[float, float],
+    first_start_ns: int | None,
+    launch_count: int,
+    group_timings: list[dict[str, int]],
+) -> int:
+    try:
+        return _clock_value(monotonic_ns, previous=previous_clock_ns, name=name)
+    except DurationLoadError as exc:
+        _raise_grouped_duration_error(
+            target_seconds=target_seconds,
+            overrun_limit_seconds=overrun_limit_seconds,
+            launches_per_sync=launches_per_sync,
+            idle_window_seconds=idle_window_seconds,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            group_timings=group_timings,
+            reason=str(exc),
+            cause=exc,
+        )
+
+
+def _enqueue_group_or_raise(
+    launch_callback: Callable[[], Any],
+    *,
+    launches_per_sync: int,
+    target_seconds: float,
+    overrun_limit_seconds: float,
+    idle_window_seconds: tuple[float, float],
+    first_start_ns: int,
+    launch_count: int,
+    group_timings: list[dict[str, int]],
+) -> int:
+    for _ in range(launches_per_sync):
+        try:
+            completed = launch_callback()
+        except _CALLBACK_EXCEPTION_TYPE as exc:
+            _raise_grouped_duration_error(
+                target_seconds=target_seconds,
+                overrun_limit_seconds=overrun_limit_seconds,
+                launches_per_sync=launches_per_sync,
+                idle_window_seconds=idle_window_seconds,
+                first_start_ns=first_start_ns,
+                launch_count=launch_count,
+                group_timings=group_timings,
+                reason=f"launch callback failed: {exc}",
+                cause=exc,
+            )
+        if completed is not None and completed is not True:
+            _raise_grouped_duration_error(
+                target_seconds=target_seconds,
+                overrun_limit_seconds=overrun_limit_seconds,
+                launches_per_sync=launches_per_sync,
+                idle_window_seconds=idle_window_seconds,
+                first_start_ns=first_start_ns,
+                launch_count=launch_count,
+                group_timings=group_timings,
+                reason="launch callback did not report completion",
+            )
+        launch_count += 1
+    return launch_count
+
+
+def _synchronize_group_or_raise(
+    synchronize_callback: Callable[[], Any],
+    *,
+    target_seconds: float,
+    overrun_limit_seconds: float,
+    launches_per_sync: int,
+    idle_window_seconds: tuple[float, float],
+    first_start_ns: int,
+    launch_count: int,
+    group_timings: list[dict[str, int]],
+) -> None:
+    try:
+        synchronize_callback()
+    except _CALLBACK_EXCEPTION_TYPE as exc:
+        _raise_grouped_duration_error(
+            target_seconds=target_seconds,
+            overrun_limit_seconds=overrun_limit_seconds,
+            launches_per_sync=launches_per_sync,
+            idle_window_seconds=idle_window_seconds,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            group_timings=group_timings,
+            reason=f"synchronize callback failed: {exc}",
+            cause=exc,
+        )
+
+
+def _record_completed_group(
+    group_timings: list[dict[str, int]],
+    *,
+    group_start_ns: int,
+    group_end_ns: int,
+    first_start_ns: int,
+    target_ns: int,
+) -> bool:
+    group_timings.append(
+        {
+            "start_monotonic_ns": group_start_ns,
+            "end_monotonic_ns": group_end_ns,
+        }
+    )
+    return group_end_ns - first_start_ns >= target_ns
+
+
 def run_grouped_duration_bounded_load(
     launch_callback: Callable[[], Any] | None = None,
     synchronize_callback: Callable[[], Any] | None = None,
@@ -567,96 +681,62 @@ def run_grouped_duration_bounded_load(
     launch_count = 0
     group_timings: list[dict[str, int]] = []
     while True:
-        try:
-            group_start_ns = _clock_value(
-                monotonic_ns,
-                previous=previous_clock_ns,
-                name="group start",
-            )
-        except DurationLoadError as exc:
-            _raise_grouped_duration_error(
-                target_seconds=target,
-                overrun_limit_seconds=overrun_limit,
-                launches_per_sync=launches,
-                idle_window_seconds=idle_window,
-                first_start_ns=first_start_ns,
-                launch_count=launch_count,
-                group_timings=group_timings,
-                reason=str(exc),
-                cause=exc,
-            )
+        group_start_ns = _grouped_clock_or_raise(
+            monotonic_ns,
+            previous_clock_ns=previous_clock_ns,
+            name="group start",
+            target_seconds=target,
+            overrun_limit_seconds=overrun_limit,
+            launches_per_sync=launches,
+            idle_window_seconds=idle_window,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            group_timings=group_timings,
+        )
         if first_start_ns is None:
             first_start_ns = group_start_ns
         previous_clock_ns = group_start_ns
 
-        for _ in range(launches):
-            try:
-                completed = launch_callback()
-            except _CALLBACK_EXCEPTION_TYPE as exc:
-                _raise_grouped_duration_error(
-                    target_seconds=target,
-                    overrun_limit_seconds=overrun_limit,
-                    launches_per_sync=launches,
-                    idle_window_seconds=idle_window,
-                    first_start_ns=first_start_ns,
-                    launch_count=launch_count,
-                    group_timings=group_timings,
-                    reason=f"launch callback failed: {exc}",
-                    cause=exc,
-                )
-            if completed is not None and completed is not True:
-                _raise_grouped_duration_error(
-                    target_seconds=target,
-                    overrun_limit_seconds=overrun_limit,
-                    launches_per_sync=launches,
-                    idle_window_seconds=idle_window,
-                    first_start_ns=first_start_ns,
-                    launch_count=launch_count,
-                    group_timings=group_timings,
-                    reason="launch callback did not report completion",
-                )
-            launch_count += 1
-
-        try:
-            synchronize_callback()
-        except _CALLBACK_EXCEPTION_TYPE as exc:
-            _raise_grouped_duration_error(
-                target_seconds=target,
-                overrun_limit_seconds=overrun_limit,
-                launches_per_sync=launches,
-                idle_window_seconds=idle_window,
-                first_start_ns=first_start_ns,
-                launch_count=launch_count,
-                group_timings=group_timings,
-                reason=f"synchronize callback failed: {exc}",
-                cause=exc,
-            )
-        try:
-            group_end_ns = _clock_value(
-                monotonic_ns,
-                previous=previous_clock_ns,
-                name="group completion",
-            )
-        except DurationLoadError as exc:
-            _raise_grouped_duration_error(
-                target_seconds=target,
-                overrun_limit_seconds=overrun_limit,
-                launches_per_sync=launches,
-                idle_window_seconds=idle_window,
-                first_start_ns=first_start_ns,
-                launch_count=launch_count,
-                group_timings=group_timings,
-                reason=str(exc),
-                cause=exc,
-            )
-        previous_clock_ns = group_end_ns
-        group_timings.append(
-            {
-                "start_monotonic_ns": group_start_ns,
-                "end_monotonic_ns": group_end_ns,
-            }
+        launch_count = _enqueue_group_or_raise(
+            launch_callback,
+            launches_per_sync=launches,
+            target_seconds=target,
+            overrun_limit_seconds=overrun_limit,
+            idle_window_seconds=idle_window,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            group_timings=group_timings,
         )
-        if group_end_ns - first_start_ns >= target_ns:
+        _synchronize_group_or_raise(
+            synchronize_callback,
+            target_seconds=target,
+            overrun_limit_seconds=overrun_limit,
+            launches_per_sync=launches,
+            idle_window_seconds=idle_window,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            group_timings=group_timings,
+        )
+        group_end_ns = _grouped_clock_or_raise(
+            monotonic_ns,
+            previous_clock_ns=previous_clock_ns,
+            name="group completion",
+            target_seconds=target,
+            overrun_limit_seconds=overrun_limit,
+            launches_per_sync=launches,
+            idle_window_seconds=idle_window,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            group_timings=group_timings,
+        )
+        previous_clock_ns = group_end_ns
+        if _record_completed_group(
+            group_timings,
+            group_start_ns=group_start_ns,
+            group_end_ns=group_end_ns,
+            first_start_ns=first_start_ns,
+            target_ns=target_ns,
+        ):
             return _grouped_result(
                 target_seconds=target,
                 overrun_limit_seconds=overrun_limit,
