@@ -69,6 +69,9 @@ DIAGNOSTIC_TAIL_CHARS = 2000
 AUTHORITATIVE_PLAN_RAW_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_RAW_SHA256
 AUTHORITATIVE_PLAN_CANONICAL_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_CANONICAL_SHA256
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+_DIAGNOSTIC_LOCAL_URL_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])[A-Za-z][A-Za-z0-9+.-]*:/{3,}[^\s\"'<>]+"
+)
 _DIAGNOSTIC_URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'<>]+")
 _DIAGNOSTIC_ABSOLUTE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_.-])(?<!/)/(?!/)(?!(?:work|out)(?:/|$)|dev/tenstorrent(?:/|$))"
@@ -366,6 +369,11 @@ def _redact_diagnostic_text(
         text = str(value)
     if host_tokens is None:
         host_tokens = _diagnostic_host_tokens()
+    def redact_local_url(match: re.Match[str]) -> str:
+        scheme = match.group(0).split(":", 1)[0]
+        return f"{scheme}://<redacted-path>"
+
+    text = _DIAGNOSTIC_LOCAL_URL_RE.sub(redact_local_url, text)
     protected_urls: list[str] = []
     protected_safe_paths: list[str] = []
 
@@ -400,34 +408,161 @@ def _redact_diagnostic_text(
     return text
 
 
-def _redact_diagnostic_value(
+_DIAGNOSTIC_FAILURE_FIELDS = frozenset(
+    {"message", "wrapper_error", "diagnostics_error"}
+)
+
+
+def _sanitize_text_fields(
     value: Any,
     *,
+    fields: frozenset[str],
     output_dir: Path,
-    host_tokens: tuple[str, ...] | None = None,
+    host_tokens: tuple[str, ...],
 ) -> Any:
-    if host_tokens is None:
-        host_tokens = _diagnostic_host_tokens()
-    safe = _safe_json_value(value)
-    if isinstance(safe, Mapping):
-        return {
-            str(key): _redact_diagnostic_value(
-                child, output_dir=output_dir, host_tokens=host_tokens
+    if not isinstance(value, Mapping):
+        return value
+    result = dict(value)
+    for field in fields:
+        text = result.get(field)
+        if isinstance(text, str):
+            result[field] = _redact_diagnostic_text(
+                text, output_dir=output_dir, host_tokens=host_tokens
             )
-            for key, child in safe.items()
-        }
-    if isinstance(safe, list):
-        return [
-            _redact_diagnostic_value(
-                child, output_dir=output_dir, host_tokens=host_tokens
-            )
-            for child in safe
-        ]
-    if isinstance(safe, str):
-        return _redact_diagnostic_text(
-            safe, output_dir=output_dir, host_tokens=host_tokens
+    return result
+
+
+def _sanitize_wrapper_diagnostics(
+    value: Any, *, output_dir: Path, host_tokens: tuple[str, ...]
+) -> Any:
+    if not isinstance(value, Mapping):
+        return value
+    result = dict(value)
+    for field in ("stdout_tail", "stderr_tail"):
+        tail = result.get(field)
+        if isinstance(tail, list):
+            result[field] = [
+                _redact_diagnostic_text(
+                    item, output_dir=output_dir, host_tokens=host_tokens
+                )
+                if isinstance(item, (bytes, str))
+                else item
+                for item in tail
+            ]
+    return result
+
+
+def _sanitize_failure(
+    value: Any, *, output_dir: Path, host_tokens: tuple[str, ...]
+) -> Any:
+    result = _sanitize_text_fields(
+        value,
+        fields=_DIAGNOSTIC_FAILURE_FIELDS,
+        output_dir=output_dir,
+        host_tokens=host_tokens,
+    )
+    if isinstance(result, Mapping) and "wrapper_diagnostics" in result:
+        result = dict(result)
+        result["wrapper_diagnostics"] = _sanitize_wrapper_diagnostics(
+            result["wrapper_diagnostics"],
+            output_dir=output_dir,
+            host_tokens=host_tokens,
         )
-    return safe
+    return result
+
+
+def _sanitize_runner_result(
+    value: Any, *, output_dir: Path, host_tokens: tuple[str, ...]
+) -> Any:
+    if not isinstance(value, Mapping):
+        return value
+    result = dict(value)
+    if "failure" in result:
+        result["failure"] = _sanitize_failure(
+            result["failure"], output_dir=output_dir, host_tokens=host_tokens
+        )
+    if "wrapper_diagnostics" in result:
+        result["wrapper_diagnostics"] = _sanitize_wrapper_diagnostics(
+            result["wrapper_diagnostics"],
+            output_dir=output_dir,
+            host_tokens=host_tokens,
+        )
+    return result
+
+
+def _sanitize_pre_snapshot(
+    value: Any, *, output_dir: Path, host_tokens: tuple[str, ...]
+) -> Any:
+    if not isinstance(value, Mapping):
+        return value
+    configuration = value.get("configuration")
+    if not isinstance(configuration, Mapping) or not isinstance(
+        configuration.get("diagnostic"), str
+    ):
+        return value
+    result = dict(value)
+    sanitized_configuration = dict(configuration)
+    sanitized_configuration["diagnostic"] = _redact_diagnostic_text(
+        configuration["diagnostic"],
+        output_dir=output_dir,
+        host_tokens=host_tokens,
+    )
+    result["configuration"] = sanitized_configuration
+    return result
+
+
+def _sanitize_post_snapshot(
+    value: Any, *, output_dir: Path, host_tokens: tuple[str, ...]
+) -> Any:
+    if not isinstance(value, Mapping) or not isinstance(value.get("reason"), str):
+        return value
+    result = dict(value)
+    result["reason"] = _redact_diagnostic_text(
+        value["reason"], output_dir=output_dir, host_tokens=host_tokens
+    )
+    return result
+
+
+def _sanitize_record_diagnostics(
+    record: Mapping[str, Any], *, output_dir: Path
+) -> dict[str, Any]:
+    host_tokens = _diagnostic_host_tokens()
+    result = dict(record)
+    for field in ("reason", "trace_error"):
+        text = result.get(field)
+        if isinstance(text, str):
+            result[field] = _redact_diagnostic_text(
+                text, output_dir=output_dir, host_tokens=host_tokens
+            )
+    if "failure" in result:
+        result["failure"] = _sanitize_failure(
+            result["failure"], output_dir=output_dir, host_tokens=host_tokens
+        )
+    if "wrapper_diagnostics" in result:
+        result["wrapper_diagnostics"] = _sanitize_wrapper_diagnostics(
+            result["wrapper_diagnostics"],
+            output_dir=output_dir,
+            host_tokens=host_tokens,
+        )
+    if "runner_result" in result:
+        result["runner_result"] = _sanitize_runner_result(
+            result["runner_result"],
+            output_dir=output_dir,
+            host_tokens=host_tokens,
+        )
+    if "pre_run_snapshot" in result:
+        result["pre_run_snapshot"] = _sanitize_pre_snapshot(
+            result["pre_run_snapshot"],
+            output_dir=output_dir,
+            host_tokens=host_tokens,
+        )
+    if "post_run_snapshot" in result:
+        result["post_run_snapshot"] = _sanitize_post_snapshot(
+            result["post_run_snapshot"],
+            output_dir=output_dir,
+            host_tokens=host_tokens,
+        )
+    return result
 
 
 def _diagnostic_tail(text: str) -> list[str]:
@@ -1312,7 +1447,14 @@ def _failure_record(record: Mapping[str, Any], *, kind: str, message: str, retur
 
 def _persist_record(output_dir: Path, run_id: str, record: Mapping[str, Any]) -> Path:
     path = _safe_artifact_path(output_dir, f"run-{run_id}.json", field="record")
-    _write_artifact(path, _redact_diagnostic_value(record, output_dir=output_dir))
+    sanitized = _sanitize_record_diagnostics(record, output_dir=output_dir)
+    if isinstance(record, dict):
+        record.clear()
+        record.update(sanitized)
+        payload: Mapping[str, Any] = record
+    else:
+        payload = sanitized
+    _write_artifact(path, payload)
     return path
 
 
@@ -2015,9 +2157,7 @@ def _ingest_result(prepared: _PreparedRun, state: _ExecutionState, *, before: se
     path, name = _resolve_result(prepared.output_dir, before=before, completed=state.completed)
     result, raw = _read_json(path, field="Issue #146 runner result")
     state.result = result
-    prepared.record["runner_result"] = _redact_diagnostic_value(
-        result, output_dir=prepared.output_dir
-    )
+    prepared.record["runner_result"] = _safe_json_value(result)
     descriptor = {"path": name, "sha256": hashlib.sha256(raw).hexdigest(), "byte_count": len(raw), "schema": result.get("record_schema")}
     prepared.record["provenance"]["device_result"] = descriptor
     facts, groups = _validate_runner_result(
@@ -2049,6 +2189,35 @@ def _ingest_result(prepared: _PreparedRun, state: _ExecutionState, *, before: se
     return facts, groups, descriptor
 
 
+def _execution_failure_message(
+    state: _ExecutionState, *, failure: str | None, output_dir: Path
+) -> str:
+    message = (
+        failure
+        or state.command_error
+        or state.cleanup_failure
+        or state.diagnostics_error
+        or ("device runner reached the fixed guard" if state.timed_out else "device runner did not return status zero")
+    )
+    if failure and state.command_error and state.command_error != failure:
+        message = f"{failure}; {state.command_error}"
+    return _redact_diagnostic_text(message, output_dir=output_dir)
+
+
+def _attach_execution_failure_details(
+    record: dict[str, Any], state: _ExecutionState, *, message: str
+) -> None:
+    details = record["failure"]
+    if state.command_exception_type is not None:
+        details["exception_type"] = state.command_exception_type
+    if state.command_error is not None and state.command_error != message:
+        details["wrapper_error"] = state.command_error
+    if state.wrapper_diagnostics is not None:
+        details["wrapper_diagnostics"] = state.wrapper_diagnostics
+    if state.diagnostics_error is not None:
+        details["diagnostics_error"] = state.diagnostics_error
+
+
 def _finish(
     prepared: _PreparedRun,
     state: _ExecutionState,
@@ -2057,32 +2226,25 @@ def _finish(
 ) -> dict[str, Any]:
     if state.wrapper_diagnostics is not None:
         prepared.record["wrapper_diagnostics"] = state.wrapper_diagnostics
-    if failure or state.cleanup_failure or state.command_error or state.diagnostics_error or state.returncode not in {None, 0} or state.timed_out:
-        message = (
-            failure
-            or state.command_error
-            or state.cleanup_failure
-            or state.diagnostics_error
-            or ("device runner reached the fixed guard" if state.timed_out else "device runner did not return status zero")
+    execution_failed = bool(
+        failure
+        or state.cleanup_failure
+        or state.command_error
+        or state.diagnostics_error
+        or state.returncode not in {None, 0}
+        or state.timed_out
+    )
+    if execution_failed:
+        message = _execution_failure_message(
+            state, failure=failure, output_dir=prepared.output_dir
         )
-        if failure and state.command_error and state.command_error != failure:
-            message = f"{failure}; {state.command_error}"
-        message = _redact_diagnostic_text(message, output_dir=prepared.output_dir)
         record = _failure_record(
             prepared.record,
             kind="runner_execution_failure",
             message=message,
             returncode=state.returncode,
         )
-        details = record["failure"]
-        if state.command_exception_type is not None:
-            details["exception_type"] = state.command_exception_type
-        if state.command_error is not None and state.command_error != message:
-            details["wrapper_error"] = state.command_error
-        if state.wrapper_diagnostics is not None:
-            details["wrapper_diagnostics"] = state.wrapper_diagnostics
-        if state.diagnostics_error is not None:
-            details["diagnostics_error"] = state.diagnostics_error
+        _attach_execution_failure_details(record, state, message=message)
     else:
         record = prepared.record
         record["status"] = "ok"

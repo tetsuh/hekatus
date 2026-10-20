@@ -308,27 +308,65 @@ def test_issue146_diagnostic_prefix_lookalikes_redact_whole_path() -> None:
     assert "owner/private/file" not in redacted
 
 
-def test_issue146_diagnostic_value_resolves_host_tokens_once_per_pass(
-    monkeypatch: pytest.MonkeyPatch,
+def test_issue146_record_sanitizer_preserves_structured_host_tokens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = {"hostname": 0, "fqdn": 0}
 
     def fake_hostname() -> str:
         calls["hostname"] += 1
-        return "synthetic-host"
+        return "smoke"
 
     def fake_fqdn() -> str:
         calls["fqdn"] += 1
-        return "synthetic-host.example"
+        return "tenstorrent"
 
     monkeypatch.setattr(issue146.socket, "gethostname", fake_hostname)
     monkeypatch.setattr(issue146.socket, "getfqdn", fake_fqdn)
-    redacted = issue146._redact_diagnostic_value(
-        {"one": "synthetic-host", "two": ["synthetic-host.example", "synthetic-host"]},
-        output_dir=Path("/"),
+    record = {
+        "status": "ok",
+        "run": {"mode": "smoke"},
+        "environment": {"device_node": "/dev/tenstorrent/1", "mode": "smoke"},
+        "runner_result": {
+            "status": "ok", "mode": "smoke",
+            "environment": {"device_node": "/dev/tenstorrent/1"},
+        },
+        "failure": {"message": "host smoke tenstorrent /var/lib/diagnostic"},
+        "wrapper_diagnostics": {
+            "stdout_path": "wrapper-stdout-structured.txt",
+            "stderr_path": "wrapper-stderr-structured.txt",
+            "stdout_tail": ["host smoke tenstorrent /var/lib/diagnostic"],
+            "stderr_tail": [],
+        },
+    }
+    issue146._persist_record(tmp_path, "structured-host", record)
+    persisted = json.loads(
+        (tmp_path / "run-structured-host.json").read_text(encoding="utf-8")
     )
-    assert redacted == {"one": "<redacted>", "two": ["<redacted>", "<redacted>"]}
+    for value in (record, persisted):
+        assert value["run"]["mode"] == "smoke"
+        assert value["environment"]["device_node"] == "/dev/tenstorrent/1"
+        assert value["runner_result"]["mode"] == "smoke"
+        assert value["runner_result"]["environment"]["device_node"] == "/dev/tenstorrent/1"
+        assert "smoke" not in value["failure"]["message"]
+        assert "tenstorrent" not in value["failure"]["message"]
+        assert "/var/lib/diagnostic" not in value["failure"]["message"]
+        assert "smoke" not in json.dumps(value["wrapper_diagnostics"])
+        assert "tenstorrent" not in json.dumps(value["wrapper_diagnostics"])
     assert calls == {"hostname": 1, "fqdn": 1}
+
+
+def test_issue146_diagnostic_redacts_local_file_urls() -> None:
+    text = (
+        "remote=https://example.test/var/lib/remote "
+        "file:///homeowner/private.db sqlite:////opt/private.db"
+    )
+    redacted = issue146._redact_diagnostic_text(text, output_dir=Path("/"))
+    assert "https://example.test/var/lib/remote" in redacted
+    assert "file:///homeowner/private.db" not in redacted
+    assert "sqlite:////opt/private.db" not in redacted
+    assert "/homeowner/private.db" not in redacted
+    assert "/opt/private.db" not in redacted
 
 
 def test_issue146_diagnostic_redaction_root_prefix_keeps_safe_text() -> None:
@@ -436,6 +474,10 @@ def test_issue146_diagnostics_collision_is_rejected_before_command(tmp_path: Pat
     config = issue146.configuration(plan, "C018")
     run_id = "issue146-diagnostics-collision"
     (tmp_path / f"wrapper-stdout-{run_id}.txt").write_text("old", encoding="utf-8")
+    options = issue146.Issue146RunOptions(
+        command_runner=lambda *_a, **_k: None,
+        capture_fn=_capture_factory("C018", "smoke"),
+    )
     with pytest.raises(issue146.Issue146Error, match="collision"):
         issue146.run_one(
             plan=plan,
@@ -443,10 +485,7 @@ def test_issue146_diagnostics_collision_is_rejected_before_command(tmp_path: Pat
             mode="smoke",
             output_dir=tmp_path,
             run_id=run_id,
-            options=issue146.Issue146RunOptions(
-                command_runner=lambda *_a, **_k: None,
-                capture_fn=_capture_factory("C018", "smoke"),
-            ),
+            options=options,
         )
 
 
