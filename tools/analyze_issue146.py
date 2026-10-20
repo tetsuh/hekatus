@@ -965,6 +965,38 @@ def _csv_payload(raw: bytes) -> Mapping[str, Any]:
     }
 
 
+def _trace_source_payload(
+    descriptor: Mapping[str, Any], path: Path, raw: bytes
+) -> Mapping[str, Any]:
+    payload: Any = (
+        json.loads(raw.decode("utf-8"))
+        if path.suffix.casefold() == ".json"
+        else _csv_payload(raw)
+    )
+    if isinstance(payload, Mapping):
+        payload = dict(payload)
+        for field in (
+            "run_start_monotonic_ns",
+            "run_end_monotonic_ns",
+            "actual_end_monotonic_ns",
+        ):
+            if field in descriptor:
+                payload[field] = descriptor[field]
+        if "unit_provenance" in descriptor:
+            payload["unit_provenance"] = descriptor["unit_provenance"]
+    if not isinstance(payload, Mapping):
+        raise AnalysisError("trace source must be an object")
+    return payload
+
+
+def _trace_sidecar_source(
+    descriptor: Mapping[str, Any], *, base_dir: Path | None
+) -> tuple[Mapping[str, Any], bytes, str]:
+    path = _safe_artifact_path(descriptor["path"], base_dir=base_dir, purpose="trace")
+    raw = path.read_bytes()
+    return _trace_source_payload(descriptor, path, raw), raw, path.name
+
+
 def _trace_source(
     descriptor: Mapping[str, Any], *, base_dir: Path | None
 ) -> _TraceSource:
@@ -973,26 +1005,7 @@ def _trace_source(
     source_name: str | None = None
     try:
         if isinstance(descriptor.get("path"), str) and "samples" not in descriptor:
-            path = _safe_artifact_path(descriptor["path"], base_dir=base_dir, purpose="trace")
-            raw = path.read_bytes()
-            source_name = path.name
-            if path.suffix.casefold() == ".json":
-                payload = json.loads(raw.decode("utf-8"))
-            else:
-                payload = _csv_payload(raw)
-            if isinstance(payload, Mapping):
-                payload = dict(payload)
-                for field in (
-                    "run_start_monotonic_ns",
-                    "run_end_monotonic_ns",
-                    "actual_end_monotonic_ns",
-                ):
-                    if field in descriptor:
-                        payload[field] = descriptor[field]
-                if "unit_provenance" in descriptor:
-                    payload["unit_provenance"] = descriptor["unit_provenance"]
-            if not isinstance(payload, Mapping):
-                raise AnalysisError("trace source must be an object")
+            payload, raw, source_name = _trace_sidecar_source(descriptor, base_dir=base_dir)
         else:
             payload = descriptor
             raw = canonical_trace_bytes(payload)
@@ -1000,6 +1013,20 @@ def _trace_source(
     except (AnalysisError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         return _TraceSource(payload, None, source_name, [str(exc)])
     return _TraceSource(payload, raw, source_name, [])
+
+
+def _trace_row_missing(index: int, row: Any) -> set[str]:
+    if not isinstance(row, Mapping):
+        return {f"telemetry.row_{index}"}
+    missing: set[str] = set()
+    for field in TRACE_COLUMNS:
+        nullable = field in {"throttle_status", "throttle_reason"}
+        if field not in row or (not nullable and (row[field] is None or row[field] == "")):
+            missing.add(f"telemetry.row_{index}.{field}")
+    for field in ARBITER_FIELDS:
+        if field not in row:
+            missing.add(f"telemetry.row_{index}.{field}")
+    return missing
 
 
 def _trace_payload_shape(
@@ -1017,16 +1044,7 @@ def _trace_payload_shape(
         return None, errors + ["trace.samples"], {"trace.samples"}
     missing: set[str] = set()
     for index, row in enumerate(raw_rows):
-        if not isinstance(row, Mapping):
-            missing.add(f"telemetry.row_{index}")
-            continue
-        for field in TRACE_COLUMNS:
-            nullable = field in {"throttle_status", "throttle_reason"}
-            if field not in row or (not nullable and (row[field] is None or row[field] == "")):
-                missing.add(f"telemetry.row_{index}.{field}")
-        for field in ARBITER_FIELDS:
-            if field not in row:
-                missing.add(f"telemetry.row_{index}.{field}")
+        missing.update(_trace_row_missing(index, row))
     return raw_rows, errors, missing
 
 
@@ -3033,12 +3051,14 @@ def _smoke_acceptance(report: dict[str, Any], spec: _PlanSpec) -> list[dict[str,
     configuration_id = report.get("configuration_id")
     if configuration_id not in spec.configurations:
         return _unknown_smoke_acceptance("unknown smoke configuration")
-    acceptance.append(
-        _regulated_smoke_criterion(rows_at_or_after_10, rows_10_40, configuration_id)
+    acceptance.extend(
+        [
+            _regulated_smoke_criterion(rows_at_or_after_10, rows_10_40, configuration_id),
+            _smoke_arbiter_criterion(report.get("trace_rows", [])),
+            _smoke_residual_criterion(rows_at_or_after_10),
+            _smoke_index_criterion(rows_at_or_after_10, configuration_id),
+        ]
     )
-    acceptance.append(_smoke_arbiter_criterion(report.get("trace_rows", [])))
-    acceptance.append(_smoke_residual_criterion(rows_at_or_after_10))
-    acceptance.append(_smoke_index_criterion(rows_at_or_after_10, configuration_id))
     acceptance.append(_smoke_failure_criterion(acceptance))
     return acceptance
 
