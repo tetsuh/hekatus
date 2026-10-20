@@ -80,6 +80,21 @@
       "reported_index_artifact": "get_aiclk_effective_arb_max keeps effective_max as uint32 and updates the reported index only when effective_max == arbiter value (float). A binding arbiter with a non-integral value therefore does not update the index; the report keeps the highest enabled index whose value equalled the running minimum before it, i.e. the highest enabled arbiter still at exactly 1350. Decode table with ENABLED_MAX_ARB = 0x1d1 and frequency below 1350: reported 8 -> doppler_slow (integral value); reported 7 -> doppler_slow (non-integral) or gddr_thm (integral); reported 6 -> gddr_thm (non-integral) or voltage (integral); reported 4 -> voltage (non-integral) or thm (integral); reported 0 -> thm (non-integral). Reported 8 with frequency 1350 means no arbiter is binding. Because the index alone is ambiguous, the verdict uses the independent three-condition rule below (mask, temperatures, frequency) and records the index as decoded evidence.",
       "recon_evidence": "Issue #137 post-run snapshots of device 1, whose capture started 0.22-0.33 s after the last launch ended (the capture itself took about 0.24 s): C108 run 2 AICLK_ARB_MAX 0x7048f (index 7, 1167 MHz), C081 run 4 0x704f8 (7, 1272 MHz), C081 run 5 0x70503 (7, 1283 MHz), C108 run 7 0x70490 (7, 1168 MHz), each with ENABLED_MAX_ARB 0x1d1, maximum GDDR die temperature 64-66 degC and ASIC 74.7-75.2 degC, below both thermal limits. The arbiter had already risen from the plateau means (C108 about 1097 MHz, C081 about 1192 MHz) by 70-90 MHz in that half second, as the law predicts once the moving average starts to fall. The two C018 and two C054 post-run snapshots and every pre-run snapshot read 0x80546 (8, 1350). AICLK itself read 800 in every snapshot because the device was already idle (AICLK_ARB_MIN 0x10320, busy at fmin).",
       "tag_number_verification": "Tag numbers are taken from telemetry.h of the pinned source: TAG_AICLK 14, TAG_BOARD_POWER_LIMIT 53, TAG_INPUT_POWER 54, TAG_AICLK_ARB_MIN 65, TAG_AICLK_ARB_MAX 66, TAG_ENABLED_MIN_ARB 67, TAG_ENABLED_MAX_ARB 68, TAG_AICLK_PPM_INFO 69. The tt-umd 0.9.8 TelemetryTag enum agrees on 14, 53 and 65-68, has no member for 54 and names 69 NUMBER_OF_TAGS; tt-smi 6.2.1 names 54 INPUT_POWER in smbus_telem. The firmware tag table has no entry for 69, which is why the reader reports it unavailable."
+    },
+    "clock_control_model": {
+      "sources": {
+        "drivers/clock_control/clock_control_tt_bh.c": "sha256:17fc86d3f36389d695ccc833b52a7aaebdad6905eb192af1ddbc1812b6ecb012",
+        "include/zephyr/drivers/clock_control/clock_control_tt_bh.h": "sha256:6bd38a2c589ee0caefc73f46dac495f1581c96b7d5ce9dcf5c29d7c1ed3c5b9a",
+        "lib/tenstorrent/bh_arc/pll.c": "sha256:7fe42813df13e922be98a5cd3ef602906f7e1a44aeeeba8ec94144d320adc1cd",
+        "lib/tenstorrent/bh_arc/pll.h": "sha256:1f584cab38938207f00c24b4ee1e4c4c027f02d228e0cf225d9fca2671b05d17",
+        "dts/vendor/tenstorrent/tt_blackhole_smc.dtsi": "sha256:a3e2e2571f66d81546c8affd5eda2804999345111a7f4e5c915b3ad51c75d906"
+      },
+      "same_tag": "tt-zephyr-platforms v19.6.0, as the other pinned files",
+      "pll0_aiclk": "refclk 50 MHz (dtsi clock-frequency), refdiv 2 (dtsi and pll.c), external postdiv0 = 3 so eff_postdiv = 4 (clock_control_tt_bh_get_ext_postdiv: postdiv_value + 1 for values <= 16; pll.c comments: fbdiv 128 gives VCO 3200 MHz and AICLK 800 MHz). The internal postdiv and the fractional feedback divider are unsupported by the driver.",
+      "set_rate": "DecreaseAiclk/IncreaseAiclk call clock_control_set_rate with (uint32_t) of the float target. clock_control_tt_bh_set_rate computes fbdiv = target * refdiv * eff_postdiv / refclk with integer division (floor) and steps fbdiv one unit at a time.",
+      "get_rate": "clock_control_tt_bh_get_freq returns (refclk * fbdiv) / (refdiv * eff_postdiv) with integer division (floor); this is the TAG_AICLK value.",
+      "consequence": "AICLK is realised on a 50/8 = 6.25 MHz grid and reported floored to an integer: aiclk = floor(6.25 * floor(8 * floor(target) / 50)). The AICLK_ARB_MAX frequency field is the truncated (uint32) arbiter value. Hence 0 <= (AICLK_ARB_MAX & 0xffff) - aiclk_mhz <= 6 for every integer word in [800, 1350] (exhaustive check), and the sign is always non-negative.",
+      "smoke_evidence": "In the 2026-10-20 smoke runs all 28 regulated-window (word, aiclk) pairs of C081 and C108 are reproduced exactly by this formula (for example 1184 -> 1181, 1172 -> 1168, 1024 -> 1018); the maximum difference was 6 MHz, the minimum 0, never negative."
     }
   },
   "background_from_137": {
@@ -166,8 +181,8 @@
     "order_definition": "Sequence S followed by its reverse, so each configuration's mean position is equal and slow drift across the session cancels in the configuration comparison.",
     "runs_total": 6,
     "runs_per_configuration": 2,
-    "trace_interval_seconds": 2.0,
-    "trace_cadence_note": "The sampler sleeps 2.0 s between tt-smi captures that take about 0.25 s, so the observed cadence is about 2.25 s; the 120 s plateau yields about 53 samples, above the minimum below.",
+    "trace_interval_seconds": 1.0,
+    "trace_cadence_note": "Revision 5: the sampler sleeps 1.0 s between tt-smi captures that take about 0.25 s, so the observed cadence is about 1.25 s and the 120 s plateau yields about 96 samples. The 2026-10-20 smoke runs showed a board_power_w sample SD of 23-25 W at the regulated configurations while the ASIC voltage and current were constant, i.e. INPUT_POWER sample scatter rather than load variation; at the previous 2.25 s cadence (about 53 samples) the 99 percent half-width would be about 9 W, at the precision floor. About 96 samples give about 6.6 W if the samples are uncorrelated; the AR(1) correction still applies. The minimum of 50 plateau samples is unchanged.",
     "smoke_runs": {
       "required_before_long_runs": true,
       "configurations": [
@@ -179,14 +194,16 @@
       "guard_seconds": 90,
       "purpose": "Confirm that the grouped launch mode runs and records for each core set, that the arbiter columns are populated, and that the gap/busy mixture is gone. Smoke runs are diagnostics, not verdict evidence. 40 s is under the 60 s per-instance approval threshold; the 90 s guard (40 + 40 + 10) is a timeout, not a load duration.",
       "acceptance": [
-        "host_visible_idle_fraction over [10 s, 40 s) of the smoke run is at most 0.02",
-        "for C081 and C108: no sample in [10 s, 40 s) has current_a below 150 A (the #137 gap mode), and the sample SD of board_power_w over [10 s, 40 s) is below 20 W",
+        "host_visible_idle_fraction over [10 s, 40 s) of the smoke run is at most 0.02 (the load-contract gate)",
         "every sample of the trace, inside or outside the window, carries all four arbiter words and ENABLED_MAX_ARB reads 0x1d1",
-        "R5 residual: the maximum |aiclk_mhz - AICLK_ARB_MAX frequency| over samples in [10 s, 40 s) is reported; if it exceeds 2 MHz in any such sample the PLL readback granularity is examined in the pinned clock-control source and the R5 tolerance is revised and re-approved before any long run",
+        "R5: in every sample in [10 s, 40 s) 0 <= (AICLK_ARB_MAX & 0xffff) - aiclk_mhz <= 7 MHz",
         "R7 distribution: every sample in [10 s, 40 s) reads index 7 or 8 for C081 and C108, and 0x80546 for C018; any other index is examined before any long run",
-        "If any acceptance item fails, the plan is revised (outer_repetitions, launches_per_sync or the check itself) and re-approved before any long run, as #137 revision 2 did; the failed smoke records are kept as diagnostics."
+        "Reported, not gated: for C081 and C108 the minimum current_a, the number of window samples with current_a below 150 A, the sample SD of board_power_w over [10 s, 40 s), and the mean board_power_w; these are compared with the 2026-10-20 values (minimum 137-138 A, 1-3 dips of 14, SD 23-25 W) and a larger dip count or a bimodal current distribution with a mode below 150 A is reported as a change of the load behaviour before any long run",
+        "If any gated item fails, the plan is revised (outer_repetitions, launches_per_sync or the check itself) and re-approved before any long run, as #137 revision 2 did; the failed smoke records are kept as diagnostics."
       ],
-      "sample_window": "All smoke acceptance items that select samples use the window 10 s <= (timestamp_monotonic_ns - first_launch_start_monotonic_ns) < 40 s, the smoke counterpart of the long-run plateau selection. Rows captured after the workload interval (the runner keeps them as diagnostics, as in #137) are outside every item; 'at or after 10 s' in the items below means within this window."
+      "sample_window": "All smoke acceptance items that select samples use the window 10 s <= (timestamp_monotonic_ns - first_launch_start_monotonic_ns) < 40 s, the smoke counterpart of the long-run plateau selection. Rows captured after the workload interval (the runner keeps them as diagnostics, as in #137) are outside every item; 'at or after 10 s' in the items below means within this window.",
+      "revision_5_note": "The 2026-10-20 smoke runs (C018, C081, C108; records kept as diagnostics) passed the idle-fraction, arbiter-word and R7 items for all three configurations with host_visible_idle_fraction 3.5e-5 to 4.1e-5, and failed the current, board-power SD and R5 items at C081 and C108. The failures were examined: the R5 residual (max 6 MHz) is the PLL grid (firmware_model.clock_control_model); the board-power SD (23-25 W) occurred with constant ASIC voltage and current, so it is INPUT_POWER sample scatter, not the gap mode; the sub-150 A samples (3 of 14 at C081, 1 of 14 at C108, all 137-138 A with ASIC power reduced in proportion and AICLK unchanged) are device-side activity dips invisible to the host, distinct from the #137 host-synchronised gap mode (100-140 A at 11-33 percent of samples with busy samples at 190-205 A). The two proxy items are therefore replaced by the direct load-contract item plus reported diagnostics; the thresholds of the long-run criteria are unchanged except R5.",
+      "rerun_after_revision_5": "Required: one smoke run per configuration at the revision 5 cadence (1.0 s) before the long runs, evaluated with the revision 5 items; the 2026-10-20 runs were taken at 2.0 s with the revision 4 harness."
     },
     "approval": "Each run longer than 60 s requires owner approval per instance. A run after a reset requires renewed approval.",
     "expected_wall_time": {
@@ -234,7 +251,7 @@
       "R2-arbiter-unclamped": "Every plateau sample has aiclk_mhz < 1350 and AICLK_ARB_MAX frequency (low 16 bits) < 1350; the plateau mean AICLK is below 0.95 * asic_fmax (1282.5 MHz).",
       "R3-mask-unchanged": "Every plateau sample reads ENABLED_MAX_ARB == 0x1d1 and ENABLED_MIN_ARB == 0x3.",
       "R4-busy": "Every plateau sample reads AICLK_ARB_MIN == 0x10546 (busy min arbiter at 1350). Without this AICLK would be 800 regardless of the maximum arbiters and R5 is undefined.",
-      "R5-aiclk-tracks-arbiter": "In every plateau sample |aiclk_mhz - AICLK_ARB_MAX frequency| <= 2 MHz. Both words are written in the same 100 ms telemetry pass, but the arbiter value is a truncated float and tt-smi reads the tags over PCIe possibly across an update boundary, hence the tolerance rather than equality.",
+      "R5-aiclk-tracks-arbiter": "In every plateau sample 0 <= (AICLK_ARB_MAX & 0xffff) - aiclk_mhz <= 7 MHz. The firmware realises AICLK on a 6.25 MHz feedback-divider grid and reports it floored, while the arbiter word is the truncated float target (firmware_model.clock_control_model), so the static difference is 0..6 MHz; one further MHz is allowed for a tt-smi read that straddles a telemetry update while the arbiter drifts at plateau rates (well under 1 MHz per 100 ms pass). A negative difference or one above 7 MHz fails the criterion. Revision 5 replaced the earlier |difference| <= 2 MHz, which the 2026-10-20 smoke runs showed to be below the PLL granularity.",
       "R6-thermal-not-binding": "Every plateau sample has asic_temp_c < 90 and every decoded GDDR die byte < 85 (decoding per the #137 unit provenance).",
       "R7-reported-index": "Every plateau sample's AICLK_ARB_MAX index is 7 or 8. Index 9 is anomalous (doppler_critical triggered); 4, 6 or 0 names a thermal or voltage arbiter and fails the run; 1, 2, 3 or 5 is impossible under R3 and is anomalous."
     },
@@ -290,7 +307,8 @@
       "Lag-1 autocorrelation and n_eff per run, as a check of the serial-correlation model.",
       "Duration-weighted plateau means beside the arithmetic ones.",
       "Arbiter release after load end: AICLK_ARB_MAX frequency in the post-run snapshot against the plateau mean and the capture delay, as a check of the loop's rise rate."
-    ]
+    ],
+    "current_dips": "Current dips: fraction of plateau samples with current_a below 0.8 times the plateau median current at C081 and C108, their board_power_w and power_w, and whether they cluster at group boundaries (group timing record); the 2026-10-20 smoke runs showed 1-3 such samples of 14 with ASIC power reduced in proportion and AICLK unchanged, a device-side dip the host cannot see (candidate: program dispatch between launches)."
   },
   "cooldown": {
     "required_between": "every consecutive pair of long runs",
@@ -361,6 +379,11 @@
       "revision": 4,
       "date": "2026-10-21",
       "change": "Before any board run. The implementer reported that 'at or after 10 s' in the smoke acceptance items literally includes the post-workload rows the runner keeps as diagnostics, so idle current and AICLK after the load would fail the current, R5 and R7 items. Added sample_window to smoke_runs: every sample-selecting item uses [10 s, 40 s) relative to the first launch, the smoke counterpart of the long-run plateau selection; the arbiter-word presence item keeps every row. Thresholds and all other content unchanged."
+    },
+    {
+      "revision": 5,
+      "date": "2026-10-21",
+      "change": "After the 2026-10-20 smoke runs (revision 4 harness, 2.0 s cadence), before any long run; awaiting owner re-approval. (1) R5 tolerance replaced by 0 <= arbiter word - aiclk <= 7 MHz, derived from the pinned clock-control source (6.25 MHz feedback-divider grid, floored set_rate and get_rate, truncated arbiter word; static bound 6 MHz, exhaustive over integer words; all 28 smoke pairs reproduced exactly) with one MHz for a straddled telemetry pass; the clock-control sources and hashes are added to firmware_model. (2) Smoke acceptance: the current >= 150 A and board-power SD < 20 W proxy items are converted into reported diagnostics because the smoke showed the SD to be INPUT_POWER scatter at constant ASIC voltage and current and the sub-150 A samples to be device-side dips distinct from the #137 gap mode; the host-visible idle-fraction item remains the load-contract gate, R5 and R7 and the arbiter-word item remain gated. (3) trace_interval_seconds 2.0 -> 1.0 so the plateau holds about 96 samples and the 99 percent half-width stays clearly under the 10 W precision floor at the observed 23-25 W sample SD; minimum sample count unchanged. (4) A current-dip exploratory item added. A smoke rerun at the new cadence is required before the long runs. Hypothesis, configurations, order, durations, plateau window, statistics, predicted interval and all other criteria thresholds are unchanged."
     }
   ]
 }
