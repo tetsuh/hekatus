@@ -90,6 +90,8 @@ _SMBUS_LIMIT_KEYS = (
     "TDP_LIMIT_MAX",
     "AICLK_ARB_MIN",
     "AICLK_ARB_MAX",
+    "ENABLED_MIN_ARB",
+    "ENABLED_MAX_ARB",
 )
 _BLACKHOLE_BY_ID_RE = re.compile(r"^blackhole-[0-9A-Za-z][0-9A-Za-z._-]*$")
 
