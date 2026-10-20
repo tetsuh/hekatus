@@ -70,7 +70,9 @@ AUTHORITATIVE_PLAN_RAW_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_RAW_SHA256
 AUTHORITATIVE_PLAN_CANONICAL_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_CANONICAL_SHA256
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 _DIAGNOSTIC_LOCAL_URL_RE = re.compile(
-    r"(?<![A-Za-z0-9_.-])[A-Za-z][A-Za-z0-9+.-]*:/{3,}[^\s\"'<>]+"
+    r"(?<![A-Za-z0-9_.-])(?:file://[^\s\"'<>]+|"
+    r"[A-Za-z][A-Za-z0-9+.-]*:/{3,}[^\s\"'<>]+)",
+    re.IGNORECASE,
 )
 _DIAGNOSTIC_URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'<>]+")
 _DIAGNOSTIC_ABSOLUTE_PATH_RE = re.compile(

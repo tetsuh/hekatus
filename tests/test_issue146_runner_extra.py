@@ -359,13 +359,20 @@ def test_issue146_record_sanitizer_preserves_structured_host_tokens(
 def test_issue146_diagnostic_redacts_local_file_urls() -> None:
     text = (
         "remote=https://example.test/var/lib/remote "
-        "file:///homeowner/private.db sqlite:////opt/private.db"
+        "file:///homeowner/private.db "
+        "file://localhost/var/lib/private.db "
+        "FILE://localhost/var/lib/private-upper.db "
+        "sqlite:////opt/private.db"
     )
     redacted = issue146._redact_diagnostic_text(text, output_dir=Path("/"))
     assert "https://example.test/var/lib/remote" in redacted
     assert "file:///homeowner/private.db" not in redacted
+    assert "file://localhost/var/lib/private.db" not in redacted
+    assert "FILE://localhost/var/lib/private-upper.db" not in redacted
     assert "sqlite:////opt/private.db" not in redacted
     assert "/homeowner/private.db" not in redacted
+    assert "/var/lib/private.db" not in redacted
+    assert "/var/lib/private-upper.db" not in redacted
     assert "/opt/private.db" not in redacted
 
 
