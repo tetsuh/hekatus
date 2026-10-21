@@ -46,7 +46,8 @@ def test_i7_nominal_masks_all_positions(position):
     report = result["runs"][position]
     assert report["status"] == "ok"
     assert report["eligible_for_verdict"] is True
-    assert report["missing_fields"] == report["failed_criteria"] == []
+    assert report["missing_fields"] == []
+    assert report["failed_criteria"] == []
 
 
 @pytest.mark.parametrize("position", range(6))
@@ -136,7 +137,8 @@ def test_i3_i4_plateau_glitch_precedes_configuration_and_criteria(position, offs
         report = result["runs"][position]
         assert report["glitch_count"] == 1
         assert report["plateau"]["retained_count"] == 59
-        assert report["missing_fields"] == report["failed_criteria"] == []
+        assert report["missing_fields"] == []
+        assert report["failed_criteria"] == []
     else:
         _configuration_failure(result, position)
 
@@ -246,8 +248,10 @@ def test_i7_i8_archived_long_outcome_and_canonical_bytes_are_unchanged():
     result = analyzer.analyze_runs(records, plan=_plan())
     assert result["classification"] == "H-DS"
     for report in result["runs"]:
-        assert report["status"] == "ok" and report["eligible_for_verdict"] is True
-        assert report["missing_fields"] == report["failed_criteria"] == []
+        assert report["status"] == "ok"
+        assert report["eligible_for_verdict"] is True
+        assert report["missing_fields"] == []
+        assert report["failed_criteria"] == []
     raw = (dumps(analyzer._safe_public(result), indent=2) + "\n").encode()
     original = (ARCHIVE / "analysis.json").read_bytes()
     assert hashlib.sha256(original).hexdigest() == (
