@@ -162,12 +162,12 @@
     "harness_commit": "9caa399026e5aa3e64f1c0f24911a3d3c30baea3"
   },
   "artifact_count_excluding_manifest": 309,
-  "artifact_bytes_excluding_manifest": 34489349,
+  "artifact_bytes_excluding_manifest": 34491155,
   "artifacts": [
     {
       "path": "README.md",
-      "byte_count": 23687,
-      "sha256": "899ba01939c7f9c5df982465d737f09620c71027b518f4c8eba6950a1c7ffea0"
+      "byte_count": 25493,
+      "sha256": "b8aa4c3aa4f03f5d995ee45a553bd8dfbc446be5f78fcef89fe3c2f226c60b95"
     },
     {
       "path": "analysis.json",

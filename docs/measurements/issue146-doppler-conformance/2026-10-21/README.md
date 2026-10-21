@@ -35,13 +35,35 @@ without a held boundary point, padding, or interpolation.
   unchanged.
 
 The six explicit run directories contain all 143 source files, preserving
-source basenames and bytes: records, environments, pre/post snapshots, Issue
-#146 traces, legacy companion traces and completion markers, device group
+source basenames and bytes: records, environments, pre/post snapshots, Issue #146 traces,
+legacy companion traces and completion markers, device group
 arrays and envelopes, runner results, wrapper output, execution records,
 Docker listings, and ownership-helper records. The official analyzer output
 is [analysis.json](analysis.json). The onset supplement is a separate
 exploratory artifact at
 [raw-trace-onset-supplement.json](raw-trace-onset-supplement.json).
+
+### Environment digest scope
+
+The two `safe_environment_digest` values in a persisted record hash different
+input objects; equality is neither expected nor checked. In
+`tools/issue146_device.py:_bind_environment`, the wrapper environment is
+augmented with `device_id`, `container_device_id`, `worker_core_count`,
+`worker_core_coordinates`, `total_blocks`, `outer_repetitions`, and
+`launches_per_sync`. `build_environment_record` hashes that safe augmented
+input to produce the inner `runner_result.environment.safe_environment_digest`.
+During ingest, `tools/issue146.py` line 2357 rebuilds an environment by hashing
+the already-normalized runner environment, including that inner digest, to
+produce the outer `environment.safe_environment_digest`. Neither hash is of a
+persisted normal form containing itself. For representative archived revision-5
+C108, parent verification reproduced inner
+`20f7adc4b7c494d49ea9bf1c121d1f9262a95bdb3d909c2aa6571586586b54f2` and outer
+`d9a3cf9595d8abd425fa4b29049a0db2b71eb2800b2ed67fe0a0406224262233` from the
+archived environment and seven bound fields, then hashing the inner value.
+Artifact SHA-256/byte-count entries in `manifest.json` and the persisted
+artifact descriptors remain the separate integrity authority. This clarifies
+existing producer semantics; it does not change a producer or establish a new
+contract.
 
 ## Preregistered outcome
 
@@ -167,7 +189,7 @@ a cooldown criterion.
 | 5 | 47 | 59.4 | 52 / 63.5 | 47 / 59.6 |
 | 6 | 45 | 57.4 | 52 / 62.4 | 47 / 57.5 |
 
-Run 4's 60.3 degC gate observation and its later 60.5 degC pre snapshot are
+Run 4's 60.3 degC gate observation and its later 60.5 degC pre-run snapshot are
 different captures and are reported without substitution. This relative gate
 does not establish a common initial thermal state.
 
@@ -292,8 +314,7 @@ criteria. The 1/97 and 0/97 counts are not a measured dip duration or period.
 
 The official analyzer's exploratory clock-onset display uses a plateau-only
 decoded map when inspecting the full trace. That source bug can miss a
-pre-plateau depression in runs 2–5. It is tracked as [Issue
-#149](https://github.com/tetsuh/hekatus/issues/149) and has no verdict impact.
+pre-plateau depression in runs 2–5. It is tracked as [Issue #149](https://github.com/tetsuh/hekatus/issues/149) and has no verdict impact.
 The official JSON is unchanged. The separate raw-trace supplement applies the
 registered predicates to the raw workload rows and reports first observed
 onsets of **1.522849722, 1.901850963, 2.020702915, and 1.776471635 seconds**
@@ -325,7 +346,7 @@ or proof that the source executed on every tick.
 
 The relative cooldown gate controls preceding ASIC power and temperature but
 does not establish a common initial thermal state. In particular, the run 4
-gate observation was 60.3 degC while the separate pre snapshot was 60.5 degC;
+gate observation was 60.3 degC while the separate pre-run snapshot was 60.5 degC;
 both values remain as recorded. Current dips, onset times, post-load words,
 fan/temperature drift, and the reported index ambiguity do not establish
 causality. The disabled 200-A TDC limit is not a verdict mechanism in this
@@ -335,6 +356,13 @@ firmware configuration.
 
 Smoke artifacts are retained for execution-history and acceptance-history
 reproducibility. None enters the six-run H-DS verdict.
+
+The same known [Issue #149](https://github.com/tetsuh/hekatus/issues/149)
+onset-scope limitation applies to the historical and current smoke replays:
+the arbiter clock-onset field uses the decoded `[10, 40)` mapping, while the
+power-onset field scans the full trace. They are not comparable true
+full-workload onset times. Original smoke JSON field names and numbers remain
+unchanged; no onset supplement, rerun, or source fix was added.
 
 ### Revision 4, 2-second cadence
 
