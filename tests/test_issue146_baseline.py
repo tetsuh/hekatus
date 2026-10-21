@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -77,7 +78,10 @@ def test_issue146_baseline_resolver_returns_descriptor_path_only(tmp_path: Path)
     assert _resolve(record_path, tmp_path) == snapshot_path.relative_to(tmp_path).as_posix()
 
 
-@pytest.mark.parametrize("mutation", ("bad_descriptor", "missing", "failed", "wrong_identity", "bad_hash"))
+@pytest.mark.parametrize(
+    "mutation",
+    ("bad_descriptor", "missing", "failed", "wrong_identity", "bad_hash", "boolean_run_number"),
+)
 def test_issue146_baseline_resolver_rejects_invalid_predecessors(
     tmp_path: Path, mutation: str
 ) -> None:
@@ -95,9 +99,20 @@ def test_issue146_baseline_resolver_rejects_invalid_predecessors(
         snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
     elif mutation == "bad_hash":
         record["pre_run_snapshot"]["sha256"] = "0" * 64
+    elif mutation == "boolean_run_number":
+        record["run"]["run_number"] = True
     record_path.write_text(json.dumps(record), encoding="utf-8")
     with pytest.raises(baseline.BaselineResolutionError):
         _resolve(record_path, tmp_path)
+
+
+def test_issue146_baseline_resolver_rejects_non_regular_record(
+    tmp_path: Path,
+) -> None:
+    fifo_path = tmp_path / "record-fifo"
+    os.mkfifo(fifo_path)
+    with pytest.raises(baseline.BaselineResolutionError, match="regular file"):
+        _resolve(fifo_path, tmp_path)
 
 
 def test_issue146_baseline_resolver_cli_fails_with_diagnostics(
@@ -119,6 +134,63 @@ def test_issue146_baseline_resolver_cli_fails_with_diagnostics(
     )
     assert status != 0
     assert "baseline resolver rejected" in capsys.readouterr().err
+
+
+def test_issue146_baseline_resolver_hides_missing_plan_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    record_path, _snapshot_path = _write_case(tmp_path)
+    private_plan = tmp_path / "private-plan" / "missing-plan.json"
+    status = baseline.main(
+        [
+            "--plan",
+            str(private_plan),
+            "--record",
+            str(record_path),
+            "--expected-run-number",
+            "1",
+            "--expected-run-id",
+            RUN_ID,
+            "--expected-configuration",
+            "C018",
+        ]
+    )
+    stderr = capsys.readouterr().err
+    assert status != 0
+    assert "missing-plan.json" not in stderr
+    assert "private-plan" not in stderr
+
+
+def test_issue146_baseline_resolver_hides_snapshot_read_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record_path, snapshot_path = _write_case(tmp_path)
+    original_read_bytes = Path.read_bytes
+
+    def fail_snapshot_read(path: Path) -> bytes:
+        if path == snapshot_path:
+            raise OSError("/private/absolute/snapshot-path")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_snapshot_read)
+    status = baseline.main(
+        [
+            "--plan",
+            str(PLAN),
+            "--record",
+            str(record_path),
+            "--expected-run-number",
+            "1",
+            "--expected-run-id",
+            RUN_ID,
+            "--expected-configuration",
+            "C018",
+        ]
+    )
+    stderr = capsys.readouterr().err
+    assert status != 0
+    assert "/private/absolute/snapshot-path" not in stderr
+    assert str(snapshot_path) not in stderr
 
 
 def test_issue146_baseline_resolver_rejects_snapshot_run_identity_mismatch(

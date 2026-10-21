@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import stat
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -41,14 +42,17 @@ def _inside(root: Path, path: Path, *, label: str) -> Path:
         candidate = path
     else:
         candidate = root / path
-    if candidate.is_symlink():
-        raise BaselineResolutionError(f"{label} is a symlink")
     try:
+        if candidate.is_symlink():
+            raise BaselineResolutionError(f"{label} is a symlink")
         resolved = candidate.resolve(strict=True)
         resolved.relative_to(root.resolve())
+        metadata = resolved.stat()
+    except BaselineResolutionError:
+        raise
     except (OSError, ValueError) as exc:
-        raise BaselineResolutionError(f"{label} must be a repository-relative file") from exc
-    if resolved.stat().st_nlink != 1:
+        raise BaselineResolutionError(f"{label} cannot be validated") from exc
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
         raise BaselineResolutionError(f"{label} is not an exclusive regular file")
     return resolved
 
@@ -96,7 +100,8 @@ def _require_run_identity(
         raise BaselineResolutionError("preceding record run block is missing")
     if run.get("mode") != "long":
         raise BaselineResolutionError("preceding record is not a long run")
-    if run.get("run_number") != expected_run_number:
+    run_number = run.get("run_number")
+    if isinstance(run_number, bool) or not isinstance(run_number, int) or run_number != expected_run_number:
         raise BaselineResolutionError("preceding record run number is not the expected predecessor")
     if run.get("run_id") != expected_run_id:
         raise BaselineResolutionError("preceding record run ID is not the expected predecessor")
@@ -197,7 +202,11 @@ def resolve_pre_snapshot(
     root = (repository_root or Path(__file__).resolve().parents[1]).resolve()
     record = _inside(root, Path(record_path), label="preceding record")
     plan = plan_path if plan_path.is_absolute() else root / plan_path
-    board_serial, bus_id, plan_hash = _plan_identity(plan.resolve(strict=True))
+    try:
+        plan_source = plan.resolve(strict=True)
+    except OSError as exc:
+        raise BaselineResolutionError("Issue #146 plan cannot be located") from exc
+    board_serial, bus_id, plan_hash = _plan_identity(plan_source)
     record_payload, _record_raw = _read_json(record, label="preceding record")
     _require_run_identity(
         record_payload,
@@ -213,7 +222,10 @@ def resolve_pre_snapshot(
         bus_id=bus_id,
     )
     snapshot_path = _inside(root, record.parent / str(descriptor["path"]), label="pre_run snapshot")
-    snapshot_raw = snapshot_path.read_bytes()
+    try:
+        snapshot_raw = snapshot_path.read_bytes()
+    except OSError as exc:
+        raise BaselineResolutionError("pre_run snapshot cannot be read") from exc
     if hashlib.sha256(snapshot_raw).hexdigest() != descriptor["sha256"]:
         raise BaselineResolutionError("pre_run snapshot SHA-256 does not match its descriptor")
     if len(snapshot_raw) != descriptor["byte_count"]:
