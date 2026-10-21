@@ -3145,7 +3145,10 @@ def _smoke_reported_diagnostic(
 def _smoke_arbiter_criterion(trace_rows: Any) -> dict[str, Any]:
     if not isinstance(trace_rows, list) or not trace_rows:
         return _criterion(
-            "arbiter_words_and_enabled_max", None, reason="trace rows are unavailable"
+            "arbiter_words_and_enabled_max",
+            None,
+            gate=True,
+            reason="trace rows are unavailable",
         )
     decoded_trace: list[dict[str, Any]] = []
     word_error: str | None = None

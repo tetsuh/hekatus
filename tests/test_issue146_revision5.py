@@ -26,6 +26,21 @@ def test_issue146_revision5_signed_r5_bounds() -> None:
     assert analyzer._r5_signed_pass(8.0) is False
 
 
+def test_issue146_revision5_missing_trace_still_counts_arbiter_gate() -> None:
+    criterion = analyzer._smoke_arbiter_criterion([])
+    assert criterion["gate"] is True
+
+
+def test_issue146_revision5_missing_trace_policy_has_four_gates() -> None:
+    record = _record("C081", 1)
+    record["run"]["mode"] = "smoke"
+    record["run"]["observed_duration_seconds"] = 40.0
+    record["trace"]["samples"] = []
+    result = analyzer.analyze_smoke([record], plan=_plan())
+    assert result["policy"]["gate_count"] == 4
+    assert len(result["gates"]) == 4
+
+
 def test_issue146_revision5_smoke_signed_r5_rejects_negative_delta() -> None:
     result = analyzer._smoke_residual_criterion([_r5_row(1001.0, 1000)])
     assert result["pass"] is False
