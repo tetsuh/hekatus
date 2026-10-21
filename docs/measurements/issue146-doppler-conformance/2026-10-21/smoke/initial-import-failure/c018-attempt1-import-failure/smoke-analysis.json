@@ -1,0 +1,239 @@
+{
+  "analysis_schema": "issue146-analysis-v1",
+  "issue": "#146",
+  "mode": "smoke-diagnostic",
+  "affects_long_verdict": false,
+  "acceptance": [
+    {
+      "name": "idle_fraction_[10,40)",
+      "pass": null,
+      "status": "not_evaluable",
+      "reason": "group timings unavailable: first launch clock is unavailable",
+      "window": "[10,40)",
+      "idle_fraction": null
+    },
+    {
+      "name": "regulated_current_and_power_[10,40)",
+      "pass": true,
+      "status": "not_applicable",
+      "window": "[10,40)",
+      "current_window": "[10,40)",
+      "power_sd_window": "[10,40)"
+    },
+    {
+      "name": "arbiter_words_and_enabled_max",
+      "pass": null,
+      "status": "not_evaluable",
+      "reason": "trace rows are unavailable"
+    },
+    {
+      "name": "R5_residual_[10,40)",
+      "pass": null,
+      "status": "not_evaluable",
+      "reason": "no samples in [10,40)",
+      "window": "[10,40)",
+      "max_residual_mhz": null
+    },
+    {
+      "name": "R7_index_distribution_[10,40)",
+      "pass": null,
+      "status": "not_evaluable",
+      "reason": "no samples in [10,40)",
+      "window": "[10,40)",
+      "indices": []
+    },
+    {
+      "name": "smoke_failure_requires_plan_revision",
+      "pass": false,
+      "status": "fail"
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "issue146-smoke-c018",
+      "configuration_id": "C018",
+      "acceptance": [
+        {
+          "name": "idle_fraction_[10,40)",
+          "pass": null,
+          "status": "not_evaluable",
+          "reason": "group timings unavailable: first launch clock is unavailable",
+          "window": "[10,40)",
+          "idle_fraction": null
+        },
+        {
+          "name": "regulated_current_and_power_[10,40)",
+          "pass": true,
+          "status": "not_applicable",
+          "window": "[10,40)",
+          "current_window": "[10,40)",
+          "power_sd_window": "[10,40)"
+        },
+        {
+          "name": "arbiter_words_and_enabled_max",
+          "pass": null,
+          "status": "not_evaluable",
+          "reason": "trace rows are unavailable"
+        },
+        {
+          "name": "R5_residual_[10,40)",
+          "pass": null,
+          "status": "not_evaluable",
+          "reason": "no samples in [10,40)",
+          "window": "[10,40)",
+          "max_residual_mhz": null
+        },
+        {
+          "name": "R7_index_distribution_[10,40)",
+          "pass": null,
+          "status": "not_evaluable",
+          "reason": "no samples in [10,40)",
+          "window": "[10,40)",
+          "indices": []
+        },
+        {
+          "name": "smoke_failure_requires_plan_revision",
+          "pass": false,
+          "status": "fail"
+        }
+      ],
+      "run": {
+        "run_id": "issue146-smoke-c018",
+        "run_number": null,
+        "configuration_id": "C018",
+        "mode": "smoke",
+        "status": "failed",
+        "expected_order_configuration": null,
+        "eligible_for_verdict": false,
+        "source": {
+          "record": "issue146-smoke-c018",
+          "trace": null,
+          "trace_sha256": null,
+          "trace_byte_count": null,
+          "groups": null,
+          "groups_sha256": null,
+          "groups_byte_count": null,
+          "pre_run_snapshot": "pre-run-snapshot-issue146-smoke-c018.json",
+          "pre_run_snapshot_sha256": "3388132a0fba5d049d078e009d8e88031871bbc5b1bcacaeb70edfee37c542eb",
+          "pre_run_snapshot_byte_count": 7952,
+          "post_run_snapshot": "post-run-snapshot-issue146-smoke-c018.json",
+          "post_run_snapshot_sha256": "21acd6c2c267247df1fb1b1b63e0c76580b7865cc6dc243d7f71fd7f9f456767",
+          "post_run_snapshot_byte_count": 7953
+        },
+        "duration": {
+          "target_seconds": 40.0,
+          "guard_seconds": 90.0,
+          "first_launch_start_monotonic_ns": null,
+          "workload_end_monotonic_ns": null,
+          "last_group_end_monotonic_ns": null,
+          "observed_duration_seconds": null
+        },
+        "group_timings": [],
+        "limits": {
+          "board_power_limit_w": 300.0,
+          "asic_fmax_mhz": 1350.0,
+          "therm_trip_l1_limit_c": 90.0,
+          "board_power_limit_word": 300,
+          "enabled_max_arb_word": 465
+        },
+        "plateau": {
+          "selection": "[60,180) seconds from first_launch_start_monotonic_ns",
+          "raw_count": 0,
+          "retained_count": 0,
+          "r6_retained_count": 0,
+          "no_held_point": true,
+          "no_interpolation": true
+        },
+        "glitches": [],
+        "glitch_count": 0,
+        "criteria": {},
+        "statistics": {},
+        "exploratory": {
+          "r5_residual_max_mhz": null,
+          "r5_residual_values_mhz": [],
+          "reported_index_distribution": {},
+          "lag1": {
+            "r1": null,
+            "n_eff": null
+          },
+          "drift": {
+            "samples": [],
+            "status": "not_evaluable"
+          },
+          "onset": {
+            "first_aiclk_arb_max_below_fmax_seconds": null,
+            "first_board_power_within_5_w_of_limit_seconds": null
+          },
+          "busy_current_against_disabled_tdc": {
+            "disabled_tdc_limit_a": 200.0,
+            "sample_count": 0,
+            "min_a": null,
+            "max_a": null,
+            "mean_a": null
+          },
+          "duration_weighted_left_held_board_power": {
+            "status": "not_evaluable",
+            "reason": "missing first launch clock"
+          },
+          "post_load_arbiter_release": {
+            "status": "not_evaluable"
+          },
+          "status": "not_evaluable"
+        },
+        "trace_rows": [],
+        "missing_fields": [
+          "environment",
+          "first_launch_start_monotonic_ns",
+          "gddr_provenance",
+          "groups",
+          "plateau.samples",
+          "run_status",
+          "telemetry.trace",
+          "trace"
+        ],
+        "failed_criteria": []
+      }
+    }
+  ],
+  "plan": {
+    "record_schema": "issue146-premeasurement-plan-v1",
+    "revision": 4,
+    "sha256": "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a",
+    "source": "2026-10-20-host-newton-schulz-issue146-plan.json",
+    "run_order": [
+      "C018",
+      "C108",
+      "C081",
+      "C081",
+      "C108",
+      "C018"
+    ],
+    "load_mode": "host-duration-bounded",
+    "plateau": {
+      "start_seconds": 60.0,
+      "end_seconds": 180.0,
+      "minimum_samples_after_exclusions": 50,
+      "selection": "strict points relative to first_launch_start_monotonic_ns; no held point or interpolation"
+    },
+    "timing": {
+      "long": {
+        "target_seconds": 180.0,
+        "guard_seconds": 230.0
+      },
+      "smoke": {
+        "target_seconds": 40.0,
+        "guard_seconds": 90.0,
+        "sample_window": "[10,40)",
+        "selection": "strict points relative to first_launch_start_monotonic_ns; no held point or interpolation"
+      },
+      "overrun_limit_seconds": 10.0,
+      "idle_fraction_limit": 0.02
+    },
+    "statistics": {
+      "per_run_confidence": 0.99,
+      "pooled_confidence": 0.95,
+      "precision_half_width_w": 10.0,
+      "r1": "adjacent centered products divided by centered sum of squares"
+    }
+  }
+}

@@ -1,0 +1,259 @@
+{
+  "schema": "issue146-smoke-diagnosis-v1",
+  "issue": "#146",
+  "run": {
+    "configuration": "C018",
+    "run_id": "issue146-smoke-c018",
+    "mode": "smoke",
+    "plan_sha256": "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a",
+    "target_seconds": 40.0,
+    "guard_seconds": 90.0,
+    "attempted_at_utc": "2026-10-20T22:45:30Z",
+    "stopped_after_nonzero": true,
+    "other_configurations_attempted": []
+  },
+  "exact_failure": {
+    "classification": "fact",
+    "record_status": "failed",
+    "failure_kind": "runner_execution_failure",
+    "failure_message": "runner result artifact identity is missing or ambiguous",
+    "record_returncode": 1,
+    "outer_command_exit_code": 2,
+    "outer_elapsed_seconds": 2.927041829,
+    "evidence": [
+      "run-issue146-smoke-c018.json",
+      "runner-stdout.json",
+      "execution.txt"
+    ],
+    "underlying_wrapper_stdout_or_stderr": "not persisted; runner-stderr.txt is empty"
+  },
+  "container_evidence": {
+    "classification": "fact",
+    "events_artifact": "docker-events.txt",
+    "container_name": "hekatus-bench-17640-22430",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "create_seen": true,
+    "start_seen": true,
+    "die_seen": true,
+    "destroy_seen": true,
+    "start_time_nano": 1792536333140582777,
+    "die_time_nano": 1792536333504764757,
+    "observed_container_lifetime_seconds": 0.36418198,
+    "container_exit_code": 1,
+    "docker_ps_before_empty": true,
+    "docker_ps_after_empty": true,
+    "docker_ps_all_before_empty": true,
+    "docker_ps_all_after_empty": true,
+    "interpretation": "The container did start and then exited; empty post-run listings are consistent with destruction and do not prove that it never ran."
+  },
+  "device_workload_evidence": {
+    "classification": "unknown",
+    "container_started": true,
+    "device_opened": "unknown",
+    "workload_started": "unknown",
+    "facts": [
+      "The canonical host record has workload_started=false.",
+      "The canonical host record has no first-launch clock, no group timings, and no ingested runner result.",
+      "The wrapper-side result artifact was not identified or persisted in the record directory.",
+      "No underlying runner stdout/stderr explaining the device-side exit was persisted."
+    ],
+    "why_host_false_is_not_conclusive": "workload_started=false is host bookkeeping for successful result ingestion; it is not proof that the device was never opened.",
+    "source_based_hypothesis": "tools/issue146.py resolves a run only when one new runner-result artifact is identifiable. tools/issue146_device.py persists that artifact only after its preflight, TTNN execution/cleanup path, or failure-result path completes. The observed absence is therefore consistent with an exception or process/output failure before result publication, but the persisted artifacts do not distinguish preflight, device open, workload execution, or output-mount failure."
+  },
+  "selected_board": {
+    "selection": {
+      "board_id": "0000040331914124",
+      "bus_id": "0000:09:00.0",
+      "board_type": "p150a"
+    },
+    "pre_snapshot": {
+      "artifact": "pre-run-snapshot-issue146-smoke-c018.json",
+      "status": "ok",
+      "returncode": 0,
+      "captured_at_utc": "2026-10-20T22:45:32.500325+00:00",
+      "board_info": {
+        "board_id": "0000040331914124",
+        "board_type": "p150a",
+        "bus_id": "0000:09:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "limits_full": {
+        "asic_fmax": "1350",
+        "board_power_limit": "300",
+        "bus_peak_limit": 0,
+        "fan_rpm_limit": 0,
+        "tdc_limit": "200",
+        "tdp_limit": "150",
+        "therm_trip_l1_limit": "90",
+        "thm_limit": "110",
+        "vdd_max": "0.90",
+        "vdd_min": "0.70"
+      },
+      "configuration_words": {
+        "BOARD_POWER_LIMIT": "0x12c",
+        "ENABLED_MAX_ARB": "0x1d1"
+      },
+      "arbiter_words": {
+        "AICLK_ARB_MIN": "0x10320",
+        "AICLK_ARB_MAX": "0x80546",
+        "ENABLED_MIN_ARB": "0x3",
+        "ENABLED_MAX_ARB": "0x1d1"
+      },
+      "telemetry_at_snapshot": {
+        "aiclk_mhz": 800,
+        "asic_temperature_c": 62.4,
+        "board_power_w": 119.0,
+        "current_a": 65.0,
+        "power_w": 47.0
+      }
+    },
+    "post_snapshot": {
+      "artifact": "post-run-snapshot-issue146-smoke-c018.json",
+      "status": "ok",
+      "returncode": 0,
+      "captured_at_utc": "2026-10-20T22:45:33.776394+00:00",
+      "board_info": {
+        "board_id": "0000040331914124",
+        "board_type": "p150a",
+        "bus_id": "0000:09:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "limits_full": {
+        "asic_fmax": "1350",
+        "board_power_limit": "300",
+        "bus_peak_limit": 0,
+        "fan_rpm_limit": 0,
+        "tdc_limit": "200",
+        "tdp_limit": "150",
+        "therm_trip_l1_limit": "90",
+        "thm_limit": "110",
+        "vdd_max": "0.90",
+        "vdd_min": "0.70"
+      },
+      "configuration_words": {
+        "BOARD_POWER_LIMIT": "0x12c",
+        "ENABLED_MAX_ARB": "0x1d1"
+      },
+      "arbiter_words": {
+        "AICLK_ARB_MIN": "0x10320",
+        "AICLK_ARB_MAX": "0x80546",
+        "ENABLED_MIN_ARB": "0x3",
+        "ENABLED_MAX_ARB": "0x1d1"
+      },
+      "telemetry_at_snapshot": {
+        "aiclk_mhz": 800,
+        "asic_temperature_c": 62.5,
+        "board_power_w": 118.0,
+        "current_a": 64.0,
+        "power_w": 47.0
+      }
+    },
+    "arbiter_diagnostic_comparison": {
+      "classification": "diagnostic_only",
+      "all_four_words_unchanged": true,
+      "BOARD_POWER_LIMIT_unchanged": true,
+      "ENABLED_MAX_ARB_unchanged": true,
+      "trace_acceptance_claim": false
+    }
+  },
+  "environment": {
+    "artifact": "env-20261020T224532520898287176402129Z.json",
+    "captured_at": "2026-10-20T22:45:32.557948+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "e089b1c72338a6ab32663beb862a4e256e100d19",
+    "harness_dirty": false,
+    "harness_pushed": true,
+    "host_software": {
+      "tt_smi": "6.2.1",
+      "tt_umd": "0.9.8",
+      "pyluwen": "0.9.0"
+    }
+  },
+  "metrics": {
+    "issue146_workload_trace": {
+      "status": "unavailable",
+      "reason": "canonical record trace is null and no workload-relative runner trace was ingested"
+    },
+    "group_timings": {
+      "status": "unavailable",
+      "reason": "groups is null; first-launch and workload-end clocks are null"
+    },
+    "host_sampler_observation": {
+      "status": "present_but_insufficient",
+      "artifact": "power-20261020T224532520898287176402129Z.csv",
+      "complete_marker": "power-20261020T224532520898287176402129Z.csv.complete",
+      "row_count": 1,
+      "sample": {
+        "timestamp_utc": "2026-10-20T22:45:33.289629+00:00",
+        "power_w": 47.0,
+        "aiclk_mhz": 800,
+        "asic_temp_c": 62.5
+      },
+      "acceptance_use": "not used as a workload trace or smoke acceptance evidence"
+    },
+    "timing_and_trace_acceptance": false
+  },
+  "board_free_analyzer": {
+    "command": "uv run python tools/analyze_issue146.py --smoke --record out/issue146-smoke/c018/runner-stdout.json --output out/issue146-smoke/c018/smoke-analysis.json",
+    "output_artifact": "smoke-analysis.json",
+    "stderr_artifact": "smoke-analysis.stderr.txt",
+    "exit_artifact": "smoke-analysis.exit.txt",
+    "exit_code": 0,
+    "stderr_empty": true,
+    "output_valid_json": true,
+    "analysis_schema": "issue146-analysis-v1",
+    "analysis_mode": "smoke-diagnostic",
+    "affects_long_verdict": false,
+    "diagnostic_results": {
+      "idle_fraction_[10,40)": "not_evaluable: group timings unavailable: first launch clock is unavailable",
+      "regulated_current_and_power_[10,40)": "not_applicable for C018",
+      "arbiter_words_and_enabled_max": "not_evaluable: trace rows are unavailable",
+      "R5_residual_[10,40)": "not_evaluable: no samples in [10,40)",
+      "R7_index_distribution_[10,40)": "not_evaluable: no samples in [10,40)",
+      "smoke_failure_requires_plan_revision": "fail"
+    },
+    "trace_acceptance_claim": false
+  },
+  "source_based_hypotheses": [
+    {
+      "status": "hypothesis_not_proven",
+      "statement": "The immediate persisted failure is result-artifact identity/publication failure, not a persisted TTNN or device error.",
+      "basis": "The host adapter reports the exact _resolve_result failure, the container exited nonzero, and no runner-result artifact exists."
+    },
+    {
+      "status": "hypothesis_not_proven",
+      "statement": "A runner preflight exception, device/runtime failure, or output publication/mount failure could each explain the missing result artifact.",
+      "basis": "tools/issue146_device.py catches only execution-path failures into a result after its setup path; setup exceptions can return without that artifact, while wrapper diagnostics were not persisted."
+    }
+  ],
+  "scope_and_safety": {
+    "analysis_only": true,
+    "hardware_or_device_commands_run_during_diagnosis": false,
+    "docker_commands_run_during_diagnosis": false,
+    "source_changed": false,
+    "plan_changed": false,
+    "fix_attempted": false,
+    "retry_attempted": false
+  }
+}

@@ -1,0 +1,6 @@
+start_utc=2026-10-20T23:41:53Z
+start_monotonic_ns=6451907543569
+end_utc=2026-10-20T23:42:38Z
+end_monotonic_ns=6496876492650
+runner_exit_code=0
+elapsed_seconds=44.968949081

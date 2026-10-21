@@ -1,0 +1,5 @@
+start_utc=2026-10-21T14:16:38.737716289Z
+end_utc=2026-10-21T14:19:43.949029661Z
+start_monotonic_ns=58936709358128
+end_monotonic_ns=59121907750920
+exit_code=0
