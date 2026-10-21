@@ -343,7 +343,7 @@ def current_dip_facts(
     boundaries.sort(key=lambda item: item[2])
     dips: list[dict[str, Any]] = []
     for row, current in zip(selected, currents):
-        if not current < threshold:
+        if current >= threshold:
             continue
         timestamp = int(row["timestamp_monotonic_ns"])
         containing_group = next(

@@ -16,7 +16,6 @@ import hashlib
 import json
 import math
 import os
-import re
 import statistics
 import sys
 from collections.abc import Mapping, Sequence
@@ -53,6 +52,7 @@ from tools.issue146_contract import (
     AUTHORITATIVE_PLAN_RAW_SHA256,
     CURRENT_PLAN_REVISION,
     DEFAULT_PLAN_PATH,
+    parse_smoke_sample_window,
 )
 
 ANALYSIS_SCHEMA = "issue146-analysis-v1"
@@ -422,21 +422,10 @@ def _plan_timing(
     smoke_target = finite(scope_smoke.get("workload_seconds"), field="smoke target")
     smoke_guard = finite(scope_smoke.get("guard_seconds"), field="smoke guard")
     sample_window = scope_smoke.get("sample_window")
-    if (
-        not isinstance(sample_window, str)
-        or "10 s <= (timestamp_monotonic_ns - first_launch_start_monotonic_ns) < 40 s"
-        not in sample_window
-        or "outside every item" not in sample_window
-    ):
-        raise AnalysisError("Issue #146 smoke sample window contract is not revision 5")
-    sample_match = re.search(
-        r"(\d+(?:\.\d+)?)\s*s\s*<=.*?<\s*(\d+(?:\.\d+)?)\s*s",
-        sample_window if isinstance(sample_window, str) else "",
-    )
-    if sample_match is None:
-        raise AnalysisError("Issue #146 smoke sample window bounds are invalid")
-    smoke_start = float(sample_match.group(1))
-    smoke_end = float(sample_match.group(2))
+    try:
+        smoke_start, smoke_end = parse_smoke_sample_window(sample_window)
+    except ValueError as exc:
+        raise AnalysisError("Issue #146 smoke sample window contract is not revision 5") from exc
     trace_interval = finite(scope.get("trace_interval_seconds"), field="trace interval")
     if trace_interval <= 0.0 or smoke_end <= smoke_start:
         raise AnalysisError("Issue #146 timing cadence/window is invalid")
@@ -726,11 +715,54 @@ def _environment_errors(
     return list(dict.fromkeys(errors))
 
 
+def _interval_matches(value: float, expected: float) -> bool:
+    return math.isclose(value, expected, rel_tol=0.0, abs_tol=1e-12)
+
+
+def _cadence_plan_errors(
+    planned: float, companion: float, spec: _PlanSpec
+) -> list[str]:
+    errors: list[str] = []
+    if not _interval_matches(planned, spec.trace_interval_seconds):
+        errors.append("trace_cadence.planned_interval_seconds.binding")
+    if not _interval_matches(companion, spec.trace_interval_seconds):
+        errors.append("trace_cadence.wrapper_companion_interval_seconds.binding")
+    return errors
+
+
+def _cadence_host_errors(
+    cadence: Mapping[str, Any], host: float, spec: _PlanSpec
+) -> list[str]:
+    if cadence.get("test_override") or _interval_matches(host, spec.trace_interval_seconds):
+        return []
+    return ["trace_cadence.host_sampler_interval_seconds.binding"]
+
+
+def _cadence_mode_errors(record: Mapping[str, Any], cadence: Mapping[str, Any]) -> list[str]:
+    run = record.get("run") if isinstance(record.get("run"), Mapping) else {}
+    run_mode = run.get("mode", record.get("mode"))
+    if cadence.get("test_override") and run_mode == "long":
+        return ["trace_cadence.long_test_override"]
+    return []
+
+
+def _cadence_trace_errors(record: Mapping[str, Any], host: float) -> list[str]:
+    trace = record.get("trace")
+    if not isinstance(trace, Mapping) or trace.get("sampling_interval_seconds") is None:
+        return []
+    try:
+        trace_interval = finite(trace["sampling_interval_seconds"], field="trace cadence")
+    except Issue146AnalysisError:
+        return ["trace.sampling_interval_seconds"]
+    if _interval_matches(trace_interval, host):
+        return []
+    return ["trace.sampling_interval_seconds.binding"]
+
+
 def _record_cadence_errors(record: Mapping[str, Any], spec: _PlanSpec) -> list[str]:
     cadence = record.get("trace_cadence")
     if not isinstance(cadence, Mapping):
         return ["trace_cadence"]
-    errors: list[str] = []
     try:
         planned = finite(cadence.get("planned_interval_seconds"), field="planned cadence")
         host = finite(cadence.get("host_sampler_interval_seconds"), field="host cadence")
@@ -739,27 +771,10 @@ def _record_cadence_errors(record: Mapping[str, Any], spec: _PlanSpec) -> list[s
         )
     except Issue146AnalysisError:
         return ["trace_cadence.values"]
-    if not math.isclose(planned, spec.trace_interval_seconds, rel_tol=0.0, abs_tol=1e-12):
-        errors.append("trace_cadence.planned_interval_seconds.binding")
-    if not math.isclose(companion, spec.trace_interval_seconds, rel_tol=0.0, abs_tol=1e-12):
-        errors.append("trace_cadence.wrapper_companion_interval_seconds.binding")
-    run = record.get("run") if isinstance(record.get("run"), Mapping) else {}
-    run_mode = run.get("mode", record.get("mode"))
-    if cadence.get("test_override") and run_mode == "long":
-        errors.append("trace_cadence.long_test_override")
-    if not cadence.get("test_override") and not math.isclose(
-        host, spec.trace_interval_seconds, rel_tol=0.0, abs_tol=1e-12
-    ):
-        errors.append("trace_cadence.host_sampler_interval_seconds.binding")
-    trace = record.get("trace")
-    if isinstance(trace, Mapping) and trace.get("sampling_interval_seconds") is not None:
-        try:
-            trace_interval = finite(trace["sampling_interval_seconds"], field="trace cadence")
-        except Issue146AnalysisError:
-            errors.append("trace.sampling_interval_seconds")
-        else:
-            if not math.isclose(trace_interval, host, rel_tol=0.0, abs_tol=1e-12):
-                errors.append("trace.sampling_interval_seconds.binding")
+    errors = _cadence_plan_errors(planned, companion, spec)
+    errors.extend(_cadence_mode_errors(record, cadence))
+    errors.extend(_cadence_host_errors(cadence, host, spec))
+    errors.extend(_cadence_trace_errors(record, host))
     return errors
 
 
@@ -2312,6 +2327,13 @@ def _load_run_evidence(
     )
 
 
+def _glitch_mode_for_run(configuration_id: str | None, mode: str) -> str:
+    regulated = configuration_id in {"C081", "C108"}
+    family = "smoke" if mode == "smoke" else "long"
+    role = "regulated" if regulated else "control"
+    return f"{family}-{role}"
+
+
 def _plateau_glitch_selection(
     plateau_rows: Sequence[Mapping[str, Any]],
     rows: Sequence[Mapping[str, Any]],
@@ -2329,11 +2351,7 @@ def _plateau_glitch_selection(
     list[Mapping[str, Any]],
     set[str],
 ]:
-    mode_for_predicate = (
-        ("smoke-regulated" if configuration_id in {"C081", "C108"} else "smoke-control")
-        if mode == "smoke"
-        else ("long-regulated" if configuration_id in {"C081", "C108"} else "long-control")
-    )
+    mode_for_predicate = _glitch_mode_for_run(configuration_id, mode)
     row_positions = {id(row): position for position, row in enumerate(rows)}
     plateau_original_indices = [row_positions[id(row)] for row in plateau_rows]
     glitches, whole_indices, r6_indices, glitch_errors = _flag_glitches(

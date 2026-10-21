@@ -42,6 +42,7 @@ ISSUE146_SNAPSHOT_SCHEMA = "issue146-tt-smi-snapshot-v1"
 ISSUE146_GROUPS_SCHEMA = "issue146-group-timings-v1"
 ISSUE146_GROUP_TIMINGS_SCHEMA = ISSUE146_GROUPS_SCHEMA
 ISSUE146_LOAD_MODE = "host-duration-bounded"
+ISSUE146_MODE_ERROR = "Issue #146 mode must be smoke or long"
 CURRENT_PLAN_REVISION = issue146_contract.CURRENT_PLAN_REVISION
 ISSUE146_DEVICE_RUNNER = "tools/issue146_device.py"
 WRAPPER_SCRIPT = "enodia/tt/bench/run_in_container.sh"
@@ -257,32 +258,35 @@ def trace_interval_seconds(
     return value, "explicit_test_override"
 
 
+def _long_idle_window(plan: Mapping[str, Any]) -> tuple[float, float]:
+    plateau = plan.get("plateau")
+    if not isinstance(plateau, Mapping):
+        raise Issue146Error("Issue #146 plateau is missing")
+    try:
+        return float(plateau["start_seconds"]), float(plateau["end_seconds"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise Issue146Error("Issue #146 long idle window is invalid") from exc
+
+
+def _smoke_idle_window(plan: Mapping[str, Any]) -> tuple[float, float]:
+    scope = plan.get("measurement_scope")
+    smoke = scope.get("smoke_runs") if isinstance(scope, Mapping) else None
+    sample_window = smoke.get("sample_window") if isinstance(smoke, Mapping) else None
+    try:
+        return issue146_contract.parse_smoke_sample_window(sample_window)
+    except ValueError as exc:
+        raise Issue146Error("Issue #146 smoke sample window is invalid") from exc
+
+
 def mode_idle_window(plan: Mapping[str, Any], mode: str) -> tuple[float, float]:
     """Read the host-visible idle window for the requested plan mode."""
     _plan_hash(plan)
     if mode == "long":
-        plateau = plan.get("plateau")
-        if not isinstance(plateau, Mapping):
-            raise Issue146Error("Issue #146 plateau is missing")
-        try:
-            start, end = float(plateau["start_seconds"]), float(plateau["end_seconds"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise Issue146Error("Issue #146 long idle window is invalid") from exc
+        start, end = _long_idle_window(plan)
     elif mode == "smoke":
-        scope = plan.get("measurement_scope")
-        smoke = scope.get("smoke_runs") if isinstance(scope, Mapping) else None
-        sample_window = smoke.get("sample_window") if isinstance(smoke, Mapping) else None
-        if not isinstance(sample_window, str):
-            raise Issue146Error("Issue #146 smoke sample window is missing")
-        match = re.search(
-            r"(\d+(?:\.\d+)?)\s*s\s*<=.*?<\s*(\d+(?:\.\d+)?)\s*s",
-            sample_window,
-        )
-        if match is None:
-            raise Issue146Error("Issue #146 smoke sample window is invalid")
-        start, end = float(match.group(1)), float(match.group(2))
+        start, end = _smoke_idle_window(plan)
     else:
-        raise Issue146Error("Issue #146 mode must be smoke or long")
+        raise Issue146Error(ISSUE146_MODE_ERROR)
     if not math.isfinite(start) or not math.isfinite(end) or start < 0.0 or end <= start:
         raise Issue146Error("Issue #146 idle window must be increasing")
     return start, end
@@ -823,7 +827,7 @@ def run_timing(plan: Mapping[str, Any], mode: str) -> dict[str, Any]:
         target_key, guard_key = "workload_seconds", "guard_seconds"
         diagnostic = True
     else:
-        raise Issue146Error("Issue #146 mode must be smoke or long")
+        raise Issue146Error(ISSUE146_MODE_ERROR)
     if not isinstance(values, Mapping):
         raise Issue146Error(f"Issue #146 {mode} timing is missing")
     try:
@@ -1594,7 +1598,7 @@ def _prepare_run(
     output_dir: Path, run_id: str, options: Issue146RunOptions,
 ) -> _PreparedRun:
     if mode not in {"smoke", "long"}:
-        raise Issue146Error("Issue #146 mode must be smoke or long")
+        raise Issue146Error(ISSUE146_MODE_ERROR)
     timing = run_timing(plan, mode)
     trace_interval, trace_interval_source = trace_interval_seconds(
         plan, options.trace_interval_seconds
