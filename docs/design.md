@@ -2191,8 +2191,8 @@ with zero classified glitches. The run order was C018 → C108 → C081 → C081
 C108 → C018. The complete board-free analysis and interpretation boundaries
 are in the [Issue #146 Doppler conformance archive](measurements/issue146-doppler-conformance/2026-10-21/README.md).
 
-The four regulated runs produced these arithmetic plateau `INPUT_POWER`/board-
-power means and two-sided 99% intervals:
+The four regulated runs produced these arithmetic plateau `INPUT_POWER`
+(board-power) means and two-sided 99% intervals:
 
 | Run | Configuration | Mean W | 99% CI W |
 |---:|---|---:|---|
@@ -2219,9 +2219,7 @@ consistent with the 19.6.0.0 Doppler-slow law: each 1 ms tick uses a 1,000-point
 integer `INPUT_POWER` mean and integrates its error into the arbiter, regulating
 average power around 300 W. Under `doppler_en`, the TDC, TDP, and board-power
 arbiters are disabled; this is average regulation, not a hard cap. The
-108-core current-limit question is withdrawn. The approximately 2 ms value
-above remains a firmware-model recovery estimate, not an instrumented pulse
-measurement.
+108-core current-limit question is withdrawn.
 
 This is one-board conformance of registered observables, not firmware-code-path
 instrumentation or evidence from multiple boards. The full-enodia sustained
