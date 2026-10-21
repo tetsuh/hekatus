@@ -96,9 +96,12 @@ No row was removed from the verdict statistics.
 All 895 raw trace rows carry all four arbiter words. The raw and plateau scopes
 must not be conflated:
 
-- The four regulated raw traces contain four preload rows each with
-  `AICLK_ARB_MAX=0x80546` before the workload/plateau. Those clamp rows are
-  outside the workload and plateau selections.
+- Each regulated raw trace contains four pre-plateau clamp rows with
+  `AICLK_ARB_MAX=0x80546`: three occur before the first launch and one is an
+  early-loaded sample. The early-loaded relative times are 0.286576525 s
+  (run 2), 0.668380628 s (run 3), 0.783952403 s (run 4), and 0.505580697 s
+  (run 5). All four rows are outside the strict `[60, 180)` plateau; they are
+  not all pre-load rows.
 - The 387 regulated plateau rows (97 + 97 + 97 + 96) all have reported index 7
   and arbiter frequency below 1350 MHz. This is a plateau statement, not a
   claim that every regulated raw row has index 7 or a depressed frequency.
