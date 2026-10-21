@@ -3198,8 +3198,8 @@ def _analysis_plan(spec: _PlanSpec) -> dict[str, Any]:
             ],
             "strict_majority": CONTROL_STRICT_MAJORITY_OPERATOR,
             "plan_text_note": (
-                "The immutable revision-6 K1 prose says at least 50 percent; this evaluation "
-                "follows the explicit strict-majority acceptance, so exactly half fails."
+                "The immutable revision-6 K1 prose requires a strict majority (more than 50 percent); "
+                "this evaluation follows the explicit strict-majority acceptance, so exactly half fails."
             ),
         },
     }

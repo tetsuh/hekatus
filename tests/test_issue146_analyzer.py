@@ -351,12 +351,17 @@ def test_issue146_smoke_acceptance_reports_each_item_without_verdict() -> None:
 def test_issue146_plan_bytes_and_canonical_digest_are_revision_six() -> None:
     raw = PLAN_PATH.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == (
-        "d9e1b4b1b73097e7873b9e5fe0a2d3af5c0665990688cb8ecaafbbc5355a1197"
+        "b024dfc33dc9ab132130ccaa429d25b37805d2d472fcb38b549fdd67070cfd5c"
     )
     plan = _plan()
     assert plan["revision_history"][-1]["revision"] == 6
     assert analyzer.plan_sha256(plan) == (
-        "1c46dae48245ee7e12f00f8c3717d6f5101bbae6b978db7c0ddb9b4d7addbf2e"
+        "28a9e96b026f74243ee769ce61436e2c10d1b883c5a84e9bf6306252a85bf324"
+    )
+    analysis_plan = analyzer._analysis_plan(analyzer._plan_spec(plan))
+    assert analysis_plan["control_pair_evaluation"]["plan_text_note"] == (
+        "The immutable revision-6 K1 prose requires a strict majority (more than 50 percent); "
+        "this evaluation follows the explicit strict-majority acceptance, so exactly half fails."
     )
 
 
