@@ -25,6 +25,7 @@ CONTROL_ALLOWED_PAIRS = (
     (EXPECTED_CONTROL_MAX, EXPECTED_CONTROL_AICLK_MHZ),
     (EXPECTED_CONTROL_DIP_MAX, EXPECTED_CONTROL_DIP_AICLK_MHZ),
 )
+CONTROL_STRICT_MAJORITY_OPERATOR = "clamped_count * 2 > sample_count"
 _CONFIDENCE_QUANTILES = {0.99: 0.995, 0.95: 0.975}
 
 
@@ -213,7 +214,7 @@ def control_pair_evaluation(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]
         "invalid_count": invalid_count,
         "clamped_fraction": clamped_count / sample_count if sample_count else None,
         "dip_fraction": dip_count / sample_count if sample_count else None,
-        "strict_majority_operator": "clamped_count * 2 > sample_count",
+        "strict_majority_operator": CONTROL_STRICT_MAJORITY_OPERATOR,
         "strict_majority_pass": (
             bool(sample_count) and invalid_count == 0 and clamped_count * 2 > sample_count
         ),
@@ -520,6 +521,7 @@ def left_held_mean(
 __all__ = [
     "ARBITER_FIELDS",
     "CONTROL_ALLOWED_PAIRS",
+    "CONTROL_STRICT_MAJORITY_OPERATOR",
     "EXPECTED_BUSY_MIN",
     "EXPECTED_CONTROL_AICLK_MHZ",
     "EXPECTED_CONTROL_DIP_AICLK_MHZ",

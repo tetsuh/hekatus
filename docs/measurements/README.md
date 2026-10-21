@@ -72,10 +72,10 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
-## Issue #146 grouped Doppler-slow conformance runner (revision 5)
+## Issue #146 grouped Doppler-slow conformance runner (revision 6)
 
 The Issue #146 planning command is board-free and consumes the immutable
-revision-5 plan without opening a device:
+revision-6 plan without opening a device:
 
 ```bash
 uv run python tools/issue146.py --mode plan
@@ -133,9 +133,18 @@ uv run python tools/analyze_issue146.py --smoke \
   --output out/issue146/smoke-analysis.json
 ```
 
-Revision 5 derives both host and wrapper-companion sampler cadence from
-`measurement_scope.trace_interval_seconds` (1.0 s); an explicit cadence is
-retained only as a named board-free test override and is recorded as such.
+Revision 6 retains the revision-5 host and wrapper-companion sampler cadence
+from `measurement_scope.trace_interval_seconds` (1.0 s); an explicit cadence is
+retained only as a named board-free test override and is recorded as such. The
+C018 control accepts exactly `0x80546/1350` and `0x70545/1343`; every retained
+row must match one of those pairs, and the clamped pair must satisfy the strict
+majority `clamped_count * 2 > sample_count` (exactly half fails). The dip pair
+is reported as an exploratory control dip, not as a physical pulse duration.
+Revision-6 smoke analysis may replay only the pinned revision-5 smoke lineage
+(plan canonical hash `5fc8d7a19533e10117e1b862603e5cb32ca37549b03194367b3396637dbff3ef`,
+harness `78b1b5480c785d492dd82eac99c07f088d734522`, cadence 1.0 s). Replay keeps
+all original plan, record, trace, group, snapshot, identity, and hash metadata
+unchanged and reports acquisition plan 5 separately from evaluation plan 6.
 The regulated R5 residual is the signed value
 `(AICLK_ARB_MAX & 0xffff) - aiclk_mhz`: -1 fails, 0 and 7 pass, and 8 fails.
 Smoke sample-selecting checks use strict points in `10 s <=

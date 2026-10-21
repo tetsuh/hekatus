@@ -6,7 +6,10 @@ import pytest
 
 from tests.test_issue146_analyzer import _plan, _record, _rehash, _trace_row
 from tools import analyze_issue146 as analyzer
-from tools.issue146_analysis import control_pair_evaluation
+from tools.issue146_analysis import (
+    CONTROL_STRICT_MAJORITY_OPERATOR,
+    control_pair_evaluation,
+)
 
 REVISION5_PLAN_SHA256 = "5fc8d7a19533e10117e1b862603e5cb32ca37549b03194367b3396637dbff3ef"
 REVISION5_HARNESS_COMMIT = "78b1b5480c785d492dd82eac99c07f088d734522"
@@ -151,10 +154,34 @@ def _rev5_replay_record() -> dict[str, object]:
     return record
 
 
+def test_issue146_revision6_report_metadata_matches_control_policy() -> None:
+    reports = []
+    for configuration_id in ("C018", "C081", "C108"):
+        record = _record(configuration_id, 1)
+        run = record["run"]
+        assert isinstance(run, dict)
+        run["mode"] = "smoke"
+        run["observed_duration_seconds"] = 40.0
+        reports.append(record)
+    result = analyzer.analyze_smoke(reports, plan=_plan())
+    metadata = {
+        report["run"]["configuration_id"]: report["run"]["evaluation"]
+        for report in result["runs"]
+    }
+    assert metadata["C018"]["control_majority_operator"] == CONTROL_STRICT_MAJORITY_OPERATOR
+    assert metadata["C018"]["control_pair_validity_requirement"] == "invalid_count == 0"
+    for configuration_id in ("C081", "C108"):
+        assert metadata[configuration_id]["control_majority_operator"] is None
+        assert metadata[configuration_id]["control_pair_validity_requirement"] is None
+
+
 def test_issue146_revision6_replays_only_known_revision5_smoke_lineage() -> None:
     result = analyzer.analyze_smoke([_rev5_replay_record()], plan=_plan())
     report = result["runs"][0]["run"]
-    assert not any(field == "plan_sha256" for field in report["missing_fields"])
+    assert report["missing_fields"] == ["sample_count", "sample_count.R6", "sample_count.raw"]
+    gates = [item for item in result["runs"][0]["acceptance"] if item["gate"] is True]
+    assert len(gates) == 4
+    assert all(item["pass"] is True for item in gates)
     assert report["acquisition"]["plan_revision"] == 5
     assert report["acquisition"]["plan_sha256"] == REVISION5_PLAN_SHA256
     assert report["evaluation"]["plan_revision"] == 6
@@ -201,3 +228,13 @@ def test_issue146_revision6_replay_preserves_artifact_hash_failures() -> None:
     trace["sha256"] = "0" * 64
     result = analyzer.analyze_smoke([record], plan=_plan())
     assert any("trace_sha256" in field for field in result["runs"][0]["run"]["missing_fields"])
+
+
+def test_issue146_revision6_replay_preserves_trace_clock_binding_failures() -> None:
+    record = _rev5_replay_record()
+    trace = record["trace"]
+    assert isinstance(trace, dict)
+    trace["run_end_monotonic_ns"] = 39_000_000_000
+    _rehash(record)
+    result = analyzer.analyze_smoke([record], plan=_plan())
+    assert "telemetry.trace.run_end_monotonic_ns.binding" in result["runs"][0]["run"]["missing_fields"]

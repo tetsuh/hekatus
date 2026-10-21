@@ -31,6 +31,7 @@ from tools import issue137 as issue137_runner
 from tools.issue146_analysis import (
     ARBITER_FIELDS,
     CONTROL_ALLOWED_PAIRS,
+    CONTROL_STRICT_MAJORITY_OPERATOR,
     EXPECTED_BUSY_MIN,
     EXPECTED_ENABLED_MAX,
     EXPECTED_ENABLED_MIN,
@@ -592,6 +593,21 @@ def _revision5_smoke_replay_eligible(record: Mapping[str, Any]) -> bool:
     )
 
 
+def _make_record_input(
+    record: Mapping[str, Any],
+    *,
+    base_dir: Path | None,
+    name: str,
+    allow_revision5_smoke_replay: bool,
+) -> _RecordInput:
+    return _RecordInput(
+        record,
+        base_dir,
+        name,
+        allow_revision5_smoke_replay and _revision5_smoke_replay_eligible(record),
+    )
+
+
 def _record_inputs(
     records: Sequence[Mapping[str, Any] | str | Path],
     *,
@@ -605,46 +621,44 @@ def _record_inputs(
             nested = payload.get("runs")
             if isinstance(nested, list):
                 result.extend(
-                    _RecordInput(
+                    _make_record_input(
                         run,
-                        path.parent,
-                        path.name,
-                        allow_revision5_smoke_replay and _revision5_smoke_replay_eligible(run),
+                        base_dir=path.parent,
+                        name=path.name,
+                        allow_revision5_smoke_replay=allow_revision5_smoke_replay,
                     )
                     for run in nested
                     if isinstance(run, Mapping)
                 )
             else:
                 result.append(
-                    _RecordInput(
+                    _make_record_input(
                         payload,
-                        path.parent,
-                        path.name,
-                        allow_revision5_smoke_replay
-                        and _revision5_smoke_replay_eligible(payload),
+                        base_dir=path.parent,
+                        name=path.name,
+                        allow_revision5_smoke_replay=allow_revision5_smoke_replay,
                     )
                 )
         elif isinstance(item, Mapping):
             nested = item.get("runs")
             if isinstance(nested, list):
                 result.extend(
-                    _RecordInput(
+                    _make_record_input(
                         run,
-                        None,
-                        f"record-{index + 1}",
-                        allow_revision5_smoke_replay and _revision5_smoke_replay_eligible(run),
+                        base_dir=None,
+                        name=f"record-{index + 1}",
+                        allow_revision5_smoke_replay=allow_revision5_smoke_replay,
                     )
                     for run in nested
                     if isinstance(run, Mapping)
                 )
             else:
                 result.append(
-                    _RecordInput(
+                    _make_record_input(
                         item,
-                        None,
-                        f"record-{index + 1}",
-                        allow_revision5_smoke_replay
-                        and _revision5_smoke_replay_eligible(item),
+                        base_dir=None,
+                        name=f"record-{index + 1}",
+                        allow_revision5_smoke_replay=allow_revision5_smoke_replay,
                     )
                 )
         else:
@@ -2879,13 +2893,12 @@ def _run_report(
     eligible = expected_candidate and not missing and bool(row_analysis.criteria)
     environment = record.get("environment")
     acquisition_hash = record.get("plan_sha256")
-    acquisition_revision = (
-        REVISION5_REPLAY_PLAN_REVISION
-        if revision5_replay
-        else CURRENT_PLAN_REVISION
-        if acquisition_hash == spec.plan_sha256
-        else None
-    )
+    if revision5_replay:
+        acquisition_revision = REVISION5_REPLAY_PLAN_REVISION
+    elif acquisition_hash == spec.plan_sha256:
+        acquisition_revision = CURRENT_PLAN_REVISION
+    else:
+        acquisition_revision = None
     return {
         "run_id": _record_value(record, ("run", "run_id"), ("run_id",)) or name,
         "acquisition": {
@@ -2899,7 +2912,14 @@ def _run_report(
         "evaluation": {
             "plan_revision": CURRENT_PLAN_REVISION,
             "plan_sha256": spec.plan_sha256,
-            "control_majority_operator": "dip fraction < 0.5",
+            "control_majority_operator": (
+                CONTROL_STRICT_MAJORITY_OPERATOR
+                if configuration_id == "C018"
+                else None
+            ),
+            "control_pair_validity_requirement": (
+                "invalid_count == 0" if configuration_id == "C018" else None
+            ),
         },
         "run_number": run_number,
         "configuration_id": configuration_id,
@@ -3175,7 +3195,7 @@ def _analysis_plan(spec: _PlanSpec) -> dict[str, Any]:
                 {"aiclk_arb_max_raw": hex(word), "aiclk_mhz": aiclk}
                 for word, aiclk in CONTROL_ALLOWED_PAIRS
             ],
-            "strict_majority": "clamped_count * 2 > sample_count",
+            "strict_majority": CONTROL_STRICT_MAJORITY_OPERATOR,
             "plan_text_note": (
                 "The immutable revision-6 K1 prose says at least 50 percent; this evaluation "
                 "follows the explicit strict-majority acceptance, so exactly half fails."
@@ -3542,17 +3562,23 @@ def _smoke_index_criterion(
         index_pass = evaluation["strict_majority_pass"]
     else:
         index_pass = all(index in {7, 8} for index in indices)
-    reason = index_error or (f"no samples in {SMOKE_WINDOW_LABEL}" if not indices else None)
+    if index_error:
+        reason = index_error
+    elif not indices:
+        reason = f"no samples in {SMOKE_WINDOW_LABEL}"
+    else:
+        reason = None
     extra: dict[str, Any] = {}
-    if configuration_id == "C018" and not index_error and indices:
-        evaluation = control_pair_evaluation(rows_10_40)
-        reason = (
-            "control pair outside the exact allowance"
-            if evaluation["invalid_count"]
-            else "clamped_count * 2 is not greater than sample_count"
-            if not evaluation["strict_majority_pass"]
-            else None
-        )
+    evaluation = (
+        control_pair_evaluation(rows_10_40)
+        if configuration_id == "C018" and not index_error and indices
+        else None
+    )
+    if evaluation is not None:
+        if evaluation["invalid_count"]:
+            reason = "control pair outside the exact allowance"
+        elif not evaluation["strict_majority_pass"]:
+            reason = "clamped_count * 2 is not greater than sample_count"
         extra.update(
             sample_count=evaluation["sample_count"],
             clamped_count=evaluation["clamped_count"],
@@ -3691,6 +3717,7 @@ __all__ = [
     "ANALYSIS_SCHEMA",
     "ARBITER_FIELDS",
     "CONTROL_ALLOWED_PAIRS",
+    "CONTROL_STRICT_MAJORITY_OPERATOR",
     "CURRENT_PLAN_REVISION",
     "DEFAULT_PLAN_PATH",
     "GROUPS_SCHEMA",
