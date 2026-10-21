@@ -78,6 +78,7 @@ TRACE_COLUMNS = power_trace_issue146.ISSUE146_POWER_TRACE_COLUMNS
 TRACE_SCHEMA = power_trace_issue146.ISSUE146_POWER_TRACE_SCHEMA
 PLAN_PROVENANCE = power_trace_issue146.ISSUE146_UNIT_PROVENANCE
 SMOKE_WINDOW_LABEL = "[10,40)"
+STRICT_HALF_OPEN_WINDOW_SELECTION = "strict half-open window"
 REGULATED_SMOKE_CRITERION = "regulated_load_diagnostics_[10,40)"
 SMOKE_DIAGNOSTIC_NAME = REGULATED_SMOKE_CRITERION
 R5_SIGNED_MIN_MHZ = 0.0
@@ -2267,7 +2268,7 @@ def _control_dip_facts(
     window = {
         "start_seconds": window_start_seconds,
         "end_seconds": window_end_seconds,
-        "selection": "strict half-open window",
+        "selection": STRICT_HALF_OPEN_WINDOW_SELECTION,
     }
     if evaluation["invalid_count"]:
         return {
@@ -2344,7 +2345,7 @@ def _control_dips_not_applicable(
         "window": {
             "start_seconds": window_start_seconds,
             "end_seconds": window_end_seconds,
-            "selection": "strict half-open window",
+            "selection": STRICT_HALF_OPEN_WINDOW_SELECTION,
         },
         "sample_count": 0,
         "dip_count": 0,
@@ -2397,7 +2398,7 @@ def _exploratory(
                 "window": {
                     "start_seconds": dip_start,
                     "end_seconds": dip_end,
-                    "selection": "strict half-open window",
+                    "selection": STRICT_HALF_OPEN_WINDOW_SELECTION,
                 },
                 "sample_count": 0,
                 "dip_count": 0,
@@ -2412,7 +2413,7 @@ def _exploratory(
             "window": {
                 "start_seconds": dip_start,
                 "end_seconds": dip_end,
-                "selection": "strict half-open window",
+                "selection": STRICT_HALF_OPEN_WINDOW_SELECTION,
             },
             "sample_count": 0,
             "median_current_a": None,
@@ -3539,54 +3540,62 @@ def _smoke_residual_criterion(
     )
 
 
+def _smoke_index_values(
+    rows_10_40: Sequence[Mapping[str, Any]],
+) -> tuple[list[int], str | None]:
+    indices: list[int] = []
+    for index, row in enumerate(rows_10_40):
+        if not isinstance(row, Mapping) or not all(field in row for field in ARBITER_FIELDS):
+            return indices, f"arbiter words are missing at row {index}"
+        try:
+            decoded = decode_arbiter_row(row)
+        except (KeyError, TypeError, ValueError) as exc:
+            return indices, f"R7 inputs are malformed at row {index}: {exc}"
+        indices.append(decoded["aiclk_arb_max_index"])
+    return indices, None
+
+
+def _smoke_control_pair_result(
+    rows_10_40: Sequence[Mapping[str, Any]],
+    indices: Sequence[int],
+    index_error: str | None,
+) -> tuple[bool | None, str | None, dict[str, Any]]:
+    if index_error:
+        return None, index_error, {}
+    if not indices:
+        return None, f"no samples in {SMOKE_WINDOW_LABEL}", {}
+    evaluation = control_pair_evaluation(rows_10_40)
+    if evaluation["invalid_count"]:
+        reason = "control pair outside the exact allowance"
+    elif not evaluation["strict_majority_pass"]:
+        reason = "clamped_count * 2 is not greater than sample_count"
+    else:
+        reason = None
+    extra = {
+        "sample_count": evaluation["sample_count"],
+        "clamped_count": evaluation["clamped_count"],
+        "dip_count": evaluation["dip_count"],
+        "invalid_pair_count": evaluation["invalid_count"],
+        "dip_fraction": evaluation["dip_fraction"],
+        "strict_majority_operator": evaluation["strict_majority_operator"],
+    }
+    return evaluation["strict_majority_pass"], reason, extra
+
+
 def _smoke_index_criterion(
     rows_10_40: Sequence[Mapping[str, Any]], configuration_id: str
 ) -> dict[str, Any]:
-    indices: list[int] = []
-    index_error: str | None = None
-    decoded_rows: list[dict[str, Any]] = []
-    for index, row in enumerate(rows_10_40):
-        if not isinstance(row, Mapping) or not all(field in row for field in ARBITER_FIELDS):
-            index_error = f"arbiter words are missing at row {index}"
-            break
-        try:
-            decoded_rows.append(decode_arbiter_row(row))
-            indices.append(decoded_rows[-1]["aiclk_arb_max_index"])
-        except (KeyError, TypeError, ValueError) as exc:
-            index_error = f"R7 inputs are malformed at row {index}: {exc}"
-            break
-    if index_error or not indices:
-        index_pass: bool | None = None
-    elif configuration_id == "C018":
-        evaluation = control_pair_evaluation(rows_10_40)
-        index_pass = evaluation["strict_majority_pass"]
-    else:
-        index_pass = all(index in {7, 8} for index in indices)
-    if index_error:
-        reason = index_error
-    elif not indices:
-        reason = f"no samples in {SMOKE_WINDOW_LABEL}"
-    else:
-        reason = None
-    extra: dict[str, Any] = {}
-    evaluation = (
-        control_pair_evaluation(rows_10_40)
-        if configuration_id == "C018" and not index_error and indices
-        else None
-    )
-    if evaluation is not None:
-        if evaluation["invalid_count"]:
-            reason = "control pair outside the exact allowance"
-        elif not evaluation["strict_majority_pass"]:
-            reason = "clamped_count * 2 is not greater than sample_count"
-        extra.update(
-            sample_count=evaluation["sample_count"],
-            clamped_count=evaluation["clamped_count"],
-            dip_count=evaluation["dip_count"],
-            invalid_pair_count=evaluation["invalid_count"],
-            dip_fraction=evaluation["dip_fraction"],
-            strict_majority_operator=evaluation["strict_majority_operator"],
+    indices, index_error = _smoke_index_values(rows_10_40)
+    if configuration_id == "C018":
+        index_pass, reason, extra = _smoke_control_pair_result(
+            rows_10_40, indices, index_error
         )
+    elif index_error:
+        index_pass, reason, extra = None, index_error, {}
+    elif not indices:
+        index_pass, reason, extra = None, f"no samples in {SMOKE_WINDOW_LABEL}", {}
+    else:
+        index_pass, reason, extra = all(index in {7, 8} for index in indices), None, {}
     return _criterion(
         f"R7_index_distribution_{SMOKE_WINDOW_LABEL}",
         index_pass,
