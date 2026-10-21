@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from tests.test_issue146_analyzer import _plan, _record
+import pytest
+
+from tests.test_issue146_analyzer import _plan, _record, _records
 from tests.test_issue146_runner import _environment
 from tools import analyze_issue146 as analyzer
 from tools import issue146
@@ -74,6 +76,18 @@ def test_issue146_revision5_smoke_diagnostics_are_not_a_gate() -> None:
     assert result["power_r1"] < 0.0
 
 
+def test_issue146_revision5_wrapper_companion_keeps_plan_cadence_for_host_override() -> None:
+    environment = issue146._execution_environment(
+        {},
+        guard_seconds=90.0,
+        requested_run_id="issue146-cadence-capture",
+        trace_interval_seconds=0.001,
+        companion_interval_seconds=1.0,
+    )
+    assert environment["HEKATUS_TT_TELEMETRY_MODE"] == "explicit"
+    assert environment["HEKATUS_TT_TELEMETRY_INTERVAL_S"] == "1.0"
+
+
 def test_issue146_revision5_plan_derives_cadence_and_explicit_override(tmp_path) -> None:
     plan = issue146.load_plan()
     assert issue146.plan_trace_interval_seconds(plan) == 1.0
@@ -91,6 +105,35 @@ def test_issue146_revision5_plan_derives_cadence_and_explicit_override(tmp_path)
     assert record["trace_cadence"]["host_sampler_interval_seconds"] == 0.001
     assert record["trace_cadence"]["test_override"] is True
     assert record["provenance"]["trace_interval_source"] == "explicit_test_override"
+
+
+def test_issue146_revision5_producer_rejects_long_cadence_override(tmp_path) -> None:
+    plan = issue146.load_plan()
+    config = issue146.configuration(plan, "C018")
+    with pytest.raises(issue146.Issue146Error, match="long.*cadence override"):
+        issue146.run_one(
+            plan=plan,
+            configuration=config,
+            mode="long",
+            output_dir=tmp_path,
+            run_id="issue146-long-override",
+            options=issue146.Issue146RunOptions(
+                run_number=1,
+                approve_long_run=True,
+                trace_interval_seconds=0.001,
+            ),
+        )
+
+
+def test_issue146_revision5_forged_long_override_is_not_qualified() -> None:
+    records = _records()
+    records[0]["trace_cadence"]["test_override"] = True
+    result = analyzer.analyze_runs(records, plan=_plan())
+    assert result["classification"] == "not_evaluable"
+    assert any(
+        "trace_cadence.long_test_override" in field
+        for field in result["runs"][0]["missing_fields"]
+    )
 
 
 def test_issue146_revision5_cadence_provenance_rejects_drift() -> None:

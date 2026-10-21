@@ -743,6 +743,9 @@ def _record_cadence_errors(record: Mapping[str, Any], spec: _PlanSpec) -> list[s
         errors.append("trace_cadence.planned_interval_seconds.binding")
     if not math.isclose(companion, spec.trace_interval_seconds, rel_tol=0.0, abs_tol=1e-12):
         errors.append("trace_cadence.wrapper_companion_interval_seconds.binding")
+    run = record.get("run") if isinstance(record.get("run"), Mapping) else {}
+    if cadence.get("test_override") and run.get("mode") == "long":
+        errors.append("trace_cadence.long_test_override")
     if not cadence.get("test_override") and not math.isclose(
         host, spec.trace_interval_seconds, rel_tol=0.0, abs_tol=1e-12
     ):

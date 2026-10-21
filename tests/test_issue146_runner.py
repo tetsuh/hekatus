@@ -247,6 +247,28 @@ def test_issue146_six_long_records_are_accepted_by_canonical_analyzer(tmp_path: 
                     ready.set()
             return value
 
+        def fast_trace_sampler(
+            stop_event,
+            captures,
+            *,
+            capture_fn,
+            interval_seconds,
+            publication_state,
+            count=in_run_captures,
+            ready_event=ready,
+            required=required_in_run_captures,
+        ):
+            del interval_seconds
+            while not stop_event.is_set() and count[0] < required:
+                value = capture_fn(stage="in_run")
+                with publication_state.lock:
+                    if publication_state.revoked:
+                        publication_state.late_captures.append(value)
+                    else:
+                        captures.append(value)
+            ready_event.set()
+            stop_event.wait()
+
         def command_runner(
             *_args: object, result=result, run_number=run_number, ready=ready, **_kwargs: object
         ):
@@ -272,7 +294,8 @@ def test_issue146_six_long_records_are_accepted_by_canonical_analyzer(tmp_path: 
             options=issue146.Issue146RunOptions(
                 run_number=run_number, approve_long_run=True, command_runner=command_runner,
                 environment=environment, capture_fn=deterministic_capture,
-                trace_path=tmp_path / f"trace-{run_number}.csv", trace_interval_seconds=0.001,
+                trace_sampler_fn=fast_trace_sampler,
+                trace_path=tmp_path / f"trace-{run_number}.csv",
                 preceding_pre_snapshot=previous,
                 cooldown_readings=({"power_w": 50, "asic_temp_c": 60},) if run_number > 1 else (),
                 cooldown_elapsed_seconds=1 if run_number > 1 else 0,

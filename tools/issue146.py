@@ -165,6 +165,7 @@ class Issue146RunOptions:
     # override rather than silently becoming production configuration.
     trace_interval_seconds: float | None = None
     capture_fn: Callable[..., dict[str, Any]] | None = None
+    trace_sampler_fn: Callable[..., Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -1598,6 +1599,8 @@ def _prepare_run(
     trace_interval, trace_interval_source = trace_interval_seconds(
         plan, options.trace_interval_seconds
     )
+    if mode == "long" and trace_interval_source == "explicit_test_override":
+        raise Issue146Error("long Issue #146 runs cannot use a trace cadence override")
     try:
         safe_id = validate_run_id(run_id)
     except ValueError as exc:
@@ -1766,11 +1769,12 @@ def _start_trace_sampler(
     state: _ExecutionState,
     interval: float,
     capture_fn: Callable[..., dict[str, Any]],
+    sampler_fn: Callable[..., Any] | None = None,
 ) -> float:
     if not math.isfinite(interval) or interval <= 0.0:
         raise Issue146Error("trace interval must be positive")
     state.trace_thread = threading.Thread(
-        target=issue137.sample_issue137_trace,
+        target=sampler_fn or issue137.sample_issue137_trace,
         args=(state.trace_stop, state.captures),
         kwargs={"capture_fn": capture_fn, "interval_seconds": interval, "publication_state": state.publication_state},
         name="issue146-power-trace", daemon=True,
@@ -1800,6 +1804,9 @@ def _run_command(
                 guard_seconds=prepared.timing["guard_seconds"],
                 requested_run_id=prepared.safe_run_id,
                 trace_interval_seconds=prepared.trace_interval_seconds,
+                companion_interval_seconds=prepared.record["trace_cadence"][
+                    "planned_interval_seconds"
+                ],
             ),
         )
         state.stdout = getattr(state.completed, "stdout", None)
@@ -1859,6 +1866,7 @@ def _execution_environment(
     guard_seconds: float,
     requested_run_id: str,
     trace_interval_seconds: float,
+    companion_interval_seconds: float | None = None,
 ) -> dict[str, str]:
     values = dict(os.environ)
     values["HEKATUS_TT_RUNNER"] = ISSUE146_DEVICE_RUNNER
@@ -1870,7 +1878,11 @@ def _execution_environment(
     # Issue #137 default unchanged; this explicit environment binding is what
     # makes the Issue #146 companion trace use the same plan-derived interval.
     values["HEKATUS_TT_TELEMETRY_MODE"] = "explicit"
-    values["HEKATUS_TT_TELEMETRY_INTERVAL_S"] = str(trace_interval_seconds)
+    values["HEKATUS_TT_TELEMETRY_INTERVAL_S"] = str(
+        trace_interval_seconds
+        if companion_interval_seconds is None
+        else companion_interval_seconds
+    )
     if isinstance(environment, Mapping):
         digest = _environment_digest(environment)
         if digest:
@@ -2417,7 +2429,12 @@ def _execute_run(prepared: _PreparedRun, *, plan: Mapping[str, Any], configurati
     if failed is not None:
         return failed
     interval = (
-        _start_trace_sampler(state, prepared.trace_interval_seconds, capture_fn)
+        _start_trace_sampler(
+            state,
+            prepared.trace_interval_seconds,
+            capture_fn,
+            options.trace_sampler_fn,
+        )
         if prepared.trace_path is not None
         else prepared.trace_interval_seconds
     )
