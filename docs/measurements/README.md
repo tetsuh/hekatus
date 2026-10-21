@@ -72,10 +72,10 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
-## Issue #146 grouped Doppler-slow conformance runner (revision 4)
+## Issue #146 grouped Doppler-slow conformance runner (revision 5)
 
 The Issue #146 planning command is board-free and consumes the immutable
-revision-4 plan without opening a device:
+revision-5 plan without opening a device:
 
 ```bash
 uv run python tools/issue146.py --mode plan
@@ -133,12 +133,26 @@ uv run python tools/analyze_issue146.py --smoke \
   --output out/issue146/smoke-analysis.json
 ```
 
+Revision 5 derives both host and wrapper-companion sampler cadence from
+`measurement_scope.trace_interval_seconds` (1.0 s); an explicit cadence is
+retained only as a named board-free test override and is recorded as such.
+The regulated R5 residual is the signed value
+`(AICLK_ARB_MAX & 0xffff) - aiclk_mhz`: -1 fails, 0 and 7 pass, and 8 fails.
 Smoke sample-selecting checks use strict points in `10 s <=
-(timestamp_monotonic_ns - first_launch_start_monotonic_ns) < 40 s` for current,
-board-power sample SD, R5 residual, and R7 distribution. Rows captured after
-that workload window remain in the raw trace as diagnostics. Arbiter-word
-presence and `ENABLED_MAX_ARB == 0x1d1` are checked on every captured row.
-Smoke output is explicitly diagnostic and never contributes verdict evidence.
+(timestamp_monotonic_ns - first_launch_start_monotonic_ns) < 40 s` for R5 and
+R7. Exactly four smoke gates are reported: the [10,40) idle fraction, all-row
+four-word presence plus `ENABLED_MAX_ARB == 0x1d1`, signed R5, and R7. One
+separate reported diagnostic contains minimum current, the count below 150 A,
+and board-power mean/sample SD plus lag-1 `r1`; those observations never fail a
+gate or request plan revision. Rows captured after that workload window remain
+in the raw trace as diagnostics. Smoke output is explicitly diagnostic and
+never contributes verdict evidence. Regulated-run exploratory output includes
+strict current dips over [60,180) (or [10,40) for smoke), their board/ASIC
+power, timestamps, and raw group-boundary correspondence without a clustering
+cutoff or causal claim. The analyzer CLI is unchanged: use `--smoke` for
+this five-item smoke report and the normal invocation for long-run criteria.
+New report fields include `trace_cadence`, signed R5 min/max fields,
+`power_r1`, and exploratory `current_dips`.
 Failed, timed-out, missing, or identity-mismatched device artifacts are kept
 as diagnostics rather than converted into accepted measurements. Board-free
 pytest coverage uses fake capture/clock/TTNN seams and inert local wrapper
