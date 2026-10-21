@@ -110,6 +110,11 @@ def test_issue146_revision5_plan_derives_cadence_and_explicit_override(tmp_path)
 def test_issue146_revision5_producer_rejects_long_cadence_override(tmp_path) -> None:
     plan = issue146.load_plan()
     config = issue146.configuration(plan, "C018")
+    options = issue146.Issue146RunOptions(
+        run_number=1,
+        approve_long_run=True,
+        trace_interval_seconds=0.001,
+    )
     with pytest.raises(issue146.Issue146Error, match="long.*cadence override"):
         issue146.run_one(
             plan=plan,
@@ -117,12 +122,20 @@ def test_issue146_revision5_producer_rejects_long_cadence_override(tmp_path) -> 
             mode="long",
             output_dir=tmp_path,
             run_id="issue146-long-override",
-            options=issue146.Issue146RunOptions(
-                run_number=1,
-                approve_long_run=True,
-                trace_interval_seconds=0.001,
-            ),
+            options=options,
         )
+
+
+def test_issue146_revision5_forged_top_level_long_override_is_not_qualified() -> None:
+    record = _record("C018", 1)
+    record["mode"] = "long"
+    record.pop("run")
+    record["trace_cadence"]["test_override"] = True
+    result = analyzer.analyze_runs([record], plan=_plan())
+    assert any(
+        "trace_cadence.long_test_override" in field
+        for field in result["runs"][0]["missing_fields"]
+    )
 
 
 def test_issue146_revision5_forged_long_override_is_not_qualified() -> None:
