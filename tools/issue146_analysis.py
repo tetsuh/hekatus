@@ -18,6 +18,13 @@ EXPECTED_ENABLED_MIN = 0x3
 EXPECTED_ENABLED_MAX = 0x1D1
 EXPECTED_BUSY_MIN = 0x10546
 EXPECTED_CONTROL_MAX = 0x80546
+EXPECTED_CONTROL_AICLK_MHZ = 1350.0
+EXPECTED_CONTROL_DIP_MAX = 0x70545
+EXPECTED_CONTROL_DIP_AICLK_MHZ = 1343.0
+CONTROL_ALLOWED_PAIRS = (
+    (EXPECTED_CONTROL_MAX, EXPECTED_CONTROL_AICLK_MHZ),
+    (EXPECTED_CONTROL_DIP_MAX, EXPECTED_CONTROL_DIP_AICLK_MHZ),
+)
 _CONFIDENCE_QUANTILES = {0.99: 0.995, 0.95: 0.975}
 
 
@@ -173,6 +180,44 @@ def decode_arbiter_row(row: Mapping[str, Any]) -> dict[str, int]:
         "enabled_max_arb": enabled_max,
         "aiclk_arb_min_raw_int": minimum,
         "aiclk_arb_max_raw_int": maximum,
+    }
+
+
+def classify_control_pair(row: Mapping[str, Any]) -> str | None:
+    """Classify one C018 AICLK pair using the exact revision-6 allowance."""
+    try:
+        arbiter = decode_arbiter_row(row)
+        aiclk = finite(row.get("aiclk_mhz"), field="AICLK")
+    except Issue146AnalysisError:
+        return None
+    pair = (arbiter["aiclk_arb_max_raw_int"], aiclk)
+    if pair == CONTROL_ALLOWED_PAIRS[0]:
+        return "clamped"
+    if pair == CONTROL_ALLOWED_PAIRS[1]:
+        return "dip"
+    return None
+
+
+def control_pair_evaluation(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Evaluate all C018 control pairs and the strict clamped majority."""
+    kinds = [classify_control_pair(row) for row in rows]
+    sample_count = len(kinds)
+    clamped_count = kinds.count("clamped")
+    dip_count = kinds.count("dip")
+    invalid_count = kinds.count(None)
+    return {
+        "status": "reported" if sample_count else "not_evaluable",
+        "sample_count": sample_count,
+        "clamped_count": clamped_count,
+        "dip_count": dip_count,
+        "invalid_count": invalid_count,
+        "clamped_fraction": clamped_count / sample_count if sample_count else None,
+        "dip_fraction": dip_count / sample_count if sample_count else None,
+        "strict_majority_operator": "clamped_count * 2 > sample_count",
+        "strict_majority_pass": (
+            bool(sample_count) and invalid_count == 0 and clamped_count * 2 > sample_count
+        ),
+        "kinds": kinds,
     }
 
 
@@ -474,12 +519,18 @@ def left_held_mean(
 
 __all__ = [
     "ARBITER_FIELDS",
+    "CONTROL_ALLOWED_PAIRS",
     "EXPECTED_BUSY_MIN",
+    "EXPECTED_CONTROL_AICLK_MHZ",
+    "EXPECTED_CONTROL_DIP_AICLK_MHZ",
+    "EXPECTED_CONTROL_DIP_MAX",
     "EXPECTED_CONTROL_MAX",
     "EXPECTED_ENABLED_MAX",
     "EXPECTED_ENABLED_MIN",
     "GDDR_FIELDS",
     "Issue146AnalysisError",
+    "classify_control_pair",
+    "control_pair_evaluation",
     "current_dip_facts",
     "decode_arbiter_row",
     "decode_gddr_row",

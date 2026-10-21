@@ -20,8 +20,8 @@ BDF = "0000:09:00.0"
 
 def test_issue146_plan_order_timing_and_command_are_bound() -> None:
     plan = issue146.load_plan(PLAN)
-    assert plan["revision_history"][-1]["revision"] == 5
-    assert issue146.build_planning_record(plan)["plan_revision"] == 5
+    assert plan["revision_history"][-1]["revision"] == 6
+    assert issue146.build_planning_record(plan)["plan_revision"] == 6
     assert issue146.long_run_order(plan) == ["C018", "C108", "C081", "C081", "C108", "C018"]
     assert issue146.run_timing(plan, "long") == {
         "load_seconds": 180.0,

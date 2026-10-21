@@ -220,7 +220,7 @@ def _canonical_plan_hash(plan: Mapping[str, Any]) -> str:
 def _plan_hash(plan: Mapping[str, Any]) -> str:
     digest = _canonical_plan_hash(plan)
     if digest != AUTHORITATIVE_PLAN_CANONICAL_SHA256:
-        raise Issue146Error("Issue #146 plan is not the immutable owner revision 5")
+        raise Issue146Error("Issue #146 plan is not the immutable owner revision 6")
     return digest
 
 
@@ -694,12 +694,12 @@ def _load_plan_path(path: Path) -> Path:
 
 
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
-    """Load the exact immutable owner revision-5 plan without changing bytes."""
+    """Load the exact immutable owner revision-6 plan without changing bytes."""
     source = _load_plan_path(Path(path))
     try:
         raw = source.read_bytes()
         if hashlib.sha256(raw).hexdigest() != AUTHORITATIVE_PLAN_RAW_SHA256:
-            raise Issue146Error("Issue #146 plan bytes are not the immutable owner revision 5")
+            raise Issue146Error("Issue #146 plan bytes are not the immutable owner revision 6")
         payload = json.loads(raw.decode("utf-8"))
     except Issue146Error:
         raise
@@ -791,7 +791,7 @@ def long_run_order(plan: Mapping[str, Any]) -> list[str]:
         raise Issue146Error("Issue #146 long-run order is missing")
     expected = ["C018", "C108", "C081", "C081", "C108", "C018"]
     if order != expected:
-        raise Issue146Error("Issue #146 long-run order is not the owner revision-5 order")
+        raise Issue146Error("Issue #146 long-run order is not the owner revision-6 order")
     return list(order)
 
 
@@ -837,7 +837,7 @@ def run_timing(plan: Mapping[str, Any], mode: str) -> dict[str, Any]:
         raise Issue146Error(f"Issue #146 {mode} timing is invalid") from exc
     expected = (40.0, 90.0) if mode == "smoke" else (180.0, 230.0)
     if (target, guard) != expected:
-        raise Issue146Error(f"Issue #146 {mode} timing does not match revision 5")
+        raise Issue146Error(f"Issue #146 {mode} timing does not match revision 6")
     if guard < target + 40.0 + DEFAULT_OVERRUN_LIMIT_SECONDS:
         raise Issue146Error("Issue #146 guard does not cover runner margin and overrun")
     return {"load_seconds": target, "guard_seconds": guard, "diagnostic_only": diagnostic}
@@ -1270,7 +1270,7 @@ def _cooldown_settings(plan: Mapping[str, Any]) -> tuple[float, float, float]:
     if (cap, power_tolerance, temperature_tolerance) != (
         COOLDOWN_CAP_SECONDS, COOLDOWN_POWER_TOLERANCE_W, COOLDOWN_TEMPERATURE_TOLERANCE_C
     ):
-        raise Issue146Error("Issue #146 cooldown settings do not match revision 5")
+        raise Issue146Error("Issue #146 cooldown settings do not match revision 6")
     return cap, power_tolerance, temperature_tolerance
 
 

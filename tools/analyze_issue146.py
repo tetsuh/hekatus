@@ -30,11 +30,13 @@ from tools import analyze_issue137 as issue137_analyzer
 from tools import issue137 as issue137_runner
 from tools.issue146_analysis import (
     ARBITER_FIELDS,
+    CONTROL_ALLOWED_PAIRS,
     EXPECTED_BUSY_MIN,
-    EXPECTED_CONTROL_MAX,
     EXPECTED_ENABLED_MAX,
     EXPECTED_ENABLED_MIN,
     Issue146AnalysisError,
+    classify_control_pair,
+    control_pair_evaluation,
     current_dip_facts,
     decode_arbiter_row,
     decode_gddr_row,
@@ -79,6 +81,10 @@ REGULATED_SMOKE_CRITERION = "regulated_load_diagnostics_[10,40)"
 SMOKE_DIAGNOSTIC_NAME = REGULATED_SMOKE_CRITERION
 R5_SIGNED_MIN_MHZ = 0.0
 R5_SIGNED_MAX_MHZ = 7.0
+REVISION5_REPLAY_PLAN_REVISION = 5
+REVISION5_REPLAY_PLAN_SHA256 = "5fc8d7a19533e10117e1b862603e5cb32ca37549b03194367b3396637dbff3ef"
+REVISION5_REPLAY_HARNESS_COMMIT = "78b1b5480c785d492dd82eac99c07f088d734522"
+REVISION5_REPLAY_CADENCE_SECONDS = 1.0
 AMBIGUOUS_ARBITER_ALTERNATIVES = "ambiguous arbiter alternatives"
 IMPOSSIBLE_MASK_INDEX = "impossible mask index"
 
@@ -128,6 +134,7 @@ class _RecordInput:
     record: Mapping[str, Any]
     base_dir: Path | None
     name: str
+    revision5_replay: bool = False
 
 
 @dataclass
@@ -301,7 +308,7 @@ def canonical_groups_bytes(payload: Mapping[str, Any]) -> bytes:
 def _validate_plan_header(plan: Mapping[str, Any]) -> None:
     _verify_authoritative_plan_file()
     if plan_sha256(plan) != AUTHORITATIVE_PLAN_CANONICAL_SHA256:
-        raise AnalysisError("supplied Issue #146 plan is not the immutable revision-5 plan")
+        raise AnalysisError("supplied Issue #146 plan is not the immutable revision-6 plan")
     if plan.get("record_schema") != PLAN_SCHEMA:
         raise AnalysisError("unsupported Issue #146 plan schema")
     if plan.get("status") != "planned" or plan.get("board_run") is not False:
@@ -369,7 +376,7 @@ def _plan_plateau(plan: Mapping[str, Any]) -> tuple[float, float, int]:
     end = finite(plateau.get("end_seconds"), field="plateau end")
     minimum = integer(plateau.get("minimum_samples"), field="minimum samples")
     if (start, end, minimum) != (60.0, 180.0, 50):
-        raise AnalysisError("Issue #146 plateau contract is not revision 5")
+        raise AnalysisError("Issue #146 plateau contract is not revision 6")
     return start, end, minimum
 
 
@@ -425,7 +432,7 @@ def _plan_timing(
     try:
         smoke_start, smoke_end = parse_smoke_sample_window(sample_window)
     except ValueError as exc:
-        raise AnalysisError("Issue #146 smoke sample window contract is not revision 5") from exc
+        raise AnalysisError("Issue #146 smoke sample window contract is not revision 6") from exc
     trace_interval = finite(scope.get("trace_interval_seconds"), field="trace interval")
     if trace_interval <= 0.0 or smoke_end <= smoke_start:
         raise AnalysisError("Issue #146 timing cadence/window is invalid")
@@ -442,7 +449,7 @@ def _plan_timing(
     if outer_repetitions <= 0 or launches_per_sync <= 0:
         raise AnalysisError("Issue #146 grouped load settings must be positive")
     if (target, guard, smoke_target, smoke_guard, overrun) != (180.0, 230.0, 40.0, 90.0, 10.0):
-        raise AnalysisError("Issue #146 timing contract is not revision 5")
+        raise AnalysisError("Issue #146 timing contract is not revision 6")
     return (
         target, guard, smoke_target, smoke_guard, overrun,
         smoke_start, smoke_end, outer_repetitions, launches_per_sync, trace_interval,
@@ -537,15 +544,59 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
 
 
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> Mapping[str, Any]:
-    """Load the immutable revision-5 plan without changing its bytes."""
+    """Load the immutable revision-6 plan without changing its bytes."""
     payload, raw = _read_json(Path(path), purpose="Issue #146 plan")
     if hashlib.sha256(raw).hexdigest() != AUTHORITATIVE_PLAN_RAW_SHA256:
-        raise AnalysisError("Issue #146 plan bytes are not the immutable owner revision 5")
+        raise AnalysisError("Issue #146 plan bytes are not the immutable owner revision 6")
     _plan_spec(payload)
     return payload
 
 
-def _record_inputs(records: Sequence[Mapping[str, Any] | str | Path]) -> list[_RecordInput]:
+def _revision5_smoke_replay_eligible(record: Mapping[str, Any]) -> bool:
+    """Recognize only the pinned revision-5 smoke lineage for revision-6 evaluation."""
+    run = record.get("run")
+    environment = record.get("environment")
+    cadence = record.get("trace_cadence")
+    trace = record.get("trace")
+    provenance = record.get("provenance")
+    runner_result = record.get("runner_result")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (run, environment, cadence, trace, provenance, runner_result)
+    ):
+        return False
+    sampler = environment.get("telemetry_sampler")
+    if not isinstance(sampler, Mapping):
+        return False
+    plan_hashes = (
+        record.get("plan_sha256"),
+        provenance.get("plan_sha256"),
+        runner_result.get("plan_sha256"),
+    )
+    intervals = (
+        cadence.get("planned_interval_seconds"),
+        cadence.get("host_sampler_interval_seconds"),
+        cadence.get("wrapper_companion_interval_seconds"),
+        trace.get("sampling_interval_seconds"),
+        sampler.get("interval_seconds", sampler.get("effective_interval_seconds")),
+    )
+    return (
+        run.get("mode") == "smoke"
+        and all(value == REVISION5_REPLAY_PLAN_SHA256 for value in plan_hashes)
+        and environment.get("harness_commit") == REVISION5_REPLAY_HARNESS_COMMIT
+        and environment.get("harness_dirty") is False
+        and environment.get("harness_pushed") is True
+        and cadence.get("test_override") is False
+        and sampler.get("mode") == "explicit"
+        and all(isinstance(value, (int, float)) and not isinstance(value, bool) and value == REVISION5_REPLAY_CADENCE_SECONDS for value in intervals)
+    )
+
+
+def _record_inputs(
+    records: Sequence[Mapping[str, Any] | str | Path],
+    *,
+    allow_revision5_smoke_replay: bool = False,
+) -> list[_RecordInput]:
     result: list[_RecordInput] = []
     for index, item in enumerate(records):
         if isinstance(item, (str, Path)):
@@ -554,22 +605,48 @@ def _record_inputs(records: Sequence[Mapping[str, Any] | str | Path]) -> list[_R
             nested = payload.get("runs")
             if isinstance(nested, list):
                 result.extend(
-                    _RecordInput(run, path.parent, path.name)
+                    _RecordInput(
+                        run,
+                        path.parent,
+                        path.name,
+                        allow_revision5_smoke_replay and _revision5_smoke_replay_eligible(run),
+                    )
                     for run in nested
                     if isinstance(run, Mapping)
                 )
             else:
-                result.append(_RecordInput(payload, path.parent, path.name))
+                result.append(
+                    _RecordInput(
+                        payload,
+                        path.parent,
+                        path.name,
+                        allow_revision5_smoke_replay
+                        and _revision5_smoke_replay_eligible(payload),
+                    )
+                )
         elif isinstance(item, Mapping):
             nested = item.get("runs")
             if isinstance(nested, list):
                 result.extend(
-                    _RecordInput(run, None, f"record-{index + 1}")
+                    _RecordInput(
+                        run,
+                        None,
+                        f"record-{index + 1}",
+                        allow_revision5_smoke_replay and _revision5_smoke_replay_eligible(run),
+                    )
                     for run in nested
                     if isinstance(run, Mapping)
                 )
             else:
-                result.append(_RecordInput(item, None, f"record-{index + 1}"))
+                result.append(
+                    _RecordInput(
+                        item,
+                        None,
+                        f"record-{index + 1}",
+                        allow_revision5_smoke_replay
+                        and _revision5_smoke_replay_eligible(item),
+                    )
+                )
         else:
             raise AnalysisError("Issue #146 records must be objects or JSON paths")
     return result
@@ -779,7 +856,11 @@ def _record_cadence_errors(record: Mapping[str, Any], spec: _PlanSpec) -> list[s
 
 
 def _configuration_errors(
-    record: Mapping[str, Any], configuration_id: str | None, spec: _PlanSpec
+    record: Mapping[str, Any],
+    configuration_id: str | None,
+    spec: _PlanSpec,
+    *,
+    revision5_replay: bool = False,
 ) -> list[str]:
     configuration = record.get("configuration")
     errors: list[str] = []
@@ -796,7 +877,10 @@ def _configuration_errors(
     if isinstance(result, Mapping):
         if result.get("core_plan") != configuration.get("core_plan"):
             errors.append("runner_result.core_plan.binding")
-        if result.get("plan_sha256") not in {None, spec.plan_sha256}:
+        accepted_hashes = {None, spec.plan_sha256}
+        if revision5_replay:
+            accepted_hashes.add(REVISION5_REPLAY_PLAN_SHA256)
+        if result.get("plan_sha256") not in accepted_hashes:
             errors.append("runner_result.plan_sha256")
     return errors
 
@@ -1368,6 +1452,7 @@ def _duration_contract_errors(
     *,
     mode: str,
     spec: _PlanSpec,
+    revision5_replay: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     if record.get("record_schema") != RECORD_SCHEMA:
@@ -1378,7 +1463,10 @@ def _duration_contract_errors(
         errors.append("issue")
     if record.get("status") != "ok":
         errors.append("run_status")
-    if record.get("plan_sha256") != spec.plan_sha256:
+    accepted_hashes = {spec.plan_sha256}
+    if revision5_replay:
+        accepted_hashes.add(REVISION5_REPLAY_PLAN_SHA256)
+    if record.get("plan_sha256") not in accepted_hashes:
         errors.append("plan_sha256")
     if mode not in {"long", "smoke"}:
         errors.append("run.mode")
@@ -1524,6 +1612,7 @@ def _duration_binding(
     mode: str,
     first: int | None,
     spec: _PlanSpec,
+    revision5_replay: bool = False,
 ) -> tuple[dict[str, Any], list[str], dict[str, Any] | None]:
     run = record.get("run") if isinstance(record.get("run"), Mapping) else {}
     result = (
@@ -1539,7 +1628,13 @@ def _duration_binding(
         "last_group_end_monotonic_ns": None,
         "observed_duration_seconds": None,
     }
-    errors = _duration_contract_errors(record, groups, mode=mode, spec=spec)
+    errors = _duration_contract_errors(
+        record,
+        groups,
+        mode=mode,
+        spec=spec,
+        revision5_replay=revision5_replay,
+    )
     group_facts, group_errors = _duration_group_facts(
         groups, first=first, target=target, mode=mode, spec=spec
     )
@@ -1588,10 +1683,7 @@ def _nominal_mode(
         return arb["aiclk_arb_max_index"] in {7, 8} and _r5_signed_pass(
             _signed_r5_delta(row, arb)
         )
-    return (
-        finite(row.get("aiclk_mhz"), field="AICLK") == spec.asic_fmax
-        and arb["aiclk_arb_max_raw_int"] == EXPECTED_CONTROL_MAX
-    )
+    return classify_control_pair(row) in {"clamped", "dip"}
 
 
 def _nominal_gddr(decoded: Mapping[str, Any], spec: _PlanSpec) -> bool:
@@ -1928,15 +2020,32 @@ def _control_k1(
     decoded_by_id: Mapping[int, Mapping[str, Any]],
     spec: _PlanSpec,
 ) -> dict[str, Any]:
+    del decoded_by_id, spec
+    evaluation = control_pair_evaluation(retained)
+    passed = evaluation["strict_majority_pass"]
+    reason = None
+    if not passed:
+        if evaluation["sample_count"] == 0:
+            reason = "no retained control samples"
+        elif evaluation["invalid_count"]:
+            reason = "retained control samples contain a pair outside the exact allowance"
+        else:
+            reason = "clamped_count * 2 is not greater than sample_count"
     return _criterion(
         "K1-clamped",
-        _all_rows_pass(
-            retained,
-            lambda row: (
-                finite(row["aiclk_mhz"], field="aiclk_mhz") == spec.asic_fmax
-                and decoded_by_id[id(row)]["arb"]["aiclk_arb_max_raw_int"] == EXPECTED_CONTROL_MAX
-            ),
-        ),
+        passed,
+        reason=reason,
+        sample_count=evaluation["sample_count"],
+        clamped_count=evaluation["clamped_count"],
+        dip_count=evaluation["dip_count"],
+        invalid_count=evaluation["invalid_count"],
+        clamped_fraction=evaluation["clamped_fraction"],
+        dip_fraction=evaluation["dip_fraction"],
+        strict_majority_operator=evaluation["strict_majority_operator"],
+        allowed_pairs=[
+            {"aiclk_arb_max_raw": hex(word), "aiclk_mhz": aiclk}
+            for word, aiclk in CONTROL_ALLOWED_PAIRS
+        ],
     )
 
 
@@ -2126,6 +2235,113 @@ def _aiclk_lag1(retained: Sequence[Mapping[str, Any]]) -> dict[str, float | None
     return {"r1": report["r1"], "n_eff": report["n_eff"]}
 
 
+def _control_dip_facts(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    first_launch_start_monotonic_ns: int,
+    window_start_seconds: float,
+    window_end_seconds: float,
+) -> dict[str, Any]:
+    """Report captured C018 dips in the strict mode window."""
+    selected = select_plateau_rows(
+        rows,
+        first_launch_start_monotonic_ns=first_launch_start_monotonic_ns,
+        start_seconds=window_start_seconds,
+        end_seconds=window_end_seconds,
+    )
+    evaluation = control_pair_evaluation(selected)
+    window = {
+        "start_seconds": window_start_seconds,
+        "end_seconds": window_end_seconds,
+        "selection": "strict half-open window",
+    }
+    if evaluation["invalid_count"]:
+        return {
+            "status": "not_evaluable",
+            "reason": "control pair outside the exact allowance",
+            "window": window,
+            "sample_count": evaluation["sample_count"],
+            "dip_count": evaluation["dip_count"],
+            "dip_fraction": evaluation["dip_fraction"],
+            "clamped_count": evaluation["clamped_count"],
+            "invalid_pair_count": evaluation["invalid_count"],
+            "dips": [],
+            "intervals_between_captured_dips_seconds": [],
+        }
+    dips: list[dict[str, Any]] = []
+    for row, kind in zip(selected, evaluation["kinds"]):
+        if kind != "dip":
+            continue
+        try:
+            timestamp = row["timestamp_monotonic_ns"]
+            if isinstance(timestamp, bool) or not isinstance(timestamp, int):
+                raise Issue146AnalysisError("control dip timestamp is invalid")
+            board_power = finite(row.get("board_power_w"), field="board_power_w")
+        except (KeyError, Issue146AnalysisError) as exc:
+            return {
+                "status": "not_evaluable",
+                "reason": str(exc),
+                "window": window,
+                "sample_count": evaluation["sample_count"],
+                "dip_count": evaluation["dip_count"],
+                "dip_fraction": evaluation["dip_fraction"],
+                "clamped_count": evaluation["clamped_count"],
+                "invalid_pair_count": evaluation["invalid_count"],
+                "dips": [],
+                "intervals_between_captured_dips_seconds": [],
+            }
+        dips.append(
+            {
+                "timestamp_monotonic_ns": timestamp,
+                "timestamp_seconds": (
+                    timestamp - first_launch_start_monotonic_ns
+                )
+                / 1_000_000_000.0,
+                "board_power_w": board_power,
+            }
+        )
+    intervals = [
+        (right["timestamp_monotonic_ns"] - left["timestamp_monotonic_ns"])
+        / 1_000_000_000.0
+        for left, right in pairwise(dips)
+    ]
+    return {
+        "status": "reported",
+        "window": window,
+        "sample_count": evaluation["sample_count"],
+        "dip_count": evaluation["dip_count"],
+        "dip_fraction": evaluation["dip_fraction"],
+        "clamped_count": evaluation["clamped_count"],
+        "invalid_pair_count": evaluation["invalid_count"],
+        "dips": dips,
+        "intervals_between_captured_dips_seconds": intervals,
+        "interval_definition": (
+            "Difference between successive captured dip timestamps; not a physical pulse duration."
+        ),
+    }
+
+
+def _control_dips_not_applicable(
+    *, window_start_seconds: float, window_end_seconds: float
+) -> dict[str, Any]:
+    return {
+        "status": "not_applicable",
+        "reason": "control dips are reported only for C018",
+        "window": {
+            "start_seconds": window_start_seconds,
+            "end_seconds": window_end_seconds,
+            "selection": "strict half-open window",
+        },
+        "sample_count": 0,
+        "dip_count": 0,
+        "dip_fraction": None,
+        "clamped_count": 0,
+        "invalid_pair_count": 0,
+        "dips": [],
+        "intervals_between_captured_dips_seconds": [],
+    }
+
+
 def _exploratory(
     rows: Sequence[Mapping[str, Any]],
     retained: Sequence[Mapping[str, Any]],
@@ -2193,6 +2409,20 @@ def _exploratory(
             "dips": [],
             "sample_capture_interval_seconds": spec.trace_interval_seconds,
         }
+    control_dips = (
+        _control_dip_facts(
+            retained,
+            first_launch_start_monotonic_ns=first,
+            window_start_seconds=dip_start,
+            window_end_seconds=dip_end,
+        )
+        if configuration_id == "C018"
+        else _control_dips_not_applicable(
+            window_start_seconds=dip_start,
+            window_end_seconds=dip_end,
+        )
+    )
+    control_dips["sample_capture_interval_seconds"] = spec.trace_interval_seconds
     drift_rows = _exploratory_drift(retained, decoded_by_id, first=first)
     current_values = _exploratory_current(retained)
     return {
@@ -2209,6 +2439,7 @@ def _exploratory(
             "first_board_power_within_5_w_of_limit_seconds": onset_power,
         },
         "current_dips": current_dips,
+        "control_dips": control_dips,
         "busy_current_against_disabled_tdc": {
             "disabled_tdc_limit_a": 200.0,
             "sample_count": len(current_values),
@@ -2246,6 +2477,14 @@ def _empty_exploratory(duration_weighted: Mapping[str, Any]) -> dict[str, Any]:
             "dip_fraction": None,
             "dips": [],
         },
+        "control_dips": {
+            "status": "not_evaluable",
+            "sample_count": 0,
+            "dip_count": 0,
+            "dip_fraction": None,
+            "dips": [],
+            "intervals_between_captured_dips_seconds": [],
+        },
         "busy_current_against_disabled_tdc": {
             "disabled_tdc_limit_a": 200.0,
             "sample_count": 0,
@@ -2279,6 +2518,7 @@ def _load_run_evidence(
     mode: str,
     first: int | None,
     pre_loaded: _LoadedSnapshot,
+    revision5_replay: bool = False,
     limits: dict[str, Any],
     pre_configuration_errors: list[str],
     spec: _PlanSpec,
@@ -2305,7 +2545,12 @@ def _load_run_evidence(
     )
     groups = _load_groups(record, base_dir=record_input.base_dir)
     duration, duration_errors, _result = _duration_binding(
-        record, groups, mode=mode, first=first, spec=spec
+        record,
+        groups,
+        mode=mode,
+        first=first,
+        spec=spec,
+        revision5_replay=revision5_replay,
     )
     trace = _load_trace(
         record,
@@ -2616,6 +2861,7 @@ def _run_report(
     record: Mapping[str, Any],
     name: str,
     *,
+    revision5_replay: bool = False,
     run_number: int | None,
     configuration_id: str | None,
     mode: str,
@@ -2631,8 +2877,30 @@ def _run_report(
         if item.get("pass") is False
     ]
     eligible = expected_candidate and not missing and bool(row_analysis.criteria)
+    environment = record.get("environment")
+    acquisition_hash = record.get("plan_sha256")
+    acquisition_revision = (
+        REVISION5_REPLAY_PLAN_REVISION
+        if revision5_replay
+        else CURRENT_PLAN_REVISION
+        if acquisition_hash == spec.plan_sha256
+        else None
+    )
     return {
         "run_id": _record_value(record, ("run", "run_id"), ("run_id",)) or name,
+        "acquisition": {
+            "plan_revision": acquisition_revision,
+            "plan_sha256": acquisition_hash,
+            "harness_commit": environment.get("harness_commit")
+            if isinstance(environment, Mapping)
+            else None,
+            "replayed": revision5_replay,
+        },
+        "evaluation": {
+            "plan_revision": CURRENT_PLAN_REVISION,
+            "plan_sha256": spec.plan_sha256,
+            "control_majority_operator": "dip fraction < 0.5",
+        },
         "run_number": run_number,
         "configuration_id": configuration_id,
         "mode": mode,
@@ -2694,7 +2962,12 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
     configuration = (
         record.get("configuration") if isinstance(record.get("configuration"), Mapping) else None
     )
-    base_errors = _configuration_errors(record, configuration_id, spec)
+    base_errors = _configuration_errors(
+        record,
+        configuration_id,
+        spec,
+        revision5_replay=record_input.revision5_replay,
+    )
     base_errors.extend(_record_cadence_errors(record, spec))
     environment_errors = _environment_errors(record.get("environment"), configuration, spec)
     pre_loaded = _load_snapshot(
@@ -2710,6 +2983,7 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
         pre_loaded=pre_loaded,
         limits=limits,
         pre_configuration_errors=pre_configuration_errors,
+        revision5_replay=record_input.revision5_replay,
         spec=spec,
     )
     missing = _initial_run_missing(
@@ -2748,6 +3022,7 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
         configuration_id=configuration_id,
         mode=mode,
         expected_candidate=expected_candidate,
+        revision5_replay=record_input.revision5_replay,
         missing=missing,
         evidence=evidence,
         row_analysis=row_analysis,
@@ -2895,6 +3170,17 @@ def _analysis_plan(spec: _PlanSpec) -> dict[str, Any]:
             "precision_half_width_w": PRECISION_LIMIT_W,
             "r1": "adjacent centered products divided by centered sum of squares",
         },
+        "control_pair_evaluation": {
+            "allowed_pairs": [
+                {"aiclk_arb_max_raw": hex(word), "aiclk_mhz": aiclk}
+                for word, aiclk in CONTROL_ALLOWED_PAIRS
+            ],
+            "strict_majority": "clamped_count * 2 > sample_count",
+            "plan_text_note": (
+                "The immutable revision-6 K1 prose says at least 50 percent; this evaluation "
+                "follows the explicit strict-majority acceptance, so exactly half fails."
+            ),
+        },
     }
 
 
@@ -3004,6 +3290,11 @@ def analyze_runs(
         "missing_fields": sorted(missing),
         "verdict_evidence_complete": not missing,
         "plan": _analysis_plan(spec),
+        "evaluation": {
+            "plan_revision": CURRENT_PLAN_REVISION,
+            "plan_sha256": spec.plan_sha256,
+            "revision5_smoke_replay": "disabled for long-run analysis",
+        },
         "preconditions": preconditions,
         "hypotheses": {
             "H-DS": {
@@ -3247,12 +3538,29 @@ def _smoke_index_criterion(
     if index_error or not indices:
         index_pass: bool | None = None
     elif configuration_id == "C018":
-        index_pass = all(
-            decoded["aiclk_arb_max_raw_int"] == EXPECTED_CONTROL_MAX for decoded in decoded_rows
-        )
+        evaluation = control_pair_evaluation(rows_10_40)
+        index_pass = evaluation["strict_majority_pass"]
     else:
         index_pass = all(index in {7, 8} for index in indices)
     reason = index_error or (f"no samples in {SMOKE_WINDOW_LABEL}" if not indices else None)
+    extra: dict[str, Any] = {}
+    if configuration_id == "C018" and not index_error and indices:
+        evaluation = control_pair_evaluation(rows_10_40)
+        reason = (
+            "control pair outside the exact allowance"
+            if evaluation["invalid_count"]
+            else "clamped_count * 2 is not greater than sample_count"
+            if not evaluation["strict_majority_pass"]
+            else None
+        )
+        extra.update(
+            sample_count=evaluation["sample_count"],
+            clamped_count=evaluation["clamped_count"],
+            dip_count=evaluation["dip_count"],
+            invalid_pair_count=evaluation["invalid_count"],
+            dip_fraction=evaluation["dip_fraction"],
+            strict_majority_operator=evaluation["strict_majority_operator"],
+        )
     return _criterion(
         f"R7_index_distribution_{SMOKE_WINDOW_LABEL}",
         index_pass,
@@ -3260,6 +3568,7 @@ def _smoke_index_criterion(
         window=SMOKE_WINDOW_LABEL,
         indices=indices,
         reason=reason,
+        **extra,
     )
 
 
@@ -3296,7 +3605,7 @@ def analyze_smoke(
     """Return diagnostic smoke acceptance items; never return a long verdict."""
     effective_plan = dict(plan) if isinstance(plan, Mapping) else dict(load_plan())
     spec = _plan_spec(effective_plan)
-    inputs = _record_inputs(records)
+    inputs = _record_inputs(records, allow_revision5_smoke_replay=True)
     reports = [_analyze_one(item, index, spec) for index, item in enumerate(inputs)]
     diagnostics = []
     for report in reports:
@@ -3326,6 +3635,16 @@ def analyze_smoke(
         "reported_diagnostics": [
             item for item in flattened_acceptance if item.get("gate") is False
         ],
+        "evaluation": {
+            "plan_revision": CURRENT_PLAN_REVISION,
+            "plan_sha256": spec.plan_sha256,
+            "revision5_smoke_replay": {
+                "enabled": True,
+                "harness_commit": REVISION5_REPLAY_HARNESS_COMMIT,
+                "plan_sha256": REVISION5_REPLAY_PLAN_SHA256,
+                "cadence_seconds": REVISION5_REPLAY_CADENCE_SECONDS,
+            },
+        },
         "policy": {
             "gate_count": sum(policy["gate_count"] for policy in policies),
             "diagnostic_count": sum(policy["diagnostic_count"] for policy in policies),
@@ -3371,6 +3690,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = [
     "ANALYSIS_SCHEMA",
     "ARBITER_FIELDS",
+    "CONTROL_ALLOWED_PAIRS",
     "CURRENT_PLAN_REVISION",
     "DEFAULT_PLAN_PATH",
     "GROUPS_SCHEMA",
@@ -3382,6 +3702,8 @@ __all__ = [
     "analyze_smoke",
     "canonical_groups_bytes",
     "canonical_trace_bytes",
+    "classify_control_pair",
+    "control_pair_evaluation",
     "group_timing_facts",
     "load_plan",
     "main",

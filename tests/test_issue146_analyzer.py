@@ -348,15 +348,15 @@ def test_issue146_smoke_acceptance_reports_each_item_without_verdict() -> None:
     assert result["affects_long_verdict"] is False
 
 
-def test_issue146_plan_bytes_and_canonical_digest_are_revision_five() -> None:
+def test_issue146_plan_bytes_and_canonical_digest_are_revision_six() -> None:
     raw = PLAN_PATH.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == (
-        "19a7c45de299b8e15b2d2e69ffa8a100091701ff2b8e32ca41980b465aade41b"
+        "d9e1b4b1b73097e7873b9e5fe0a2d3af5c0665990688cb8ecaafbbc5355a1197"
     )
     plan = _plan()
-    assert plan["revision_history"][-1]["revision"] == 5
+    assert plan["revision_history"][-1]["revision"] == 6
     assert analyzer.plan_sha256(plan) == (
-        "5fc8d7a19533e10117e1b862603e5cb32ca37549b03194367b3396637dbff3ef"
+        "1c46dae48245ee7e12f00f8c3717d6f5101bbae6b978db7c0ddb9b4d7addbf2e"
     )
 
 
