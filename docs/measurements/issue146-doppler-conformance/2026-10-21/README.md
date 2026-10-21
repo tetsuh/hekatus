@@ -14,11 +14,15 @@ without a held boundary point, padding, or interpolation.
   `b024dfc33dc9ab132130ccaa429d25b37805d2d472fcb38b549fdd67070cfd5c`.
   Its canonical SHA-256 is
   `28a9e96b026f74243ee769ce61436e2c10d1b883c5a84e9bf6306252a85bf324`.
+  The linked plan remains `planned`; this archive does not edit its status or
+  bytes.
 - Harness: `9caa399026e5aa3e64f1c0f24911a3d3c30baea3`, clean and pushed when
   the runs were acquired.
-- Board identity: serial `0000040331914124`, PCI
+- Board identity for the loaded workload: serial `0000040331914124`, PCI
   `0000:09:00.0`, host node `/dev/tenstorrent/1`, and container-visible
-  device 0. No other device was used.
+  device 0. Only board/device 1 was loaded. The authorized wrapper's
+  read-only host captures cover both authorized boards; those captures are
+  not workload execution.
 - Firmware bundle: `19.6.0.0`; KMD `2.11.0`; kernel
   `Linux 6.8.0-138-generic`.
 - Image digest:
@@ -105,17 +109,29 @@ must not be conflated:
 - The 387 regulated plateau rows (97 + 97 + 97 + 96) all have reported index 7
   and arbiter frequency below 1350 MHz. This is a plateau statement, not a
   claim that every regulated raw row has index 7 or a depressed frequency.
-- Across the entire raw control trace, run 1 contains one
-  `0x70545`/1343-MHz control dip and otherwise `0x80546`/1350 MHz. Run 6 is
-  entirely `0x80546`/1350 MHz. K1 uses exactly these two pairs and requires
-  the clamp pair to be a strict majority.
+- In run 1, the raw `AICLK_ARB_MAX` words contain one `0x70545` word
+  (word frequency 1349 MHz) and otherwise `0x80546`; run 6 is entirely
+  `0x80546`. The pair `0x80546`/1350 MHz or `0x70545`/1343 MHz is a
+  loaded/plateau observation, not an idle pre- or post-load AICLK (idle AICLK
+  is 800 MHz). K1 uses exactly these two pairs and requires the clamp pair to
+  be a strict majority.
 - The post-load minimum arbiter returns to idle (`0x10320`), not busy. It is
   therefore not substituted for the loaded plateau R4 word `0x10546`.
 
-Each plateau source property is tested separately: power CI, frequency,
-mask, busy minimum arbiter, residual, thermal channels, and reported index
-are not inferred from one another. The disabled TDC current is recorded only
-as exploratory data.
+| Run | Configuration | Plateau AICLK mean MHz | Index distribution | R5 actual MHz | ASIC max degC | GDDR max degC | Current min A |
+|---:|---|---:|---|---|---:|---:|---:|
+| 1 | C018 | 1349.927835 | 8:96, 7:1 | 0–6 | 79.2 | 64 | 121 |
+| 2 | C108 | 1017.536082 | 7:97 | 0–6 | 81.9 | 64 | **87** |
+| 3 | C081 | 1136.938144 | 7:97 | 1–6 | 82.3 | 66 | 123 |
+| 4 | C081 | 1134.711340 | 7:97 | 1–6 | 82.4 | 66 | 117 |
+| 5 | C108 | 1013.375000 | 7:96 | 1–6 | 82.3 | 66 | 117 |
+| 6 | C018 | 1350.000000 | 8:97 | 0–0 | 78.8 | 64 | 123 |
+
+The table reports actual strict plateau telemetry; R5's registered acceptance
+bound remains 0–7 MHz. Each plateau source property is tested separately:
+power CI, frequency, mask, busy minimum arbiter, residual, thermal channels,
+and reported index are not inferred from one another. The disabled TDC current
+is recorded only as exploratory data.
 
 ## Execution and cooldown
 
@@ -199,9 +215,10 @@ arbiter at a non-integral value or the GDDR thermal arbiter at an integral
 value). The verdict therefore combines the independent mask, frequency, busy,
 and thermal conditions rather than treating the index alone as causal.
 
-The PLL/control model uses a 6.25-MHz feedback-divider grid. The static
-signed residual criterion is 0–6 MHz for the integer words, with one extra MHz
-allowed for a telemetry read straddling an update, hence R5's 0–7 MHz bound.
+The PLL/control model uses a 6.25-MHz feedback-divider grid. The firmware
+model's static signed residual is bounded at 0–6 MHz for integer words; the
+registered R5 acceptance bound is 0–7 MHz, with one extra MHz allowed for a
+telemetry read straddling an update.
 A one-watt moving-average step contributes approximately -0.5 MHz through the
 derivative term and the model predicts recovery in about 2 ms. This **about
 2-ms value is a source-model recovery estimate, not a measured pulse width**.
@@ -243,7 +260,7 @@ For regulated runs only, a current dip is strictly below 0.8 times that run's
 plateau current median. These rows are diagnostics, not TDC evidence or new
 gates.
 
-| Run | Configuration | Dips / n | Dip board power W | Dip ASIC power W | Nearest group-boundary distance ms |
+| Run | Configuration | Dips / n | Dip board power W | Dip ASIC power W | Distance range to two nearest group boundaries ms |
 |---:|---|---:|---|---|---|
 | 2 | C108 | 13 / 97 | 247–323 | 65–102 | 5.780–46.148 |
 | 3 | C081 | 11 / 97 | 224–301 | 94–107 | 3.039–32.159 |
@@ -251,9 +268,10 @@ gates.
 | 5 | C108 | 9 / 96 | 243–324 | 86–101 | 14.599–37.655 |
 
 All 47 dip captures fell inside synchronized group intervals; none fell in a
-host-visible group gap. Capture and firmware-update timing overlap the dense
-group schedule, so boundary distance is descriptive and does not establish a
-dispatch cause or causality.
+host-visible group gap. The boundary-distance range spans the two nearest
+boundaries for each dip, not only a single closest boundary. Capture and
+firmware-update timing overlap the dense group schedule, so boundary distance
+is descriptive and does not establish a dispatch cause or causality.
 
 ### Control dips and drift
 
@@ -358,13 +376,14 @@ all 12 smoke gates pass, the strict control majority is 22/24, and
 The `initial-import-failure/c018-attempt1-import-failure/` namespace preserves
 the complete failed first-import directory, including diagnosis, snapshots,
 raw one-row sampler evidence, Docker event evidence, and the failed analyzer
-output. The persisted host record stopped with no ingested runner result. The
-owner's later board-free diagnosis reproduced a missing SciPy import in the
-pinned image; the persisted original evidence alone classifies whether a
-workload opened the device as unknown. The preserved diagnosis retains its original generic repository-relative
-command string unchanged; it is historical evidence, not a current replay
-command. This failure is diagnostic only and is not included in the six-run
-verdict.
+output. The persisted host record stopped with no ingested runner result. For that
+original attempt, the persisted evidence remains unknown as to whether a
+workload opened the device. The owner's later device-free reproduction
+established that the pinned image failed on a missing SciPy import before any
+device open in that reproduction. The preserved diagnosis retains its original
+generic repository-relative command string unchanged; it is historical
+evidence, not a current replay command. This failure is diagnostic only and
+is not included in the six-run verdict.
 
 ## Reproduction and integrity
 
@@ -380,6 +399,8 @@ telemetry utility and writes only an ephemeral file outside the archive:
 
 ```bash
 export PYTHONDONTWRITEBYTECODE=1
+replay_dir="$(mktemp -d)"
+trap 'rm -rf "$replay_dir"' EXIT
 uv run python tools/analyze_issue146.py \
   --plan docs/measurements/2026-10-20-host-newton-schulz-issue146-plan.json \
   --record docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/run-issue146-long-run1-c018.json \
@@ -388,7 +409,7 @@ uv run python tools/analyze_issue146.py \
   --record docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run4-c081/run-issue146-long-run4-c081.json \
   --record docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run5-c108/run-issue146-long-run5-c108.json \
   --record docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run6-c018/run-issue146-long-run6-c018.json \
-  --output /tmp/issue146-long-reanalysis.json
+  --output "$replay_dir/issue146-long-reanalysis.json"
 ```
 
 The replay must report `status=ok`, classification `H-DS`, no missing fields,
