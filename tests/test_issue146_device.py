@@ -23,7 +23,7 @@ import tools.issue146_device as device
 assert "tools.issue146_analysis" not in sys.modules
 assert "tools.analyze_issue146" not in sys.modules
 plan = device.issue146.load_plan()
-assert plan["revision_history"][-1]["revision"] == 4
+assert plan["revision_history"][-1]["revision"] == 5
 try:
     device.main(["--help"])
 except SystemExit as error:

@@ -20,8 +20,8 @@ BDF = "0000:09:00.0"
 
 def test_issue146_plan_order_timing_and_command_are_bound() -> None:
     plan = issue146.load_plan(PLAN)
-    assert plan["revision_history"][-1]["revision"] == 4
-    assert issue146.build_planning_record(plan)["plan_revision"] == 4
+    assert plan["revision_history"][-1]["revision"] == 5
+    assert issue146.build_planning_record(plan)["plan_revision"] == 5
     assert issue146.long_run_order(plan) == ["C018", "C108", "C081", "C081", "C108", "C018"]
     assert issue146.run_timing(plan, "long") == {
         "load_seconds": 180.0,
@@ -82,7 +82,7 @@ def _environment(config: issue146.Issue146Configuration) -> dict[str, object]:
         "launches_per_sync": 8,
         "harness_dirty": False,
         "harness_pushed": True,
-        "telemetry_sampler": {"mode": "default", "interval_seconds": 2},
+        "telemetry_sampler": {"mode": "explicit", "interval_seconds": 1.0},
         "host_sw_vers": {"tt_smi": "6.2.1", "tt_umd": "0.9.8"},
         "hostname": "must-not-persist",
     }

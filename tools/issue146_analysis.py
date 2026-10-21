@@ -277,6 +277,146 @@ def group_timing_facts(
     }
 
 
+def current_dip_facts(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    first_launch_start_monotonic_ns: int,
+    window_start_seconds: float,
+    window_end_seconds: float,
+    group_timings: Sequence[Mapping[str, Any]] = (),
+    sample_interval_seconds: float | None = None,
+) -> dict[str, Any]:
+    """Report strict current dips and their raw group-boundary correspondence.
+
+    The threshold comparison is deliberately strict: a sample exactly equal to
+    0.8 times the median is not a dip.  Boundary correspondence is descriptive;
+    this helper does not classify dips as clustered or infer a cause.
+    """
+    start_ns = first_launch_start_monotonic_ns + round(window_start_seconds * 1_000_000_000.0)
+    end_ns = first_launch_start_monotonic_ns + round(window_end_seconds * 1_000_000_000.0)
+    selected = [
+        row
+        for row in rows
+        if isinstance(row.get("timestamp_monotonic_ns"), int)
+        and start_ns <= row["timestamp_monotonic_ns"] < end_ns
+    ]
+    currents: list[float] = []
+    for row in selected:
+        currents.append(finite(row.get("current_a"), field="current_a"))
+    if not currents:
+        return {
+            "status": "not_evaluable",
+            "window": {
+                "start_seconds": window_start_seconds,
+                "end_seconds": window_end_seconds,
+                "selection": "strict half-open window",
+            },
+            "sample_count": 0,
+            "median_current_a": None,
+            "threshold_current_a": None,
+            "threshold_operator": "strictly below (<)",
+            "dip_count": 0,
+            "dip_fraction": None,
+            "dips": [],
+            "sample_capture_interval_seconds": sample_interval_seconds,
+            "capture_interval_limitation": (
+                "No current samples were available in the selected window."
+            ),
+        }
+    median = statistics.median(currents)
+    threshold = 0.8 * median
+    normalized_groups = [
+        {
+            "start_monotonic_ns": integer(group.get("start_monotonic_ns"), field="group start"),
+            "end_monotonic_ns": integer(group.get("end_monotonic_ns"), field="group end"),
+        }
+        for group in group_timings
+        if isinstance(group, Mapping)
+    ]
+    boundaries = [
+        ("start", index, group["start_monotonic_ns"])
+        for index, group in enumerate(normalized_groups)
+    ] + [
+        ("end", index, group["end_monotonic_ns"])
+        for index, group in enumerate(normalized_groups)
+    ]
+    boundaries.sort(key=lambda item: item[2])
+    dips: list[dict[str, Any]] = []
+    for row, current in zip(selected, currents):
+        if not current < threshold:
+            continue
+        timestamp = int(row["timestamp_monotonic_ns"])
+        containing_group = next(
+            (
+                index
+                for index, group in enumerate(normalized_groups)
+                if group["start_monotonic_ns"] <= timestamp < group["end_monotonic_ns"]
+            ),
+            None,
+        )
+        containing_gap = next(
+            (
+                index
+                for index, (previous, following) in enumerate(
+                    pairwise(normalized_groups)
+                )
+                if previous["end_monotonic_ns"] <= timestamp < following["start_monotonic_ns"]
+            ),
+            None,
+        )
+        nearest = sorted(
+            (
+                {
+                    "kind": kind,
+                    "group_index": index,
+                    "offset_seconds": (boundary - first_launch_start_monotonic_ns)
+                    / 1_000_000_000.0,
+                    "distance_seconds": abs(boundary - timestamp) / 1_000_000_000.0,
+                }
+                for kind, index, boundary in boundaries
+            ),
+            key=lambda item: (item["distance_seconds"], item["offset_seconds"]),
+        )[:2]
+        asic_power = row.get("power_w")
+        dips.append(
+            {
+                "timestamp_monotonic_ns": timestamp,
+                "offset_seconds": (timestamp - first_launch_start_monotonic_ns)
+                / 1_000_000_000.0,
+                "current_a": current,
+                "board_power_w": finite(row.get("board_power_w"), field="board_power_w"),
+                "asic_power_w": (
+                    finite(asic_power, field="power_w") if asic_power is not None else None
+                ),
+                "group_correspondence": {
+                    "containing_group_index": containing_group,
+                    "containing_gap_index": containing_gap,
+                    "nearest_group_boundaries": nearest,
+                },
+            }
+        )
+    return {
+        "status": "reported",
+        "window": {
+            "start_seconds": window_start_seconds,
+            "end_seconds": window_end_seconds,
+            "selection": "strict half-open window",
+        },
+        "sample_count": len(currents),
+        "median_current_a": median,
+        "threshold_current_a": threshold,
+        "threshold_operator": "strictly below (<)",
+        "dip_count": len(dips),
+        "dip_fraction": len(dips) / len(currents),
+        "dips": dips,
+        "sample_capture_interval_seconds": sample_interval_seconds,
+        "capture_interval_limitation": (
+            "Capture timestamps are discrete samples; boundary correspondence is limited "
+            "by the configured sampler interval and does not establish causality."
+        ),
+    }
+
+
 def left_held_mean(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -340,6 +480,7 @@ __all__ = [
     "EXPECTED_ENABLED_MIN",
     "GDDR_FIELDS",
     "Issue146AnalysisError",
+    "current_dip_facts",
     "decode_arbiter_row",
     "decode_gddr_row",
     "finite",

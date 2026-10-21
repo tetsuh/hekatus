@@ -171,12 +171,13 @@ def test_issue146_smoke_each_acceptance_item_is_individual() -> None:
     acceptance = result["acceptance"]
     assert [item["name"] for item in acceptance] == [
         "idle_fraction_[10,40)",
-        "regulated_current_and_power_[10,40)",
         "arbiter_words_and_enabled_max",
         "R5_residual_[10,40)",
         "R7_index_distribution_[10,40)",
-        "smoke_failure_requires_plan_revision",
+        "regulated_load_diagnostics_[10,40)",
     ]
+    assert sum(item["gate"] for item in acceptance) == 4
+    assert acceptance[-1]["gate"] is False
     assert result["affects_long_verdict"] is False
 
 
@@ -212,14 +213,20 @@ def test_issue146_smoke_acceptance_each_failure_is_reported(failure: str) -> Non
     acceptance = {item["name"]: item for item in result["acceptance"]}
     expected = {
         "idle": "idle_fraction_[10,40)",
-        "current": "regulated_current_and_power_[10,40)",
-        "power": "regulated_current_and_power_[10,40)",
+        "current": "regulated_load_diagnostics_[10,40)",
+        "power": "regulated_load_diagnostics_[10,40)",
         "words": "arbiter_words_and_enabled_max",
         "residual": "R5_residual_[10,40)",
         "index": "R7_index_distribution_[10,40)",
     }[failure]
     if failure == "words":
         assert acceptance[expected]["status"] == "not_evaluable"
+    elif failure in {"current", "power"}:
+        assert acceptance[expected]["pass"] is None
+        assert acceptance[expected]["gate"] is False
+        assert all(
+            item["pass"] is True for item in acceptance.values() if item["gate"] is True
+        )
     else:
         assert acceptance[expected]["pass"] is False
 
@@ -238,11 +245,10 @@ def test_issue146_smoke_post_40_diagnostic_rows_are_excluded_from_sample_checks(
     _rehash(record)
     result = analyzer.analyze_smoke([record], plan=_plan())
     acceptance = {item["name"]: item for item in result["acceptance"]}
-    assert acceptance["regulated_current_and_power_[10,40)"]["pass"] is True
+    assert acceptance["regulated_load_diagnostics_[10,40)"]["pass"] is None
     assert acceptance["R5_residual_[10,40)"]["pass"] is True
     assert acceptance["R7_index_distribution_[10,40)"]["pass"] is True
-    assert acceptance["regulated_current_and_power_[10,40)"]["power_sd_window"] == "[10,40)"
-    assert acceptance["regulated_current_and_power_[10,40)"]["current_window"] == "[10,40)"
+    assert acceptance["regulated_load_diagnostics_[10,40)"]["window"] == "[10,40)"
     assert acceptance["R5_residual_[10,40)"]["window"] == "[10,40)"
     assert acceptance["R7_index_distribution_[10,40)"]["window"] == "[10,40)"
     assert len(result["runs"][0]["run"]["trace_rows"]) == len(rows)
@@ -254,7 +260,7 @@ def test_issue146_smoke_post_40_diagnostic_rows_are_excluded_from_sample_checks(
     _rehash(record)
     result = analyzer.analyze_smoke([record], plan=_plan())
     acceptance = {item["name"]: item for item in result["acceptance"]}
-    assert acceptance["regulated_current_and_power_[10,40)"]["pass"] is False
+    assert acceptance["regulated_load_diagnostics_[10,40)"]["pass"] is None
     assert acceptance["R5_residual_[10,40)"]["pass"] is False
     assert acceptance["R7_index_distribution_[10,40)"]["pass"] is False
 
@@ -316,4 +322,4 @@ def test_issue146_smoke_unknown_configuration_is_not_evaluable() -> None:
     result = analyzer.analyze_smoke([record], plan=_plan())
     acceptance = result["acceptance"]
     assert all(item["pass"] is not True for item in acceptance)
-    assert all(item["status"] in {"not_evaluable", "fail"} for item in acceptance)
+    assert all(item["status"] in {"not_evaluable", "fail", "reported", "not_applicable"} for item in acceptance)

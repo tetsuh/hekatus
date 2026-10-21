@@ -248,7 +248,7 @@ def _run_duration(
             raise _StopRequested("Issue #146 stop requested")
         ttnn_module.synchronize_device(device)
 
-    idle_window = issue146.SMOKE_IDLE_WINDOW if args.mode == "smoke" else issue146.LONG_IDLE_WINDOW
+    idle_window = issue146.mode_idle_window(plan, args.mode)
     try:
         duration = run_grouped_duration_bounded_load(
             enqueue_one,

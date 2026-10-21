@@ -156,6 +156,7 @@ def _environment(plan: dict[str, object], configuration_id: str) -> dict[str, ob
         "outer_repetitions": 16,
         "launches_per_sync": 8,
         "host_sw_vers": {"tt_smi": "6.2.1", "tt_umd": "0.9.8"},
+        "telemetry_sampler": {"mode": "explicit", "interval_seconds": 1.0},
     }
 
 
@@ -164,6 +165,8 @@ def _record(configuration_id: str, run_number: int, **changes: object) -> dict[s
     configuration = issue137_runner.configuration(plan, configuration_id).as_record()
     trace = _trace(configuration_id)
     trace.update(changes.pop("trace", {}))  # type: ignore[arg-type]
+    trace["sampling_interval_seconds"] = 1.0
+    trace["sampling_interval_source"] = "measurement_scope.trace_interval_seconds"
     trace["sha256"] = hashlib.sha256(analyzer.canonical_trace_bytes(trace)).hexdigest()
     trace["byte_count"] = len(analyzer.canonical_trace_bytes(trace))
     groups = {
@@ -196,6 +199,15 @@ def _record(configuration_id: str, run_number: int, **changes: object) -> dict[s
         "trace": trace,
         "groups": groups,
         "provenance": {"unit_provenance": power_trace_issue146.ISSUE146_UNIT_PROVENANCE},
+        "trace_cadence": {
+            "planned_interval_seconds": 1.0,
+            "host_sampler_interval_seconds": 1.0,
+            "host_sampler_source": "measurement_scope.trace_interval_seconds",
+            "test_override": False,
+            "wrapper_companion_interval_seconds": 1.0,
+            "wrapper_companion_source": "environment.telemetry_sampler",
+            "status": "plan",
+        },
     }
     record.update(changes)
     return record
@@ -332,19 +344,19 @@ def test_issue146_smoke_acceptance_reports_each_item_without_verdict() -> None:
     record["run"]["observed_duration_seconds"] = 40.0
     result = analyzer.analyze_smoke([record], plan=_plan())
     assert result["mode"] == "smoke-diagnostic"
-    assert len(result["acceptance"]) == 6
+    assert len(result["acceptance"]) == 5
     assert result["affects_long_verdict"] is False
 
 
-def test_issue146_plan_bytes_and_canonical_digest_are_revision_four() -> None:
+def test_issue146_plan_bytes_and_canonical_digest_are_revision_five() -> None:
     raw = PLAN_PATH.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == (
-        "420b35d4c76dc7cd264b52e6f4b8fd4c1784b919364b7feef6a0e07b0a766b9b"
+        "19a7c45de299b8e15b2d2e69ffa8a100091701ff2b8e32ca41980b465aade41b"
     )
     plan = _plan()
-    assert plan["revision_history"][-1]["revision"] == 4
+    assert plan["revision_history"][-1]["revision"] == 5
     assert analyzer.plan_sha256(plan) == (
-        "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a"
+        "5fc8d7a19533e10117e1b862603e5cb32ca37549b03194367b3396637dbff3ef"
     )
 
 

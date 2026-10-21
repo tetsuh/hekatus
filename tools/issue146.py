@@ -55,7 +55,9 @@ BUS_ID = "0000:09:00.0"
 COOLDOWN_CAP_SECONDS = 600.0
 COOLDOWN_POWER_TOLERANCE_W = 5.0
 COOLDOWN_TEMPERATURE_TOLERANCE_C = 3.0
-TRACE_INTERVAL_SECONDS = 2.0
+# The immutable plan is the production source of this value.  The constant is
+# retained only as a discoverable positive default for injected test seams.
+TRACE_INTERVAL_SECONDS = 1.0
 _ENV_BOARD_SERIAL_FIELD = "board.serial"
 _ENV_BOARD_ID_FIELD = "board.identity.board_id"
 _ENV_BUS_ID_FIELD = "board.identity.bus_id"
@@ -158,7 +160,10 @@ class Issue146RunOptions:
     bus_id: str | None = None
     trace_path: Path | None = None
     groups_path: Path | None = None
-    trace_interval_seconds: float = TRACE_INTERVAL_SECONDS
+    # ``None`` means derive the sampler cadence from the immutable plan.  A
+    # positive value is an explicit board-free test seam and is recorded as an
+    # override rather than silently becoming production configuration.
+    trace_interval_seconds: float | None = None
     capture_fn: Callable[..., dict[str, Any]] | None = None
 
 
@@ -171,6 +176,8 @@ class _PreparedRun:
     output_dir: Path
     trace_path: Path | None
     groups_path: Path
+    trace_interval_seconds: float
+    trace_interval_source: str
     wrapper_stdout_path: Path
     wrapper_stderr_path: Path
     command: tuple[str, ...]
@@ -211,8 +218,73 @@ def _canonical_plan_hash(plan: Mapping[str, Any]) -> str:
 def _plan_hash(plan: Mapping[str, Any]) -> str:
     digest = _canonical_plan_hash(plan)
     if digest != AUTHORITATIVE_PLAN_CANONICAL_SHA256:
-        raise Issue146Error("Issue #146 plan is not the immutable owner revision 4")
+        raise Issue146Error("Issue #146 plan is not the immutable owner revision 5")
     return digest
+
+
+def plan_trace_interval_seconds(plan: Mapping[str, Any]) -> float:
+    """Return the positive trace cadence declared by the immutable plan."""
+    _plan_hash(plan)
+    scope = plan.get("measurement_scope")
+    value = scope.get("trace_interval_seconds") if isinstance(scope, Mapping) else None
+    if isinstance(value, bool) or value is None:
+        raise Issue146Error("Issue #146 plan trace interval is missing")
+    try:
+        interval = float(value)
+    except (TypeError, ValueError) as exc:
+        raise Issue146Error("Issue #146 plan trace interval is invalid") from exc
+    if not math.isfinite(interval) or interval <= 0.0:
+        raise Issue146Error("Issue #146 plan trace interval must be positive")
+    return interval
+
+
+def trace_interval_seconds(
+    plan: Mapping[str, Any], override: float | None = None
+) -> tuple[float, str]:
+    """Resolve the production cadence or an explicit board-free test override."""
+    planned = plan_trace_interval_seconds(plan)
+    if override is None:
+        return planned, "measurement_scope.trace_interval_seconds"
+    if isinstance(override, bool):
+        raise Issue146Error("Issue #146 trace interval override must be positive")
+    try:
+        value = float(override)
+    except (TypeError, ValueError) as exc:
+        raise Issue146Error("Issue #146 trace interval override is invalid") from exc
+    if not math.isfinite(value) or value <= 0.0:
+        raise Issue146Error("Issue #146 trace interval override must be positive")
+    return value, "explicit_test_override"
+
+
+def mode_idle_window(plan: Mapping[str, Any], mode: str) -> tuple[float, float]:
+    """Read the host-visible idle window for the requested plan mode."""
+    _plan_hash(plan)
+    if mode == "long":
+        plateau = plan.get("plateau")
+        if not isinstance(plateau, Mapping):
+            raise Issue146Error("Issue #146 plateau is missing")
+        try:
+            start, end = float(plateau["start_seconds"]), float(plateau["end_seconds"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise Issue146Error("Issue #146 long idle window is invalid") from exc
+    elif mode == "smoke":
+        scope = plan.get("measurement_scope")
+        smoke = scope.get("smoke_runs") if isinstance(scope, Mapping) else None
+        sample_window = smoke.get("sample_window") if isinstance(smoke, Mapping) else None
+        if not isinstance(sample_window, str):
+            raise Issue146Error("Issue #146 smoke sample window is missing")
+        match = re.search(
+            r"(\d+(?:\.\d+)?)\s*s\s*<=.*?<\s*(\d+(?:\.\d+)?)\s*s",
+            sample_window,
+        )
+        if match is None:
+            raise Issue146Error("Issue #146 smoke sample window is invalid")
+        start, end = float(match.group(1)), float(match.group(2))
+    else:
+        raise Issue146Error("Issue #146 mode must be smoke or long")
+    if not math.isfinite(start) or not math.isfinite(end) or start < 0.0 or end <= start:
+        raise Issue146Error("Issue #146 idle window must be increasing")
+    return start, end
 
 
 def _trusted_path(path: Path, *, field: str) -> Path:
@@ -617,12 +689,12 @@ def _load_plan_path(path: Path) -> Path:
 
 
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
-    """Load the exact immutable owner revision-4 plan without changing bytes."""
+    """Load the exact immutable owner revision-5 plan without changing bytes."""
     source = _load_plan_path(Path(path))
     try:
         raw = source.read_bytes()
         if hashlib.sha256(raw).hexdigest() != AUTHORITATIVE_PLAN_RAW_SHA256:
-            raise Issue146Error("Issue #146 plan bytes are not the immutable owner revision")
+            raise Issue146Error("Issue #146 plan bytes are not the immutable owner revision 5")
         payload = json.loads(raw.decode("utf-8"))
     except Issue146Error:
         raise
@@ -714,7 +786,7 @@ def long_run_order(plan: Mapping[str, Any]) -> list[str]:
         raise Issue146Error("Issue #146 long-run order is missing")
     expected = ["C018", "C108", "C081", "C081", "C108", "C018"]
     if order != expected:
-        raise Issue146Error("Issue #146 long-run order is not the owner revision-4 order")
+        raise Issue146Error("Issue #146 long-run order is not the owner revision-5 order")
     return list(order)
 
 
@@ -760,7 +832,7 @@ def run_timing(plan: Mapping[str, Any], mode: str) -> dict[str, Any]:
         raise Issue146Error(f"Issue #146 {mode} timing is invalid") from exc
     expected = (40.0, 90.0) if mode == "smoke" else (180.0, 230.0)
     if (target, guard) != expected:
-        raise Issue146Error(f"Issue #146 {mode} timing does not match revision 4")
+        raise Issue146Error(f"Issue #146 {mode} timing does not match revision 5")
     if guard < target + 40.0 + DEFAULT_OVERRUN_LIMIT_SECONDS:
         raise Issue146Error("Issue #146 guard does not cover runner margin and overrun")
     return {"load_seconds": target, "guard_seconds": guard, "diagnostic_only": diagnostic}
@@ -920,6 +992,30 @@ def _validate_environment_versions(environment: Mapping[str, Any]) -> None:
         raise Issue146Error("telemetry_sampler provenance must be an object")
 
 
+def _validate_sampler_cadence(
+    environment: Mapping[str, Any], *, plan: Mapping[str, Any]
+) -> float:
+    """Require the Issue #146 companion sampler to carry plan cadence."""
+    sampler = environment.get("telemetry_sampler")
+    if not isinstance(sampler, Mapping):
+        raise Issue146Error("Issue #146 telemetry sampler provenance is missing")
+    if sampler.get("mode") != "explicit":
+        raise Issue146Error("Issue #146 telemetry sampler must use explicit plan cadence")
+    value = sampler.get("interval_seconds", sampler.get("effective_interval_seconds"))
+    if isinstance(value, bool) or value is None:
+        raise Issue146Error("Issue #146 telemetry sampler interval is missing")
+    try:
+        interval = float(value)
+    except (TypeError, ValueError) as exc:
+        raise Issue146Error("Issue #146 telemetry sampler interval is invalid") from exc
+    planned = plan_trace_interval_seconds(plan)
+    if not math.isfinite(interval) or interval <= 0.0 or not math.isclose(
+        interval, planned, rel_tol=0.0, abs_tol=1e-12
+    ):
+        raise Issue146Error("Issue #146 telemetry sampler interval does not match the plan")
+    return interval
+
+
 def validate_environment_for_run(
     environment: Mapping[str, Any], *, configuration: Issue146Configuration | None = None,
     plan: Mapping[str, Any] | None = None,
@@ -941,6 +1037,7 @@ def validate_environment_for_run(
         outer_repetitions=outer_repetitions, launches_per_sync=launches_per_sync,
     )
     _validate_environment_versions(environment)
+    _validate_sampler_cadence(environment, plan=effective_plan)
 
 
 def build_environment_record(
@@ -1168,7 +1265,7 @@ def _cooldown_settings(plan: Mapping[str, Any]) -> tuple[float, float, float]:
     if (cap, power_tolerance, temperature_tolerance) != (
         COOLDOWN_CAP_SECONDS, COOLDOWN_POWER_TOLERANCE_W, COOLDOWN_TEMPERATURE_TOLERANCE_C
     ):
-        raise Issue146Error("Issue #146 cooldown settings do not match revision 4")
+        raise Issue146Error("Issue #146 cooldown settings do not match revision 5")
     return cap, power_tolerance, temperature_tolerance
 
 
@@ -1388,8 +1485,10 @@ def build_run_command(
 def _base_record(
     *, plan: Mapping[str, Any], configuration: Issue146Configuration, mode: str,
     run_id: str, run_number: int | None, command: Sequence[str], output_dir: Path,
+    trace_interval: float, trace_interval_source: str,
 ) -> dict[str, Any]:
     timing = run_timing(plan, mode)
+    planned_trace_interval = plan_trace_interval_seconds(plan)
     command_record = ["<run-output-dir>" if item == str(output_dir) else item for item in command]
     return {
         "record_schema": ISSUE146_RECORD_SCHEMA,
@@ -1411,8 +1510,18 @@ def _base_record(
             "group_count": None,
             "launch_count": None,
             "overrun_seconds": None,
+            "trace_interval_seconds": trace_interval,
         },
         "configuration": configuration.as_record(),
+        "trace_cadence": {
+            "planned_interval_seconds": planned_trace_interval,
+            "host_sampler_interval_seconds": trace_interval,
+            "host_sampler_source": trace_interval_source,
+            "test_override": trace_interval_source == "explicit_test_override",
+            "wrapper_companion_interval_seconds": None,
+            "wrapper_companion_source": None,
+            "status": "pending",
+        },
         "command": command_record,
         "diagnostic_only": mode == "smoke",
         "verdict_evidence": False,
@@ -1432,6 +1541,8 @@ def _base_record(
             "unit_provenance": None,
             "unit_provenance_status": "unknown",
             "host_identity_persisted": False,
+            "trace_interval_seconds": trace_interval,
+            "trace_interval_source": trace_interval_source,
         },
     }
 
@@ -1484,6 +1595,9 @@ def _prepare_run(
     if mode not in {"smoke", "long"}:
         raise Issue146Error("Issue #146 mode must be smoke or long")
     timing = run_timing(plan, mode)
+    trace_interval, trace_interval_source = trace_interval_seconds(
+        plan, options.trace_interval_seconds
+    )
     try:
         safe_id = validate_run_id(run_id)
     except ValueError as exc:
@@ -1524,6 +1638,7 @@ def _prepare_run(
     record = _base_record(
         plan=plan, configuration=configuration, mode=mode, run_id=safe_id,
         run_number=options.run_number, command=command, output_dir=output,
+        trace_interval=trace_interval, trace_interval_source=trace_interval_source,
     )
     if options.environment is not None:
         record["environment"] = build_environment_record(
@@ -1537,6 +1652,8 @@ def _prepare_run(
         output,
         trace,
         groups,
+        trace_interval,
+        trace_interval_source,
         wrapper_stdout,
         wrapper_stderr,
         command,
@@ -1645,8 +1762,11 @@ def _capture_pre_run(prepared: _PreparedRun, state: _ExecutionState, capture_fn:
     return None
 
 
-def _start_trace_sampler(state: _ExecutionState, options: Issue146RunOptions, capture_fn: Callable[..., dict[str, Any]]) -> float:
-    interval = float(options.trace_interval_seconds)
+def _start_trace_sampler(
+    state: _ExecutionState,
+    interval: float,
+    capture_fn: Callable[..., dict[str, Any]],
+) -> float:
     if not math.isfinite(interval) or interval <= 0.0:
         raise Issue146Error("trace interval must be positive")
     state.trace_thread = threading.Thread(
@@ -1679,6 +1799,7 @@ def _run_command(
                 options.environment,
                 guard_seconds=prepared.timing["guard_seconds"],
                 requested_run_id=prepared.safe_run_id,
+                trace_interval_seconds=prepared.trace_interval_seconds,
             ),
         )
         state.stdout = getattr(state.completed, "stdout", None)
@@ -1733,7 +1854,11 @@ def _run_command(
 
 
 def _execution_environment(
-    environment: Mapping[str, Any] | None, *, guard_seconds: float, requested_run_id: str
+    environment: Mapping[str, Any] | None,
+    *,
+    guard_seconds: float,
+    requested_run_id: str,
+    trace_interval_seconds: float,
 ) -> dict[str, str]:
     values = dict(os.environ)
     values["HEKATUS_TT_RUNNER"] = ISSUE146_DEVICE_RUNNER
@@ -1741,14 +1866,12 @@ def _execution_environment(
     values["HEKATUS_TT_REQUESTED_RUN_ID"] = requested_run_id
     values["HEKATUS_TT_CONTAINER_DEVICE_ID"] = str(CONTAINER_VISIBLE_DEVICE_ID)
     values["HEKATUS_TT_CONTAINER_TIMEOUT_S"] = str(int(guard_seconds))
+    # Issue #146 owns both samplers' cadence.  The generic wrapper keeps its
+    # Issue #137 default unchanged; this explicit environment binding is what
+    # makes the Issue #146 companion trace use the same plan-derived interval.
+    values["HEKATUS_TT_TELEMETRY_MODE"] = "explicit"
+    values["HEKATUS_TT_TELEMETRY_INTERVAL_S"] = str(trace_interval_seconds)
     if isinstance(environment, Mapping):
-        sampler = environment.get("telemetry_sampler")
-        if isinstance(sampler, Mapping):
-            mode = sampler.get("mode")
-            if isinstance(mode, str):
-                values["HEKATUS_TT_TELEMETRY_MODE"] = mode
-            if sampler.get("interval_seconds") is not None and mode == "explicit":
-                values["HEKATUS_TT_TELEMETRY_INTERVAL_S"] = str(sampler["interval_seconds"])
         digest = _environment_digest(environment)
         if digest:
             values["HEKATUS_TT_IMAGE"] = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@" + digest
@@ -1879,15 +2002,17 @@ def _parse_runner_groups(result: Mapping[str, Any]) -> list[dict[str, int]]:
 
 def _runner_group_facts(
     result: Mapping[str, Any], groups: Sequence[Mapping[str, int]], timing: Mapping[str, Any],
+    *, plan: Mapping[str, Any], mode: str,
 ) -> dict[str, Any]:
     first = result.get("first_launch_start_monotonic_ns")
     if isinstance(first, bool) or not isinstance(first, int):
         raise Issue146Error("runner result first launch clock is invalid")
     from tools.issue146_analysis import group_timing_facts
 
+    idle_start, idle_end = mode_idle_window(plan, mode)
     facts = group_timing_facts(
         groups, first_launch_start_monotonic_ns=first,
-        plateau_start_seconds=60.0, plateau_end_seconds=180.0,
+        plateau_start_seconds=idle_start, plateau_end_seconds=idle_end,
         workload_duration_seconds=timing["load_seconds"],
         idle_fraction_limit=0.02, overrun_limit_seconds=10.0,
     )
@@ -1909,6 +2034,10 @@ def _runner_group_facts(
         "launch_count": launch_count,
         "overrun_seconds": facts["overrun_seconds"],
         "idle_fraction": facts["idle_fraction"],
+        "idle_window_seconds": {
+            "start_seconds": idle_start,
+            "end_seconds": idle_end,
+        },
     }
 
 
@@ -1919,7 +2048,7 @@ def _validate_runner_result(
     _validate_runner_identity(result, mode=mode, requested_run_id=requested_run_id)
     timing = _validate_runner_metadata(result, plan=plan, configuration=configuration, mode=mode)
     groups = _parse_runner_groups(result)
-    return _runner_group_facts(result, groups, timing), groups
+    return _runner_group_facts(result, groups, timing, plan=plan, mode=mode), groups
 
 
 def validate_runner_result(
@@ -1982,10 +2111,24 @@ def _validate_device_group_artifact(
 def _validate_companion_power_trace(
     output_dir: Path, *, before: set[str], result: Mapping[str, Any],
     wrapper_run_id: str, mode: str, environment: Mapping[str, Any] | None,
+    expected_interval_seconds: float,
 ) -> dict[str, Any]:
     sampler = environment.get("telemetry_sampler") if isinstance(environment, Mapping) else None
     if mode == "smoke" and isinstance(sampler, Mapping) and sampler.get("mode") == "off":
         return {"status": "not_applicable", "reason": "diagnostic sampler is off"}
+    if not isinstance(sampler, Mapping):
+        raise Issue146Error("legacy companion power trace sampler provenance is missing")
+    if sampler.get("mode") != "explicit":
+        raise Issue146Error("legacy companion power trace sampler mode is not explicit")
+    interval_value = sampler.get("interval_seconds", sampler.get("effective_interval_seconds"))
+    try:
+        effective_interval = float(interval_value)
+    except (TypeError, ValueError) as exc:
+        raise Issue146Error("legacy companion power trace sampler interval is invalid") from exc
+    if not math.isfinite(effective_interval) or not math.isclose(
+        effective_interval, expected_interval_seconds, rel_tol=0.0, abs_tol=1e-12
+    ):
+        raise Issue146Error("legacy companion power trace sampler interval does not match the plan")
     name = _result_artifact_name(
         result.get("power_trace_path", f"power-{wrapper_run_id}.csv"),
         field="legacy companion power trace",
@@ -2022,6 +2165,8 @@ def _validate_companion_power_trace(
         "valid_row_count": parsed.get("valid_row_count"),
         "coverage": parsed.get("coverage"),
         "source": "wrapper legacy power sampler companion evidence",
+        "sampler_mode": sampler.get("mode"),
+        "sampler_interval_seconds": effective_interval,
     }
 
 
@@ -2151,6 +2296,8 @@ def _write_trace(prepared: _PreparedRun, state: _ExecutionState, *, facts: Mappi
         "actual_end_monotonic_ns": facts["last_group_end_monotonic_ns"],
         "sha256": hashlib.sha256(raw).hexdigest(),
         "byte_count": len(raw),
+        "sampling_interval_seconds": prepared.trace_interval_seconds,
+        "sampling_interval_source": prepared.trace_interval_source,
         "unit_provenance": power_trace_issue146.ISSUE146_UNIT_PROVENANCE if source_verified else None,
     }
 
@@ -2177,12 +2324,20 @@ def _ingest_result(prepared: _PreparedRun, state: _ExecutionState, *, before: se
     companion = _validate_companion_power_trace(
         prepared.output_dir, before=before, result=result, wrapper_run_id=wrapper_run_id,
         mode=prepared.record["run"]["mode"], environment=result.get("environment"),
+        expected_interval_seconds=plan_trace_interval_seconds(plan),
     )
     state.device_groups = device_artifact
     state.companion_power_trace = companion
     prepared.record["provenance"]["wrapper_run_id"] = wrapper_run_id
     prepared.record["provenance"]["requested_run_id"] = result["requested_run_id"]
     prepared.record["provenance"]["legacy_power_trace"] = companion
+    cadence = prepared.record.get("trace_cadence")
+    if isinstance(cadence, dict):
+        cadence["wrapper_companion_interval_seconds"] = companion.get(
+            "sampler_interval_seconds"
+        )
+        cadence["wrapper_companion_source"] = "environment.telemetry_sampler"
+        cadence["status"] = "override" if cadence.get("test_override") else "plan"
     prepared.record["environment"] = build_environment_record(result["environment"], configuration, plan=plan)
     prepared.record["run"].update(facts)
     prepared.record["run"]["first_launch_start_monotonic_ns"] = facts["first_launch_start_monotonic_ns"]
@@ -2262,9 +2417,9 @@ def _execute_run(prepared: _PreparedRun, *, plan: Mapping[str, Any], configurati
     if failed is not None:
         return failed
     interval = (
-        _start_trace_sampler(state, options, capture_fn)
+        _start_trace_sampler(state, prepared.trace_interval_seconds, capture_fn)
         if prepared.trace_path is not None
-        else float(options.trace_interval_seconds)
+        else prepared.trace_interval_seconds
     )
     before = _run_command(prepared, state, options, interval)
     _capture_post_run(prepared, state, capture_fn)
@@ -2323,6 +2478,8 @@ def build_planning_record(plan: Mapping[str, Any]) -> dict[str, Any]:
             "schema": power_trace_issue146.ISSUE146_POWER_TRACE_SCHEMA,
             "schema_version": power_trace_issue146.ISSUE146_POWER_TRACE_SCHEMA_VERSION,
             "columns": list(power_trace_issue146.ISSUE146_POWER_TRACE_COLUMNS),
+            "sampling_interval_seconds": plan_trace_interval_seconds(plan),
+            "sampling_interval_source": "measurement_scope.trace_interval_seconds",
             "unit_provenance": power_trace_issue146.ISSUE146_UNIT_PROVENANCE,
         },
     }
@@ -2411,11 +2568,14 @@ __all__ = [
     "load_plan",
     "long_run_order",
     "main",
+    "mode_idle_window",
     "plan_configurations",
+    "plan_trace_interval_seconds",
     "resolve_result_path",
     "run_one",
     "run_timing",
     "sample_issue146_trace",
+    "trace_interval_seconds",
     "trace_rows_from_captures",
     "validate_capture",
     "validate_environment_for_run",

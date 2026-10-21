@@ -632,8 +632,8 @@ def test_issue146_main_plan_mode_remains_success(monkeypatch: pytest.MonkeyPatch
     assert issue146.main(["--plan", str(PLAN), "--mode", "plan"]) == 0
 
 
-def test_issue146_plan_cli_accepts_revision_four_without_board(capsys: pytest.CaptureFixture[str]) -> None:
+def test_issue146_plan_cli_accepts_revision_five_without_board(capsys: pytest.CaptureFixture[str]) -> None:
     assert issue146.main(["--plan", str(PLAN), "--mode", "plan"]) == 0
     planning = json.loads(capsys.readouterr().out)
-    assert planning["plan_revision"] == 4
+    assert planning["plan_revision"] == 5
     assert planning["plan_sha256"] == issue146.AUTHORITATIVE_PLAN_CANONICAL_SHA256

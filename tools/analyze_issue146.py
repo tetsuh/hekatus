@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import statistics
 import sys
 from collections.abc import Mapping, Sequence
@@ -35,6 +36,7 @@ from tools.issue146_analysis import (
     EXPECTED_ENABLED_MAX,
     EXPECTED_ENABLED_MIN,
     Issue146AnalysisError,
+    current_dip_facts,
     decode_arbiter_row,
     decode_gddr_row,
     finite,
@@ -73,7 +75,10 @@ TRACE_COLUMNS = power_trace_issue146.ISSUE146_POWER_TRACE_COLUMNS
 TRACE_SCHEMA = power_trace_issue146.ISSUE146_POWER_TRACE_SCHEMA
 PLAN_PROVENANCE = power_trace_issue146.ISSUE146_UNIT_PROVENANCE
 SMOKE_WINDOW_LABEL = "[10,40)"
-REGULATED_SMOKE_CRITERION = "regulated_current_and_power_[10,40)"
+REGULATED_SMOKE_CRITERION = "regulated_load_diagnostics_[10,40)"
+SMOKE_DIAGNOSTIC_NAME = REGULATED_SMOKE_CRITERION
+R5_SIGNED_MIN_MHZ = 0.0
+R5_SIGNED_MAX_MHZ = 7.0
 AMBIGUOUS_ARBITER_ALTERNATIVES = "ambiguous arbiter alternatives"
 IMPOSSIBLE_MASK_INDEX = "impossible mask index"
 
@@ -104,6 +109,8 @@ class _PlanSpec:
     overrun_limit_seconds: float
     plateau_start_seconds: float
     plateau_end_seconds: float
+    smoke_start_seconds: float
+    smoke_end_seconds: float
     minimum_samples: int
     idle_fraction_limit: float
     board_power_limit: float
@@ -113,6 +120,7 @@ class _PlanSpec:
     regulated_interval: tuple[float, float]
     outer_repetitions: int
     launches_per_sync: int
+    trace_interval_seconds: float
 
 
 @dataclass(frozen=True)
@@ -293,7 +301,7 @@ def canonical_groups_bytes(payload: Mapping[str, Any]) -> bytes:
 def _validate_plan_header(plan: Mapping[str, Any]) -> None:
     _verify_authoritative_plan_file()
     if plan_sha256(plan) != AUTHORITATIVE_PLAN_CANONICAL_SHA256:
-        raise AnalysisError("supplied Issue #146 plan is not the immutable revision-4 plan")
+        raise AnalysisError("supplied Issue #146 plan is not the immutable revision-5 plan")
     if plan.get("record_schema") != PLAN_SCHEMA:
         raise AnalysisError("unsupported Issue #146 plan schema")
     if plan.get("status") != "planned" or plan.get("board_run") is not False:
@@ -361,7 +369,7 @@ def _plan_plateau(plan: Mapping[str, Any]) -> tuple[float, float, int]:
     end = finite(plateau.get("end_seconds"), field="plateau end")
     minimum = integer(plateau.get("minimum_samples"), field="minimum samples")
     if (start, end, minimum) != (60.0, 180.0, 50):
-        raise AnalysisError("Issue #146 plateau contract is not revision 4")
+        raise AnalysisError("Issue #146 plateau contract is not revision 5")
     return start, end, minimum
 
 
@@ -405,7 +413,7 @@ def _plan_scope(
 
 def _plan_timing(
     plan: Mapping[str, Any], scope: Mapping[str, Any]
-) -> tuple[float, float, float, float, float, int, int]:
+) -> tuple[float, float, float, float, float, float, float, int, int, float]:
     scope_smoke = scope.get("smoke_runs")
     if not isinstance(scope_smoke, Mapping):
         raise AnalysisError("Issue #146 smoke timing is missing")
@@ -420,7 +428,18 @@ def _plan_timing(
         not in sample_window
         or "outside every item" not in sample_window
     ):
-        raise AnalysisError("Issue #146 smoke sample window contract is not revision 4")
+        raise AnalysisError("Issue #146 smoke sample window contract is not revision 5")
+    sample_match = re.search(
+        r"(\d+(?:\.\d+)?)\s*s\s*<=.*?<\s*(\d+(?:\.\d+)?)\s*s",
+        sample_window if isinstance(sample_window, str) else "",
+    )
+    if sample_match is None:
+        raise AnalysisError("Issue #146 smoke sample window bounds are invalid")
+    smoke_start = float(sample_match.group(1))
+    smoke_end = float(sample_match.group(2))
+    trace_interval = finite(scope.get("trace_interval_seconds"), field="trace interval")
+    if trace_interval <= 0.0 or smoke_end <= smoke_start:
+        raise AnalysisError("Issue #146 timing cadence/window is invalid")
     execution = plan.get("load_execution")
     if (
         not isinstance(execution, Mapping)
@@ -434,8 +453,11 @@ def _plan_timing(
     if outer_repetitions <= 0 or launches_per_sync <= 0:
         raise AnalysisError("Issue #146 grouped load settings must be positive")
     if (target, guard, smoke_target, smoke_guard, overrun) != (180.0, 230.0, 40.0, 90.0, 10.0):
-        raise AnalysisError("Issue #146 timing contract is not revision 4")
-    return target, guard, smoke_target, smoke_guard, overrun, outer_repetitions, launches_per_sync
+        raise AnalysisError("Issue #146 timing contract is not revision 5")
+    return (
+        target, guard, smoke_target, smoke_guard, overrun,
+        smoke_start, smoke_end, outer_repetitions, launches_per_sync, trace_interval,
+    )
 
 
 def _plan_limits(
@@ -487,9 +509,10 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         end,
         minimum,
     ) = _plan_scope(plan)
-    target, guard, smoke_target, smoke_guard, overrun, outer_repetitions, launches_per_sync = (
-        _plan_timing(plan, scope)
-    )
+    (
+        target, guard, smoke_target, smoke_guard, overrun,
+        smoke_start, smoke_end, outer_repetitions, launches_per_sync, trace_interval,
+    ) = _plan_timing(plan, scope)
     board_limit, fmax, thm_limit, gddr_limit, regulated_interval = _plan_limits(plan)
     return _PlanSpec(
         plan=plan,
@@ -509,6 +532,8 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         overrun_limit_seconds=overrun,
         plateau_start_seconds=start,
         plateau_end_seconds=end,
+        smoke_start_seconds=smoke_start,
+        smoke_end_seconds=smoke_end,
         minimum_samples=minimum,
         idle_fraction_limit=IDLE_FRACTION_LIMIT,
         board_power_limit=board_limit,
@@ -518,14 +543,15 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         regulated_interval=regulated_interval,
         outer_repetitions=outer_repetitions,
         launches_per_sync=launches_per_sync,
+        trace_interval_seconds=trace_interval,
     )
 
 
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> Mapping[str, Any]:
-    """Load the immutable revision-4 plan without changing its bytes."""
+    """Load the immutable revision-5 plan without changing its bytes."""
     payload, raw = _read_json(Path(path), purpose="Issue #146 plan")
     if hashlib.sha256(raw).hexdigest() != AUTHORITATIVE_PLAN_RAW_SHA256:
-        raise AnalysisError("Issue #146 plan bytes are not the immutable owner revision")
+        raise AnalysisError("Issue #146 plan bytes are not the immutable owner revision 5")
     _plan_spec(payload)
     return payload
 
@@ -623,6 +649,7 @@ def _environment_values(environment: Mapping[str, Any]) -> dict[str, Any]:
         "total_blocks": environment.get("total_blocks"),
         "outer_repetitions": environment.get("outer_repetitions"),
         "launches_per_sync": environment.get("launches_per_sync"),
+        "telemetry_sampler": environment.get("telemetry_sampler"),
     }
 
 
@@ -666,6 +693,25 @@ def _environment_execution_errors(values: Mapping[str, Any], spec: _PlanSpec) ->
     return errors
 
 
+def _environment_cadence_errors(
+    values: Mapping[str, Any], spec: _PlanSpec
+) -> list[str]:
+    sampler = values.get("telemetry_sampler")
+    if not isinstance(sampler, Mapping):
+        return ["telemetry_sampler"]
+    errors: list[str] = []
+    if sampler.get("mode") != "explicit":
+        errors.append("telemetry_sampler.mode")
+    value = sampler.get("interval_seconds", sampler.get("effective_interval_seconds"))
+    try:
+        interval = finite(value, field="telemetry sampler interval")
+    except Issue146AnalysisError:
+        return errors + ["telemetry_sampler.interval_seconds"]
+    if not math.isclose(interval, spec.trace_interval_seconds, rel_tol=0.0, abs_tol=1e-12):
+        errors.append("telemetry_sampler.interval_seconds.binding")
+    return errors
+
+
 def _environment_errors(
     environment: Any, configuration: Mapping[str, Any] | None, spec: _PlanSpec
 ) -> list[str]:
@@ -676,7 +722,41 @@ def _environment_errors(
     errors.extend(_environment_identity_errors(values, spec))
     errors.extend(_environment_configuration_errors(values, configuration))
     errors.extend(_environment_execution_errors(values, spec))
+    errors.extend(_environment_cadence_errors(values, spec))
     return list(dict.fromkeys(errors))
+
+
+def _record_cadence_errors(record: Mapping[str, Any], spec: _PlanSpec) -> list[str]:
+    cadence = record.get("trace_cadence")
+    if not isinstance(cadence, Mapping):
+        return ["trace_cadence"]
+    errors: list[str] = []
+    try:
+        planned = finite(cadence.get("planned_interval_seconds"), field="planned cadence")
+        host = finite(cadence.get("host_sampler_interval_seconds"), field="host cadence")
+        companion = finite(
+            cadence.get("wrapper_companion_interval_seconds"), field="companion cadence"
+        )
+    except Issue146AnalysisError:
+        return ["trace_cadence.values"]
+    if not math.isclose(planned, spec.trace_interval_seconds, rel_tol=0.0, abs_tol=1e-12):
+        errors.append("trace_cadence.planned_interval_seconds.binding")
+    if not math.isclose(companion, spec.trace_interval_seconds, rel_tol=0.0, abs_tol=1e-12):
+        errors.append("trace_cadence.wrapper_companion_interval_seconds.binding")
+    if not cadence.get("test_override") and not math.isclose(
+        host, spec.trace_interval_seconds, rel_tol=0.0, abs_tol=1e-12
+    ):
+        errors.append("trace_cadence.host_sampler_interval_seconds.binding")
+    trace = record.get("trace")
+    if isinstance(trace, Mapping) and trace.get("sampling_interval_seconds") is not None:
+        try:
+            trace_interval = finite(trace["sampling_interval_seconds"], field="trace cadence")
+        except Issue146AnalysisError:
+            errors.append("trace.sampling_interval_seconds")
+        else:
+            if not math.isclose(trace_interval, host, rel_tol=0.0, abs_tol=1e-12):
+                errors.append("trace.sampling_interval_seconds.binding")
+    return errors
 
 
 def _configuration_errors(
@@ -1296,23 +1376,33 @@ def _duration_group_facts(
     *,
     first: int | None,
     target: float,
+    mode: str,
     spec: _PlanSpec,
 ) -> tuple[dict[str, Any], list[str]]:
     facts: dict[str, Any] = {}
     if first is None:
         return facts, ["first_launch_start_monotonic_ns"]
+    start_seconds, end_seconds = (
+        (spec.smoke_start_seconds, spec.smoke_end_seconds)
+        if mode == "smoke"
+        else (spec.plateau_start_seconds, spec.plateau_end_seconds)
+    )
     try:
         facts.update(
             group_timing_facts(
                 groups.groups,
                 first_launch_start_monotonic_ns=first,
-                plateau_start_seconds=spec.plateau_start_seconds,
-                plateau_end_seconds=spec.plateau_end_seconds,
+                plateau_start_seconds=start_seconds,
+                plateau_end_seconds=end_seconds,
                 workload_duration_seconds=target,
                 idle_fraction_limit=spec.idle_fraction_limit,
                 overrun_limit_seconds=spec.overrun_limit_seconds,
             )
         )
+        facts["idle_window_seconds"] = {
+            "start_seconds": start_seconds,
+            "end_seconds": end_seconds,
+        }
     except Issue146AnalysisError as exc:
         return facts, [f"groups.binding: {exc}"]
     return facts, []
@@ -1432,7 +1522,7 @@ def _duration_binding(
     }
     errors = _duration_contract_errors(record, groups, mode=mode, spec=spec)
     group_facts, group_errors = _duration_group_facts(
-        groups, first=first, target=target, spec=spec
+        groups, first=first, target=target, mode=mode, spec=spec
     )
     facts.update(group_facts)
     errors.extend(group_errors)
@@ -1458,14 +1548,31 @@ def _nominal_power(
     return median - 3.0 * sample_sd <= board_power <= median + 3.0 * sample_sd
 
 
+def _signed_r5_delta(row: Mapping[str, Any], arb: Mapping[str, Any]) -> float:
+    """Return the registered signed arbiter-minus-realised AICLK delta."""
+    return float(arb["aiclk_arb_max_frequency_mhz"]) - finite(
+        row.get("aiclk_mhz"), field="AICLK"
+    )
+
+
+def _r5_signed_pass(delta: float) -> bool:
+    return R5_SIGNED_MIN_MHZ <= delta <= R5_SIGNED_MAX_MHZ
+
+
 def _nominal_mode(
-    arb: Mapping[str, Any], *, mode: str, aiclk: float, spec: _PlanSpec
+    row: Mapping[str, Any], arb: Mapping[str, Any], *, mode: str, spec: _PlanSpec
 ) -> bool:
     if mode == "long-regulated" or mode == "smoke-regulated":
+        aiclk = finite(row.get("aiclk_mhz"), field="AICLK")
         if aiclk >= spec.asic_fmax or arb["aiclk_arb_max_frequency_mhz"] >= spec.asic_fmax:
             return False
-        return arb["aiclk_arb_max_index"] in {7, 8}
-    return aiclk == spec.asic_fmax and arb["aiclk_arb_max_raw_int"] == EXPECTED_CONTROL_MAX
+        return arb["aiclk_arb_max_index"] in {7, 8} and _r5_signed_pass(
+            _signed_r5_delta(row, arb)
+        )
+    return (
+        finite(row.get("aiclk_mhz"), field="AICLK") == spec.asic_fmax
+        and arb["aiclk_arb_max_raw_int"] == EXPECTED_CONTROL_MAX
+    )
 
 
 def _nominal_gddr(decoded: Mapping[str, Any], spec: _PlanSpec) -> bool:
@@ -1487,18 +1594,17 @@ def _row_nominal(
         arb = decode_arbiter_row(row)
         board_power = finite(row.get("board_power_w"), field="board power")
         asic = finite(row.get("asic_temp_c"), field="ASIC temperature")
-        aiclk = finite(row.get("aiclk_mhz"), field="AICLK")
     except Issue146AnalysisError:
         return False
     if not _nominal_power(decoded, board_power):
         return False
     if arb["aiclk_arb_min_raw_int"] != EXPECTED_BUSY_MIN:
         return False
-    if abs(aiclk - arb["aiclk_arb_max_frequency_mhz"]) > 2.0:
+    if not _r5_signed_pass(_signed_r5_delta(row, arb)):
         return False
     if asic >= spec.asic_temperature_limit:
         return False
-    if not _nominal_mode(arb, mode=mode, aiclk=aiclk, spec=spec):
+    if not _nominal_mode(row, arb, mode=mode, spec=spec):
         return False
     return omit_gddr or _nominal_gddr(decoded, spec)
 
@@ -1719,18 +1825,19 @@ def _regulated_busy(
 def _regulated_tracking(
     decoded_by_id: Mapping[int, Mapping[str, Any]], rows: Sequence[Mapping[str, Any]]
 ) -> dict[str, Any]:
+    deltas = [
+        _signed_r5_delta(row, decoded_by_id[id(row)]["arb"])
+        for row in rows
+    ]
+    passed = bool(deltas) and all(_r5_signed_pass(delta) for delta in deltas)
+    absolute_values = [abs(delta) for delta in deltas]
     return _criterion(
         "R5-aiclk-tracks-arbiter",
-        _all_rows_pass(
-            rows,
-            lambda row: (
-                abs(
-                    finite(row["aiclk_mhz"], field="aiclk_mhz")
-                    - decoded_by_id[id(row)]["arb"]["aiclk_arb_max_frequency_mhz"]
-                )
-                <= 2.0
-            ),
-        ),
+        passed,
+        signed_delta_min_mhz=min(deltas) if deltas else None,
+        signed_delta_max_mhz=max(deltas) if deltas else None,
+        absolute_delta_max_mhz=max(absolute_values) if absolute_values else None,
+        signed_delta_bounds_mhz=[R5_SIGNED_MIN_MHZ, R5_SIGNED_MAX_MHZ],
     )
 
 
@@ -1895,19 +2002,17 @@ def _criteria(
 
 def _exploratory_residuals_and_indices(
     retained: Sequence[Mapping[str, Any]], decoded_by_id: Mapping[int, Mapping[str, Any]]
-) -> tuple[list[float], dict[str, int]]:
-    residuals = [
-        abs(
-            finite(row["aiclk_mhz"], field="aiclk_mhz")
-            - decoded_by_id[id(row)]["arb"]["aiclk_arb_max_frequency_mhz"]
-        )
+) -> tuple[list[float], list[float], dict[str, int]]:
+    signed_deltas = [
+        _signed_r5_delta(row, decoded_by_id[id(row)]["arb"])
         for row in retained
     ]
+    residuals = [abs(delta) for delta in signed_deltas]
     indices: dict[str, int] = {}
     for row in retained:
         index = str(decoded_by_id[id(row)]["arb"]["aiclk_arb_max_index"])
         indices[index] = indices.get(index, 0) + 1
-    return residuals, indices
+    return residuals, signed_deltas, indices
 
 
 def _exploratory_onsets(
@@ -2008,19 +2113,75 @@ def _exploratory(
     decoded_by_id: Mapping[int, Mapping[str, Any]],
     *,
     first: int,
+    mode: str,
+    configuration_id: str | None,
     post_device: Mapping[str, Any] | None,
     last_group_end: int | None,
     spec: _PlanSpec,
     duration_weighted: Mapping[str, Any],
+    group_timings: Sequence[Mapping[str, Any]],
     post_capture_timestamp: int | None,
 ) -> dict[str, Any]:
-    residuals, indices = _exploratory_residuals_and_indices(retained, decoded_by_id)
+    residuals, signed_deltas, indices = _exploratory_residuals_and_indices(
+        retained, decoded_by_id
+    )
     onset_clock, onset_power = _exploratory_onsets(rows, decoded_by_id, first=first, spec=spec)
+    dip_start, dip_end = (
+        (spec.smoke_start_seconds, spec.smoke_end_seconds)
+        if mode == "smoke"
+        else (spec.plateau_start_seconds, spec.plateau_end_seconds)
+    )
+    if configuration_id in {"C081", "C108"}:
+        try:
+            current_dips = current_dip_facts(
+                retained,
+                first_launch_start_monotonic_ns=first,
+                window_start_seconds=dip_start,
+                window_end_seconds=dip_end,
+                group_timings=group_timings,
+                sample_interval_seconds=spec.trace_interval_seconds,
+            )
+        except Issue146AnalysisError as exc:
+            current_dips = {
+                "status": "not_evaluable",
+                "reason": str(exc),
+                "window": {
+                    "start_seconds": dip_start,
+                    "end_seconds": dip_end,
+                    "selection": "strict half-open window",
+                },
+                "sample_count": 0,
+                "dip_count": 0,
+                "dip_fraction": None,
+                "dips": [],
+                "sample_capture_interval_seconds": spec.trace_interval_seconds,
+            }
+    else:
+        current_dips = {
+            "status": "not_applicable",
+            "reason": "current dips are reported only for regulated configurations",
+            "window": {
+                "start_seconds": dip_start,
+                "end_seconds": dip_end,
+                "selection": "strict half-open window",
+            },
+            "sample_count": 0,
+            "median_current_a": None,
+            "threshold_current_a": None,
+            "threshold_operator": "strictly below (<)",
+            "dip_count": 0,
+            "dip_fraction": None,
+            "dips": [],
+            "sample_capture_interval_seconds": spec.trace_interval_seconds,
+        }
     drift_rows = _exploratory_drift(retained, decoded_by_id, first=first)
     current_values = _exploratory_current(retained)
     return {
         "r5_residual_max_mhz": max(residuals) if residuals else None,
         "r5_residual_values_mhz": residuals,
+        "r5_signed_delta_min_mhz": min(signed_deltas) if signed_deltas else None,
+        "r5_signed_delta_max_mhz": max(signed_deltas) if signed_deltas else None,
+        "r5_signed_delta_values_mhz": signed_deltas,
         "reported_index_distribution": indices,
         "lag1": _aiclk_lag1(retained),
         "drift": {"samples": drift_rows, "status": "reported" if drift_rows else "not_evaluable"},
@@ -2028,6 +2189,7 @@ def _exploratory(
             "first_aiclk_arb_max_below_fmax_seconds": onset_clock,
             "first_board_power_within_5_w_of_limit_seconds": onset_power,
         },
+        "current_dips": current_dips,
         "busy_current_against_disabled_tdc": {
             "disabled_tdc_limit_a": 200.0,
             "sample_count": len(current_values),
@@ -2048,12 +2210,22 @@ def _empty_exploratory(duration_weighted: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "r5_residual_max_mhz": None,
         "r5_residual_values_mhz": [],
+        "r5_signed_delta_min_mhz": None,
+        "r5_signed_delta_max_mhz": None,
+        "r5_signed_delta_values_mhz": [],
         "reported_index_distribution": {},
         "lag1": {"r1": None, "n_eff": None},
         "drift": {"samples": [], "status": "not_evaluable"},
         "onset": {
             "first_aiclk_arb_max_below_fmax_seconds": None,
             "first_board_power_within_5_w_of_limit_seconds": None,
+        },
+        "current_dips": {
+            "status": "not_evaluable",
+            "sample_count": 0,
+            "dip_count": 0,
+            "dip_fraction": None,
+            "dips": [],
         },
         "busy_current_against_disabled_tdc": {
             "disabled_tdc_limit_a": 200.0,
@@ -2141,6 +2313,7 @@ def _plateau_glitch_selection(
     rows: Sequence[Mapping[str, Any]],
     *,
     configuration_id: str | None,
+    mode: str,
     spec: _PlanSpec,
 ) -> tuple[
     list[dict[str, Any]],
@@ -2153,7 +2326,9 @@ def _plateau_glitch_selection(
     set[str],
 ]:
     mode_for_predicate = (
-        "long-regulated" if configuration_id in {"C081", "C108"} else "long-control"
+        ("smoke-regulated" if configuration_id in {"C081", "C108"} else "smoke-control")
+        if mode == "smoke"
+        else ("long-regulated" if configuration_id in {"C081", "C108"} else "long-control")
     )
     row_positions = {id(row): position for position, row in enumerate(rows)}
     plateau_original_indices = [row_positions[id(row)] for row in plateau_rows]
@@ -2210,6 +2385,7 @@ def _decode_plateau_rows(
     rows: Sequence[Mapping[str, Any]],
     *,
     configuration_id: str | None,
+    mode: str,
     trace: _LoadedTrace,
     spec: _PlanSpec,
     post_device: Mapping[str, Any] | None,
@@ -2228,7 +2404,7 @@ def _decode_plateau_rows(
         retained_r6,
         missing,
     ) = _plateau_glitch_selection(
-        plateau_rows, rows, configuration_id=configuration_id, spec=spec
+        plateau_rows, rows, configuration_id=configuration_id, mode=mode, spec=spec
     )
     decoded_by_id = _decode_plateau_values(plateau_rows, glitch_errors)
     criteria: dict[str, dict[str, Any]] = {}
@@ -2258,10 +2434,13 @@ def _decode_plateau_rows(
             retained,
             decoded_by_id,
             first=first,
+            mode=mode,
+            configuration_id=configuration_id,
             post_device=post_device,
             last_group_end=duration.get("last_group_end_monotonic_ns"),
             spec=spec,
             duration_weighted=duration_weighted,
+            group_timings=duration.get("groups", []),
             post_capture_timestamp=post_capture_timestamp,
         )
     else:
@@ -2283,6 +2462,7 @@ def _decode_plateau_rows(
 def _analyze_rows(
     rows: Sequence[Mapping[str, Any]],
     *,
+    mode: str,
     first: int | None,
     trace: _LoadedTrace,
     pre_configuration_errors: Sequence[str],
@@ -2293,12 +2473,17 @@ def _analyze_rows(
     post_capture_timestamp: int | None,
     spec: _PlanSpec,
 ) -> _RowAnalysis:
+    window_start, window_end = (
+        (spec.smoke_start_seconds, spec.smoke_end_seconds)
+        if mode == "smoke"
+        else (spec.plateau_start_seconds, spec.plateau_end_seconds)
+    )
     plateau_rows = (
         select_plateau_rows(
             rows,
             first_launch_start_monotonic_ns=first,
-            start_seconds=spec.plateau_start_seconds,
-            end_seconds=spec.plateau_end_seconds,
+            start_seconds=window_start,
+            end_seconds=window_end,
         )
         if first is not None
         else []
@@ -2308,8 +2493,8 @@ def _analyze_rows(
             rows,
             field="board_power_w",
             first_launch_start_monotonic_ns=first,
-            start_seconds=spec.plateau_start_seconds,
-            end_seconds=spec.plateau_end_seconds,
+            start_seconds=window_start,
+            end_seconds=window_end,
         )
     else:
         duration_weighted = {"status": "not_evaluable", "reason": "missing first launch clock"}
@@ -2318,6 +2503,7 @@ def _analyze_rows(
             plateau_rows,
             rows,
             configuration_id=configuration_id,
+            mode=mode,
             trace=trace,
             spec=spec,
             post_device=post_device,
@@ -2452,7 +2638,11 @@ def _run_report(
         "group_timings": evidence.duration.get("groups", []),
         "limits": evidence.limits,
         "plateau": {
-            "selection": "[60,180) seconds from first_launch_start_monotonic_ns",
+            "selection": (
+                "[10,40) seconds from first_launch_start_monotonic_ns"
+                if mode == "smoke"
+                else "[60,180) seconds from first_launch_start_monotonic_ns"
+            ),
             "raw_count": len(row_analysis.plateau_rows),
             "retained_count": len(row_analysis.plateau_rows) - len(row_analysis.whole_indices),
             "r6_retained_count": len(row_analysis.plateau_rows)
@@ -2483,6 +2673,7 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
         record.get("configuration") if isinstance(record.get("configuration"), Mapping) else None
     )
     base_errors = _configuration_errors(record, configuration_id, spec)
+    base_errors.extend(_record_cadence_errors(record, spec))
     environment_errors = _environment_errors(record.get("environment"), configuration, spec)
     pre_loaded = _load_snapshot(
         record, "pre_run_snapshot", base_dir=record_input.base_dir, spec=spec
@@ -2511,6 +2702,7 @@ def _analyze_one(record_input: _RecordInput, index: int, spec: _PlanSpec) -> dic
     )
     row_analysis = _analyze_rows(
         evidence.trace.rows,
+        mode=mode,
         first=first,
         trace=evidence.trace,
         pre_configuration_errors=evidence.pre_configuration_errors,
@@ -2667,6 +2859,9 @@ def _analysis_plan(spec: _PlanSpec) -> dict[str, Any]:
                 "target_seconds": spec.smoke_target_seconds,
                 "guard_seconds": spec.smoke_guard_seconds,
                 "sample_window": SMOKE_WINDOW_LABEL,
+                "start_seconds": spec.smoke_start_seconds,
+                "end_seconds": spec.smoke_end_seconds,
+                "trace_interval_seconds": spec.trace_interval_seconds,
                 "selection": "strict points relative to first_launch_start_monotonic_ns; no held point or interpolation",
             },
             "overrun_limit_seconds": spec.overrun_limit_seconds,
@@ -2810,12 +3005,16 @@ def analyze_runs(
         },
     }
 
-def _smoke_rows(report: dict[str, Any], *, first: int) -> list[Mapping[str, Any]]:
+def _smoke_rows(
+    report: dict[str, Any], *, first: int, spec: _PlanSpec | None = None
+) -> list[Mapping[str, Any]]:
+    start_seconds = spec.smoke_start_seconds if spec is not None else SMOKE_START_SECONDS
+    end_seconds = spec.smoke_end_seconds if spec is not None else SMOKE_END_SECONDS
     return select_plateau_rows(
         report.get("trace_rows", []),
         first_launch_start_monotonic_ns=first,
-        start_seconds=SMOKE_START_SECONDS,
-        end_seconds=SMOKE_END_SECONDS,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
     )
 
 
@@ -2844,8 +3043,8 @@ def _smoke_idle_criterion(report: Mapping[str, Any], spec: _PlanSpec) -> dict[st
         group_facts = group_timing_facts(
             groups,
             first_launch_start_monotonic_ns=first,
-            plateau_start_seconds=SMOKE_START_SECONDS,
-            plateau_end_seconds=SMOKE_END_SECONDS,
+            plateau_start_seconds=spec.smoke_start_seconds,
+            plateau_end_seconds=spec.smoke_end_seconds,
             workload_duration_seconds=spec.smoke_target_seconds,
             idle_fraction_limit=spec.idle_fraction_limit,
             overrun_limit_seconds=spec.overrun_limit_seconds,
@@ -2859,81 +3058,88 @@ def _smoke_idle_criterion(report: Mapping[str, Any], spec: _PlanSpec) -> dict[st
     return _criterion(
         f"idle_fraction_{SMOKE_WINDOW_LABEL}",
         idle_pass,
+        gate=True,
         window=SMOKE_WINDOW_LABEL,
         idle_fraction=detail.get("idle_fraction"),
         reason=detail.get("reason"),
     )
 
 
+def _smoke_diagnostic_not_applicable(reason: str) -> dict[str, Any]:
+    return {
+        "name": SMOKE_DIAGNOSTIC_NAME,
+        "pass": None,
+        "status": "not_applicable",
+        "gate": False,
+        "reported": True,
+        "window": SMOKE_WINDOW_LABEL,
+        "reason": reason,
+    }
+
+
 def _unknown_smoke_acceptance(reason: str) -> list[dict[str, Any]]:
     return [
-        _criterion(f"idle_fraction_{SMOKE_WINDOW_LABEL}", None, window=SMOKE_WINDOW_LABEL, reason=reason),
         _criterion(
-            REGULATED_SMOKE_CRITERION,
-            None,
-            window=SMOKE_WINDOW_LABEL,
-            current_window=SMOKE_WINDOW_LABEL,
-            power_sd_window=SMOKE_WINDOW_LABEL,
-            reason=reason,
-        ),
-        _criterion("arbiter_words_and_enabled_max", None, reason=reason),
-        _criterion(
-            f"R5_residual_{SMOKE_WINDOW_LABEL}",
-            None,
-            window=SMOKE_WINDOW_LABEL,
-            reason=reason,
+            f"idle_fraction_{SMOKE_WINDOW_LABEL}", None,
+            gate=True, window=SMOKE_WINDOW_LABEL, reason=reason,
         ),
         _criterion(
-            f"R7_index_distribution_{SMOKE_WINDOW_LABEL}",
-            None,
-            window=SMOKE_WINDOW_LABEL,
-            reason=reason,
+            "arbiter_words_and_enabled_max", None,
+            gate=True, reason=reason,
         ),
         _criterion(
-            "smoke_failure_requires_plan_revision",
-            False,
-            reason="smoke configuration is not in the immutable plan",
+            f"R5_residual_{SMOKE_WINDOW_LABEL}", None,
+            gate=True, window=SMOKE_WINDOW_LABEL, reason=reason,
         ),
+        _criterion(
+            f"R7_index_distribution_{SMOKE_WINDOW_LABEL}", None,
+            gate=True, window=SMOKE_WINDOW_LABEL, reason=reason,
+        ),
+        _smoke_diagnostic_not_applicable("unknown smoke configuration"),
     ]
 
 
-def _regulated_smoke_criterion(
+def _smoke_reported_diagnostic(
     rows_10_40: Sequence[Mapping[str, Any]], configuration_id: str
 ) -> dict[str, Any]:
     if configuration_id not in {"C081", "C108"}:
-        return _criterion(
-            REGULATED_SMOKE_CRITERION,
-            True,
-            status="not_applicable",
-            window=SMOKE_WINDOW_LABEL,
-            current_window=SMOKE_WINDOW_LABEL,
-            power_sd_window=SMOKE_WINDOW_LABEL,
+        return _smoke_diagnostic_not_applicable(
+            "current and power diagnostics are not applicable to C018"
         )
     currents, current_error = _numeric_smoke_values(rows_10_40, "current_a")
     powers, power_error = _numeric_smoke_values(rows_10_40, "board_power_w")
     if current_error or power_error:
-        return _criterion(
-            REGULATED_SMOKE_CRITERION,
-            None,
-            window=SMOKE_WINDOW_LABEL,
-            current_window=SMOKE_WINDOW_LABEL,
-            power_sd_window=SMOKE_WINDOW_LABEL,
-            reason=current_error or power_error,
-        )
+        return {
+            "name": SMOKE_DIAGNOSTIC_NAME,
+            "pass": None,
+            "status": "not_evaluable",
+            "gate": False,
+            "reported": True,
+            "window": SMOKE_WINDOW_LABEL,
+            "reason": current_error or power_error,
+        }
     assert currents is not None and powers is not None
-    power_sd = statistics.stdev(powers) if len(powers) >= 2 else 0.0
-    current_pass = min(currents) >= 150.0 and power_sd < 20.0
-    return _criterion(
-        REGULATED_SMOKE_CRITERION,
-        current_pass,
-        window=SMOKE_WINDOW_LABEL,
-        current_window=SMOKE_WINDOW_LABEL,
-        power_sd_window=SMOKE_WINDOW_LABEL,
-        minimum_current_a=min(currents),
-        current_sample_count=len(currents),
-        power_sample_count=len(powers),
-        board_power_sample_sd_w=power_sd,
-    )
+    power_stats = point_statistics(powers)
+    return {
+        "name": SMOKE_DIAGNOSTIC_NAME,
+        "pass": None,
+        "status": "reported",
+        "gate": False,
+        "reported": True,
+        "window": SMOKE_WINDOW_LABEL,
+        "minimum_current_a": min(currents),
+        "below_150_a_count": sum(current < 150.0 for current in currents),
+        "current_below_150_a_count": sum(current < 150.0 for current in currents),
+        "below_150_a_threshold": 150.0,
+        "current_sample_count": len(currents),
+        "power_sample_count": len(powers),
+        "power_mean_w": power_stats["mean"],
+        "board_power_mean_w": power_stats["mean"],
+        "power_sample_sd_w": power_stats["sample_sd"],
+        "board_power_sample_sd_w": power_stats["sample_sd"],
+        "power_r1": power_stats["r1"],
+        "power_statistics": power_stats,
+    }
 
 
 def _smoke_arbiter_criterion(trace_rows: Any) -> dict[str, Any]:
@@ -2957,6 +3163,7 @@ def _smoke_arbiter_criterion(trace_rows: Any) -> dict[str, Any]:
         None
         if word_error
         else all(decoded["enabled_max_arb"] == EXPECTED_ENABLED_MAX for decoded in decoded_trace),
+        gate=True,
         reason=word_error,
     )
 
@@ -2964,7 +3171,7 @@ def _smoke_arbiter_criterion(trace_rows: Any) -> dict[str, Any]:
 def _smoke_residual_criterion(
     rows_10_40: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    residuals: list[float] = []
+    signed_deltas: list[float] = []
     residual_error: str | None = None
     for index, row in enumerate(rows_10_40):
         if not isinstance(row, Mapping) or not all(field in row for field in ARBITER_FIELDS):
@@ -2972,22 +3179,26 @@ def _smoke_residual_criterion(
             break
         try:
             decoded = decode_arbiter_row(row)
-            residuals.append(
-                abs(
-                    finite(row["aiclk_mhz"], field="aiclk_mhz")
-                    - decoded["aiclk_arb_max_frequency_mhz"]
-                )
-            )
+            signed_deltas.append(_signed_r5_delta(row, decoded))
         except (KeyError, TypeError, ValueError) as exc:
             residual_error = f"R5 inputs are malformed at row {index}: {exc}"
             break
-    result = None if residual_error or not residuals else max(residuals) <= 2.0
-    reason = residual_error or (f"no samples in {SMOKE_WINDOW_LABEL}" if not residuals else None)
+    absolute_values = [abs(delta) for delta in signed_deltas]
+    result = (
+        None
+        if residual_error or not signed_deltas
+        else all(_r5_signed_pass(delta) for delta in signed_deltas)
+    )
+    reason = residual_error or (f"no samples in {SMOKE_WINDOW_LABEL}" if not signed_deltas else None)
     return _criterion(
         f"R5_residual_{SMOKE_WINDOW_LABEL}",
         result,
+        gate=True,
         window=SMOKE_WINDOW_LABEL,
-        max_residual_mhz=max(residuals) if residuals else None,
+        signed_delta_min_mhz=min(signed_deltas) if signed_deltas else None,
+        signed_delta_max_mhz=max(signed_deltas) if signed_deltas else None,
+        signed_delta_bounds_mhz=[R5_SIGNED_MIN_MHZ, R5_SIGNED_MAX_MHZ],
+        max_residual_mhz=max(absolute_values) if absolute_values else None,
         reason=reason,
     )
 
@@ -3020,39 +3231,39 @@ def _smoke_index_criterion(
     return _criterion(
         f"R7_index_distribution_{SMOKE_WINDOW_LABEL}",
         index_pass,
+        gate=True,
         window=SMOKE_WINDOW_LABEL,
         indices=indices,
         reason=reason,
     )
 
 
-def _smoke_failure_criterion(acceptance: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    return _criterion(
-        "smoke_failure_requires_plan_revision",
-        all(
-            item.get("pass") is True or item.get("status") == "not_applicable"
-            for item in acceptance
-        ),
-    )
+def _smoke_policy(acceptance: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    gates = [item for item in acceptance if item.get("gate") is True]
+    diagnostics = [item for item in acceptance if item.get("gate") is False]
+    return {
+        "gate_count": len(gates),
+        "diagnostic_count": len(diagnostics),
+        "plan_revision_required": any(item.get("pass") is not True for item in gates),
+        "reported_diagnostics_do_not_control_gates": True,
+    }
 
 
 def _smoke_acceptance(report: dict[str, Any], spec: _PlanSpec) -> list[dict[str, Any]]:
     first = report.get("duration", {}).get("first_launch_start_monotonic_ns")
-    rows_10_40 = _smoke_rows(report, first=first) if isinstance(first, int) else []
-    acceptance = [_smoke_idle_criterion(report, spec)]
+    rows_10_40 = (
+        _smoke_rows(report, first=first, spec=spec) if isinstance(first, int) else []
+    )
     configuration_id = report.get("configuration_id")
     if configuration_id not in spec.configurations:
         return _unknown_smoke_acceptance("unknown smoke configuration")
-    acceptance.extend(
-        [
-            _regulated_smoke_criterion(rows_10_40, configuration_id),
-            _smoke_arbiter_criterion(report.get("trace_rows", [])),
-            _smoke_residual_criterion(rows_10_40),
-            _smoke_index_criterion(rows_10_40, configuration_id),
-        ]
-    )
-    acceptance.append(_smoke_failure_criterion(acceptance))
-    return acceptance
+    return [
+        _smoke_idle_criterion(report, spec),
+        _smoke_arbiter_criterion(report.get("trace_rows", [])),
+        _smoke_residual_criterion(rows_10_40),
+        _smoke_index_criterion(rows_10_40, configuration_id),
+        _smoke_reported_diagnostic(rows_10_40, configuration_id),
+    ]
 
 def analyze_smoke(
     records: Sequence[Mapping[str, Any] | str | Path], *, plan: Mapping[str, Any] | None = None
@@ -3066,20 +3277,38 @@ def analyze_smoke(
     for report in reports:
         if report.get("mode") != "smoke":
             continue
+        acceptance = _smoke_acceptance(report, spec)
         diagnostics.append(
             {
                 "run_id": report.get("run_id"),
                 "configuration_id": report.get("configuration_id"),
-                "acceptance": _smoke_acceptance(report, spec),
+                "acceptance": acceptance,
+                "policy": _smoke_policy(acceptance),
                 "run": report,
             }
         )
+    flattened_acceptance = [
+        item for diagnostic in diagnostics for item in diagnostic["acceptance"]
+    ]
+    policies = [diagnostic["policy"] for diagnostic in diagnostics]
     return {
         "analysis_schema": ANALYSIS_SCHEMA,
         "issue": "#146",
         "mode": "smoke-diagnostic",
         "affects_long_verdict": False,
-        "acceptance": [item for diagnostic in diagnostics for item in diagnostic["acceptance"]],
+        "acceptance": flattened_acceptance,
+        "gates": [item for item in flattened_acceptance if item.get("gate") is True],
+        "reported_diagnostics": [
+            item for item in flattened_acceptance if item.get("gate") is False
+        ],
+        "policy": {
+            "gate_count": sum(policy["gate_count"] for policy in policies),
+            "diagnostic_count": sum(policy["diagnostic_count"] for policy in policies),
+            "plan_revision_required": any(
+                policy["plan_revision_required"] for policy in policies
+            ),
+            "reported_diagnostics_do_not_control_gates": True,
+        },
         "runs": diagnostics,
         "plan": _analysis_plan(spec),
     }
