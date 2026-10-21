@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import statistics
 import sys
 from collections.abc import Mapping, Sequence
@@ -2648,6 +2649,43 @@ def _plateau_glitch_selection(
     )
 
 
+def _trace_configuration_errors(
+    trace: _LoadedTrace, glitches: Sequence[Mapping[str, Any]]
+) -> set[str]:
+    """Check raw words even when malformed input prevented normalized rows."""
+    payload = trace.payload
+    raw_rows = payload.get("samples") if isinstance(payload, Mapping) else None
+    if not isinstance(raw_rows, list):
+        return set()
+    # Only registered whole-sample plateau exclusions exempt a maximum mask.
+    excluded = {item["row_index"] for item in glitches if item["excludes"] == "whole_sample"}
+    errors: set[str] = set()
+    for index, row in enumerate(raw_rows):
+        if index in excluded:
+            continue
+        value = row.get("enabled_max_arb_raw") if isinstance(row, Mapping) else None
+        if (
+            not isinstance(value, str)
+            or re.fullmatch(r"0[xX][0-9a-fA-F]{1,8}", value.strip()) is None
+            or _raw_word(value.strip()) != EXPECTED_ENABLED_MAX
+        ):
+            errors.add(f"configuration.ENABLED_MAX_ARB.trace.row_{index}")
+    return errors
+
+
+def _configuration_evidence_errors(
+    trace: _LoadedTrace,
+    post_device: Mapping[str, Any] | None,
+    glitches: Sequence[Mapping[str, Any]],
+) -> set[str]:
+    errors = _trace_configuration_errors(trace, glitches)
+    smbus = post_device.get("smbus_telem") if isinstance(post_device, Mapping) else None
+    value = smbus.get("ENABLED_MAX_ARB") if isinstance(smbus, Mapping) else None
+    if _raw_word(value) != EXPECTED_ENABLED_MAX:
+        errors.add("configuration.ENABLED_MAX_ARB.post_run_snapshot")
+    return errors
+
+
 def _decode_plateau_values(
     plateau_rows: Sequence[Mapping[str, Any]], glitch_errors: list[str]
 ) -> dict[int, dict[str, Any]]:
@@ -2688,6 +2726,8 @@ def _decode_plateau_rows(
     ) = _plateau_glitch_selection(
         plateau_rows, rows, configuration_id=configuration_id, mode=mode, spec=spec
     )
+    configuration_errors = _configuration_evidence_errors(trace, post_device, glitches)
+    missing.update(configuration_errors)
     decoded_by_id = _decode_plateau_values(plateau_rows, glitch_errors)
     criteria: dict[str, dict[str, Any]] = {}
     statistics_report: dict[str, Any] = {}
@@ -2696,6 +2736,7 @@ def _decode_plateau_rows(
         and not trace.missing
         and not glitch_errors
         and not unflagged_max_mismatch
+        and not configuration_errors
         and retained
         and retained_r6
         and configuration_id in spec.configurations
@@ -2805,7 +2846,9 @@ def _analyze_rows(
             {},
             _empty_exploratory(duration_weighted),
             duration_weighted,
-            set(),
+            _configuration_evidence_errors(trace, post_device, [])
+            if not configuration_only
+            else set(),
         )
     if not plateau_rows and not configuration_only:
         analysis.missing.add("plateau.samples")
@@ -3618,6 +3661,20 @@ def _smoke_policy(acceptance: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _smoke_configuration_criterion(report: Mapping[str, Any]) -> dict[str, Any]:
+    criterion = _smoke_arbiter_criterion(report.get("trace_rows", []))
+    if criterion["pass"] is True and any(
+        field.startswith("configuration.") for field in report.get("missing_fields", [])
+    ):
+        return _criterion(
+            "arbiter_words_and_enabled_max",
+            None,
+            gate=True,
+            reason="configuration evidence is missing, malformed or changed",
+        )
+    return criterion
+
+
 def _smoke_acceptance(report: dict[str, Any], spec: _PlanSpec) -> list[dict[str, Any]]:
     first = report.get("duration", {}).get("first_launch_start_monotonic_ns")
     rows_10_40 = (
@@ -3628,7 +3685,7 @@ def _smoke_acceptance(report: dict[str, Any], spec: _PlanSpec) -> list[dict[str,
         return _unknown_smoke_acceptance("unknown smoke configuration")
     return [
         _smoke_idle_criterion(report, spec),
-        _smoke_arbiter_criterion(report.get("trace_rows", [])),
+        _smoke_configuration_criterion(report),
         _smoke_residual_criterion(rows_10_40),
         _smoke_index_criterion(rows_10_40, configuration_id),
         _smoke_reported_diagnostic(rows_10_40, configuration_id),
