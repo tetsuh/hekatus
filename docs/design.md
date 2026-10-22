@@ -2177,10 +2177,53 @@ their naive sample standard errors exceed the preregistered 6 W half-band.
 That exposes an inferential design weakness, not a change to the verdict or
 evidence of faulty acquisition. C108 conditional busy currents near 200 A
 also leave physical current limiting possible, without supporting the
-registered H-TDC label. IID assumptions, serial correlation, sample-point
-versus duration weighting, and conditional selection limit this interpretation.
-The plan and H-OTHER remain unchanged; a follow-up needs a separate
-preregistered Issue before any new run.
+registered H-TDC label; the Issue #146 pinned source withdraws that inference.
+IID assumptions, serial correlation, sample-point versus duration weighting,
+and conditional selection limit this interpretation. The plan and H-OTHER
+remain unchanged; a follow-up needs a separate preregistered Issue before any
+new run.
+
+### Issue #146 Doppler slow conformance result
+
+On 2026-10-21, the six-run revision-6 plan classified the Issue #146 series
+as **H-DS supported**: all registered R1–R7, K1–K4, and P1–P3 criteria passed,
+with zero classified glitches. The run order was C018 → C108 → C081 → C081 →
+C108 → C018. The complete board-free analysis and interpretation boundaries
+are in the [Issue #146 Doppler conformance archive](measurements/issue146-doppler-conformance/2026-10-21/README.md).
+
+The four regulated runs produced these arithmetic plateau `INPUT_POWER`
+(board-power) means and two-sided 99% intervals:
+
+| Run | Configuration | Mean W | 99% CI W |
+|---:|---|---:|---|
+| 2 | C108 | 302.371134 | [297.328661, 307.413607] |
+| 3 | C081 | 298.958763 | [292.098132, 305.819393] |
+| 4 | C081 | 300.000000 | [292.849102, 307.150898] |
+| 5 | C108 | 303.927083 | [299.279030, 308.575137] |
+
+Each interval intersects the **fixed** prediction [300, 301] W. Their
+half-widths are 4.6–7.2 W, below the 10 W precision floor; the prediction was
+not widened. The two C018 control means were 259.164948 W and 259.814433 W,
+with 99% intervals entirely below 300 W. C018 was predominantly at 1350 MHz,
+with one 1343 MHz dip sample in run 1. The approximately 2 ms recovery is a
+firmware-model estimate, not a sampled or measured pulse width.
+
+The regulated plateau retained `ENABLED_MAX_ARB=0x1d1` and
+`ENABLED_MIN_ARB=0x3`; the busy minimum arbiter was `AICLK_ARB_MIN=0x10546`.
+The observed signed R5 residual was 0–6 MHz, consistent with the PLL grid.
+Thermal arbiters were non-binding: ASIC temperature was at most 82.4 degC and
+GDDR temperature at most 66 degC.
+
+The AICLK depression reported by Issue #121 Q2 and Issue #137 is therefore
+consistent with the 19.6.0.0 Doppler-slow law: each 1 ms tick uses a 1,000-point (1 s)
+integer `INPUT_POWER` mean and integrates its error into the arbiter, regulating
+average power around 300 W. Under `doppler_en`, the TDC, TDP, and board-power
+arbiters are disabled; this is average regulation, not a hard cap. The
+108-core current-limit question is withdrawn.
+
+This is one-board conformance of registered observables, not firmware-code-path
+instrumentation or evidence from multiple boards. The full-enodia sustained
+AICLK measurement remains the **#136** follow-up described above.
 
 ### Current constraints — Q4 fixed-source audit
 
@@ -2213,8 +2256,11 @@ These are the settled timing rules recorded in
 - Product frame timing follows data arrival and completion, not card ticks.
 - Supervisory timeouts use host `CLOCK_MONOTONIC`, not card ticks.
 
-Neither Q2 nor the Issue #137 intervention establishes limiter causality.
-Full-enodia sustained AICLK remains the #136 follow-up described above.
+Neither the Issue #121 Q2 result nor the Issue #137 intervention alone
+established limiter causality. Issue #146 finds the registered observables
+consistent with the pinned 19.6.0.0 Doppler-slow law, but it is not
+firmware-code-path instrumentation or a multiple-board result. Full-enodia
+sustained AICLK remains the #136 follow-up described above.
 
 ---
 

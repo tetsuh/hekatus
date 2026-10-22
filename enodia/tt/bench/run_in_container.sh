@@ -27,6 +27,7 @@ MATMUL_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_matmul.py"
 ISSUE101_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue101_combined.py"
 ISSUE127_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue127.py"
 ISSUE137_RUNNER_RELATIVE_PATH="tools/issue137_device.py"
+ISSUE146_RUNNER_RELATIVE_PATH="tools/issue146_device.py"
 
 # Resolve runner paths against the host repository that is mounted at /work.
 # The returned path is the only representation used by runner classifiers and
@@ -175,6 +176,15 @@ else
   CONTAINER_TIMEOUT_S=""
 fi
 
+validate_positive_integer() {
+  local value="$1"
+  local label="$2"
+  if [[ -z "${value}" || ! "${value}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "${label} must be a positive decimal integer" >&2
+    exit 2
+  fi
+}
+
 validate_decimal_timeout() {
   local value="$1"
   local max_digits="$2"
@@ -192,6 +202,7 @@ RESIDENT_RUNNER=0
 RESIDENT_WATCHER_MODE=0
 ISSUE127_RUNNER=0
 ISSUE137_RUNNER=0
+ISSUE146_RUNNER=0
 ISSUE127_DEFAULT_TIMEOUT_S="60"
 ISSUE127_APPROVED_TIMEOUT_S="90"
 ISSUE127_COOLDOWN_WAIT_CAP_S="600"
@@ -338,6 +349,172 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE137_RUNNER_RELATIVE_
   validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "3"
   if [[ "${RUNNER_ARGS[*]}" == *"--calibrat"* ]]; then
     echo "Issue #137 does not accept calibration arguments" >&2
+    exit 2
+  fi
+elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE146_RUNNER_RELATIVE_PATH}" ]]; then
+  # Issue #146 has two fixed owner-plan modes.  Keep its timeout distinct from
+  # the generic custom-runner default and never route it through a generic cap.
+  ISSUE146_RUNNER=1
+  ISSUE146_MODE=""
+  ISSUE146_REQUESTED_TIMEOUT=""
+  ISSUE146_TARGET_SECONDS=""
+  ISSUE146_PLAN_HASH=""
+  ISSUE146_CONFIGURATION=""
+  ISSUE146_REQUESTED_RUN_ID=""
+  ISSUE146_OUTER_REPETITIONS=""
+  ISSUE146_LAUNCHES_PER_SYNC=""
+  ISSUE146_ARGUMENT_INDEX=0
+  while [[ "${ISSUE146_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE146_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --mode)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--mode requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_MODE="${RUNNER_ARGS[$((ISSUE146_ARGUMENT_INDEX + 1))]}"
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --mode=*) ISSUE146_MODE="${argument#--mode=}" ;;
+      --outer-timeout-seconds)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--outer-timeout-seconds requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_REQUESTED_TIMEOUT="${RUNNER_ARGS[$((ISSUE146_ARGUMENT_INDEX + 1))]}"
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --outer-timeout-seconds=*) ISSUE146_REQUESTED_TIMEOUT="${argument#--outer-timeout-seconds=}" ;;
+      --target-seconds)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--target-seconds requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_TARGET_SECONDS="${RUNNER_ARGS[$((ISSUE146_ARGUMENT_INDEX + 1))]}"
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --target-seconds=*) ISSUE146_TARGET_SECONDS="${argument#--target-seconds=}" ;;
+      --plan-hash)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--plan-hash requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_PLAN_HASH="${RUNNER_ARGS[$((ISSUE146_ARGUMENT_INDEX + 1))]}"
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --plan-hash=*) ISSUE146_PLAN_HASH="${argument#--plan-hash=}" ;;
+      --configuration)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--configuration requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_CONFIGURATION="${RUNNER_ARGS[$((ISSUE146_ARGUMENT_INDEX + 1))]}"
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --configuration=*) ISSUE146_CONFIGURATION="${argument#--configuration=}" ;;
+      --requested-run-id)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--requested-run-id requires a value" >&2
+          exit 2
+        fi
+        if [[ -n "${ISSUE146_REQUESTED_RUN_ID}" ]]; then
+          echo "Issue #146 requested run identity may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE146_REQUESTED_RUN_ID="${RUNNER_ARGS[$((ISSUE146_ARGUMENT_INDEX + 1))]}"
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --requested-run-id=*)
+        if [[ -n "${ISSUE146_REQUESTED_RUN_ID}" ]]; then
+          echo "Issue #146 requested run identity may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE146_REQUESTED_RUN_ID="${argument#--requested-run-id=}"
+        ;;
+      --outer-repetitions)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--outer-repetitions requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_OUTER_REPETITIONS="${RUNNER_ARGS[$((ISSUE146_ARGUMENT_INDEX + 1))]}"
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --outer-repetitions=*) ISSUE146_OUTER_REPETITIONS="${argument#--outer-repetitions=}" ;;
+      --launches-per-sync)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--launches-per-sync requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_LAUNCHES_PER_SYNC="${RUNNER_ARGS[$((ISSUE146_ARGUMENT_INDEX + 1))]}"
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --launches-per-sync=*) ISSUE146_LAUNCHES_PER_SYNC="${argument#--launches-per-sync=}" ;;
+    esac
+    ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 1))
+  done
+  case "${ISSUE146_MODE}" in
+    smoke)
+      ISSUE146_EXPECTED_TIMEOUT="90"
+      ISSUE146_EXPECTED_TARGET="40"
+      ;;
+    long)
+      ISSUE146_EXPECTED_TIMEOUT="230"
+      ISSUE146_EXPECTED_TARGET="180"
+      ;;
+    *)
+      echo "Issue #146 requires --mode smoke or --mode long" >&2
+      exit 2
+      ;;
+  esac
+  if [[ "${ISSUE146_REQUESTED_TIMEOUT}" != "${ISSUE146_EXPECTED_TIMEOUT}" ]]; then
+    echo "Issue #146 ${ISSUE146_MODE} mode requires a ${ISSUE146_EXPECTED_TIMEOUT}s guard" >&2
+    exit 2
+  fi
+  if [[ "${ISSUE146_TARGET_SECONDS}" != "${ISSUE146_EXPECTED_TARGET}" ]]; then
+    echo "Issue #146 ${ISSUE146_MODE} mode requires a ${ISSUE146_EXPECTED_TARGET}s target" >&2
+    exit 2
+  fi
+  if [[ -z "${ISSUE146_PLAN_HASH}" || -z "${ISSUE146_CONFIGURATION}" || -z "${ISSUE146_REQUESTED_RUN_ID}" ]]; then
+    echo "Issue #146 requires owner-plan hash, configuration, and requested run binding" >&2
+    exit 2
+  fi
+  if [[ ! "${ISSUE146_PLAN_HASH}" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "Issue #146 owner-plan hash must be lowercase SHA-256" >&2
+    exit 2
+  fi
+  validate_positive_integer "${ISSUE146_OUTER_REPETITIONS}" "Issue #146 outer_repetitions"
+  validate_positive_integer "${ISSUE146_LAUNCHES_PER_SYNC}" "Issue #146 launches_per_sync"
+  if [[ ! "${ISSUE146_REQUESTED_RUN_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+    echo "Issue #146 requested run identity is unsafe" >&2
+    exit 2
+  fi
+  if [[ "${TIMEOUT_EXPLICIT}" == "1" ]]; then
+    validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "3"
+    if [[ "${CONTAINER_TIMEOUT_S}" != "${ISSUE146_REQUESTED_TIMEOUT}" ]]; then
+      echo "Issue #146 container timeout must match the fixed runner guard" >&2
+      exit 2
+    fi
+  else
+    CONTAINER_TIMEOUT_S="${ISSUE146_REQUESTED_TIMEOUT}"
+  fi
+  validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "3"
+  ISSUE146_OUT_ARGUMENT=0
+  for argument in "${RUNNER_ARGS[@]}"; do
+    if [[ "${argument}" == "--out" || "${argument}" == --out=* ]]; then
+      ISSUE146_OUT_ARGUMENT=1
+      break
+    fi
+  done
+  if [[ "${ISSUE146_OUT_ARGUMENT}" == "1" ]]; then
+    echo "Issue #146 result identity is wrapper-owned; --out is not accepted" >&2
     exit 2
   fi
 elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_PATH}" ]]; then
@@ -558,8 +735,8 @@ case "${IMAGE}" in
       echo "resolved ${IMAGE} to ${RESOLVED}"
       IMAGE="${RESOLVED}"
       IMAGE_PINNED=1
-    elif [[ "${RESIDENT_RUNNER}" == "1" || "${ISSUE137_RUNNER}" == "1" ]]; then
-      echo "resident/Issue #137 runner requires HEKATUS_TT_IMAGE to resolve to @sha256:<64 lowercase hex>" >&2
+    elif [[ "${RESIDENT_RUNNER}" == "1" || "${ISSUE137_RUNNER}" == "1" || "${ISSUE146_RUNNER}" == "1" ]]; then
+      echo "resident/Issue #137/Issue #146 runner requires HEKATUS_TT_IMAGE to resolve to @sha256:<64 lowercase hex>" >&2
       exit 2
     elif [[ "${CUSTOM_RUNNER}" == "1" \
             && "${RUNNER}" == "${ISSUE101_RUNNER_RELATIVE_PATH}" ]]; then
@@ -578,6 +755,10 @@ if [[ "${RESIDENT_RUNNER}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
 fi
 if [[ "${ISSUE137_RUNNER}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
   echo "Issue #137 runner requires a verified digest-pinned image" >&2
+  exit 2
+fi
+if [[ "${ISSUE146_RUNNER}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
+  echo "Issue #146 runner requires a verified digest-pinned image" >&2
   exit 2
 fi
 if [[ "${CUSTOM_RUNNER}" == "1" \
@@ -605,10 +786,12 @@ RESULT_PATH="${RESULTS}"
 RUNNER_RESULT_CONTAINER_PATH=""
 RUNNER_RESULT_HOST_PATH=""
 if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
-  # Keep the historical one-run path, but never overwrite it when an output
-  # directory is reused.  The run-specific fallback is passed into the
-  # container and is not embedded as a host path in the runner record.
-  if [[ -e "${OUT_DIR}/runner-result.json" ]]; then
+  # Issue #146 binds the result basename to its collision-safe wrapper ID.
+  # Other custom runners retain the historical one-run path behavior.
+  if [[ "${ISSUE146_RUNNER}" == "1" ]]; then
+    RUNNER_RESULT_CONTAINER_PATH="/out/runner-result-${RUN_ID}.json"
+    RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result-${RUN_ID}.json"
+  elif [[ -e "${OUT_DIR}/runner-result.json" ]]; then
     RUNNER_RESULT_CONTAINER_PATH="/out/runner-result-${RUN_ID}.json"
     RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result-${RUN_ID}.json"
   else
@@ -625,6 +808,10 @@ PINNED_FLAG=()
 RUNNER_RESULT_ENV=()
 if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
   RUNNER_RESULT_ENV=(-e "HEKATUS_TT_RESULT_PATH=${RUNNER_RESULT_CONTAINER_PATH}")
+fi
+ISSUE146_REQUESTED_RUN_ENV=()
+if [[ "${ISSUE146_RUNNER}" == "1" ]]; then
+  ISSUE146_REQUESTED_RUN_ENV=(-e "HEKATUS_TT_REQUESTED_RUN_ID=${ISSUE146_REQUESTED_RUN_ID}")
 fi
 
 CAPTURE_SAMPLER_ARGS=(--sampler-mode "${TELEMETRY_MODE}")
@@ -1019,6 +1206,57 @@ if [[ "${RUNNER}" == "${ISSUE137_RUNNER_RELATIVE_PATH}" ]]; then
   fi
   RUNNER_ARGS=("${ISSUE137_ARGS[@]}")
 fi
+if [[ "${RUNNER}" == "${ISSUE146_RUNNER_RELATIVE_PATH}" ]]; then
+  # Issue #146 owns result, environment, trace, and raw group identities for
+  # this wrapper invocation.  Caller paths are never allowed to select reused
+  # artifacts from the output directory.
+  ISSUE146_ARGS=()
+  ISSUE146_ARGUMENT_INDEX=0
+  while [[ "${ISSUE146_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE146_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --requested-run-id)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--requested-run-id requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --requested-run-id=*)
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      --env-json|--power-trace|--groups)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "${argument} requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --env-json=*|--power-trace=*|--groups=*)
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      --out|--out=*)
+        echo "Issue #146 result identity is wrapper-owned; --out is not accepted" >&2
+        exit 2
+        ;;
+      *)
+        ISSUE146_ARGS+=("${argument}")
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 1))
+        ;;
+    esac
+  done
+  ISSUE146_ARGS+=(--requested-run-id "${ISSUE146_REQUESTED_RUN_ID}")
+  ISSUE146_ARGS+=(--env-json "/out/$(basename "${ENV_JSON}")")
+  if [[ "${TELEMETRY_MODE}" != "off" ]]; then
+    ISSUE146_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
+  fi
+  ISSUE146_ARGS+=(--groups "/out/device-group-timings-${RUN_ID}.json")
+  RUNNER_ARGS=("${ISSUE146_ARGS[@]}")
+fi
 if [[ "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_PATH}" ]]; then
   # The generic custom-runner branch remains the execution path, but pass the
   # wrapper-owned sibling artifacts explicitly so run binding is visible in
@@ -1089,6 +1327,7 @@ if [[ "${TEST_MODE}" == "1" ]]; then
     -e PYTHONPATH=/work \
     -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     "${TELEMETRY_ENV[@]}" \
+    "${ISSUE146_REQUESTED_RUN_ENV[@]}" \
     -e HEKATUS_TT_DEVICE_TEST=1 \
     -e HEKATUS_TT_PINNED_CONTAINER=1 \
     "${WATCHER_ENV[@]}" \
@@ -1107,6 +1346,7 @@ elif [[ "${RUNNER}" == "${MATMUL_RUNNER_RELATIVE_PATH}" ]]; then
     "${WATCHER_ENV[@]}" \
     "${TELEMETRY_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
+    "${ISSUE146_REQUESTED_RUN_ENV[@]}" \
     --entrypoint /bin/bash \
     "${IMAGE}" -lc 'exec python3 "$0" --out "$1" --env-json "$2" "${@:3}"' \
     "${RUNNER}" \
@@ -1126,6 +1366,7 @@ else
     "${WATCHER_ENV[@]}" \
     "${TELEMETRY_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
+    "${ISSUE146_REQUESTED_RUN_ENV[@]}" \
     --entrypoint python3 \
     "${IMAGE}" "${RUNNER}" "${RUNNER_ARGS[@]}" &
 fi

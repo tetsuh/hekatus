@@ -352,6 +352,48 @@ def prepare_newton_schulz_duration_load(
     )
 
 
+def prepare_newton_schulz_grouped_load(
+    ttnn: Any,
+    device: Any,
+    *,
+    outer_repetitions: int,
+    profile: bool = True,
+    core_count: int | None = None,
+    total_blocks: int | None = None,
+    matrix_block: int | None = None,
+    worker_pool: tuple[tuple[int, int], ...] = P150_RESIDUAL_WORKER_COORDINATES,
+    core_plan: NewtonSchulzCorePlan | None = None,
+) -> Any:
+    """Prepare one grouped Issue #146 launch with explicit device repetitions.
+
+    The repetition count belongs to the caller's validated owner plan.  This
+    additive API passes it to the existing preparation path rather than
+    changing the Issue #137/Q2 duration helper or inventing a second kernel.
+    """
+    if isinstance(outer_repetitions, bool) or not isinstance(outer_repetitions, int):
+        raise TypeError("outer_repetitions must be a positive integer")
+    if outer_repetitions < 1:
+        raise ValueError("outer_repetitions must be a positive integer")
+    resolved_plan = _resolve_newton_schulz_core_plan(
+        core_count=core_count,
+        total_blocks=total_blocks,
+        matrix_block=matrix_block,
+        worker_pool=worker_pool,
+        core_plan=core_plan,
+    )
+    if resolved_plan.matrix_block != NS_LOAD_MATRIX_BLOCK:
+        raise LoadConfigurationError(
+            "grouped Newton-Schulz loads require matrix_block=8"
+        )
+    return _prepare_newton_schulz_load(
+        ttnn,
+        device,
+        core_plan=resolved_plan,
+        profile=profile,
+        outer_repetitions=outer_repetitions,
+    )
+
+
 @dataclass
 class PreparedDramLoad:
     """Prepared fixed DRAM stream resources for one merged program."""

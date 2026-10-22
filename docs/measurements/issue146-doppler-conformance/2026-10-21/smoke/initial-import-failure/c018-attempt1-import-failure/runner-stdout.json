@@ -1,0 +1,2767 @@
+{
+  "record_schema": "issue146-measurement-v1",
+  "record_revision": 1,
+  "issue": "#146",
+  "status": "failed",
+  "plan_sha256": "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a",
+  "run": {
+    "run_id": "issue146-smoke-c018",
+    "run_number": null,
+    "mode": "smoke",
+    "load_mode": "host-duration-bounded",
+    "target_seconds": 40.0,
+    "guard_seconds": 90.0,
+    "first_launch_start_monotonic_ns": null,
+    "workload_end_monotonic_ns": null,
+    "last_group_end_monotonic_ns": null,
+    "observed_duration_seconds": null,
+    "group_count": null,
+    "launch_count": null,
+    "overrun_seconds": null
+  },
+  "configuration": {
+    "id": "C018",
+    "worker_core_count": 18,
+    "role": "below-budget control: the doppler_slow arbiter is expected to stay clamped at 1350 and the power unregulated",
+    "verdict_bearing": true,
+    "total_blocks": 171,
+    "batch": 1368,
+    "matrix_block": 8,
+    "worker_core_coordinates": [
+      [
+        2,
+        0
+      ],
+      [
+        3,
+        0
+      ],
+      [
+        4,
+        0
+      ],
+      [
+        5,
+        0
+      ],
+      [
+        6,
+        0
+      ],
+      [
+        7,
+        0
+      ],
+      [
+        8,
+        0
+      ],
+      [
+        9,
+        0
+      ],
+      [
+        10,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        1
+      ],
+      [
+        3,
+        1
+      ],
+      [
+        4,
+        1
+      ],
+      [
+        5,
+        1
+      ],
+      [
+        6,
+        1
+      ],
+      [
+        7,
+        1
+      ],
+      [
+        8,
+        1
+      ]
+    ],
+    "worker_pool": [
+      [
+        2,
+        0
+      ],
+      [
+        3,
+        0
+      ],
+      [
+        4,
+        0
+      ],
+      [
+        5,
+        0
+      ],
+      [
+        6,
+        0
+      ],
+      [
+        7,
+        0
+      ],
+      [
+        8,
+        0
+      ],
+      [
+        9,
+        0
+      ],
+      [
+        10,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        1
+      ],
+      [
+        3,
+        1
+      ],
+      [
+        4,
+        1
+      ],
+      [
+        5,
+        1
+      ],
+      [
+        6,
+        1
+      ],
+      [
+        7,
+        1
+      ],
+      [
+        8,
+        1
+      ],
+      [
+        9,
+        1
+      ],
+      [
+        10,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        2
+      ],
+      [
+        3,
+        2
+      ],
+      [
+        4,
+        2
+      ],
+      [
+        5,
+        2
+      ],
+      [
+        6,
+        2
+      ],
+      [
+        7,
+        2
+      ],
+      [
+        8,
+        2
+      ],
+      [
+        9,
+        2
+      ],
+      [
+        10,
+        2
+      ],
+      [
+        0,
+        3
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        3
+      ],
+      [
+        4,
+        3
+      ],
+      [
+        5,
+        3
+      ],
+      [
+        6,
+        3
+      ],
+      [
+        7,
+        3
+      ],
+      [
+        8,
+        3
+      ],
+      [
+        9,
+        3
+      ],
+      [
+        10,
+        3
+      ],
+      [
+        0,
+        4
+      ],
+      [
+        1,
+        4
+      ],
+      [
+        2,
+        4
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        4,
+        4
+      ],
+      [
+        5,
+        4
+      ],
+      [
+        6,
+        4
+      ],
+      [
+        7,
+        4
+      ],
+      [
+        8,
+        4
+      ],
+      [
+        9,
+        4
+      ],
+      [
+        10,
+        4
+      ],
+      [
+        0,
+        5
+      ],
+      [
+        1,
+        5
+      ],
+      [
+        2,
+        5
+      ],
+      [
+        3,
+        5
+      ],
+      [
+        4,
+        5
+      ],
+      [
+        5,
+        5
+      ],
+      [
+        6,
+        5
+      ],
+      [
+        7,
+        5
+      ],
+      [
+        8,
+        5
+      ],
+      [
+        9,
+        5
+      ],
+      [
+        10,
+        5
+      ],
+      [
+        0,
+        6
+      ],
+      [
+        1,
+        6
+      ],
+      [
+        2,
+        6
+      ],
+      [
+        3,
+        6
+      ],
+      [
+        4,
+        6
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        6
+      ],
+      [
+        7,
+        6
+      ],
+      [
+        8,
+        6
+      ],
+      [
+        9,
+        6
+      ],
+      [
+        10,
+        6
+      ],
+      [
+        0,
+        7
+      ],
+      [
+        1,
+        7
+      ],
+      [
+        2,
+        7
+      ],
+      [
+        3,
+        7
+      ],
+      [
+        4,
+        7
+      ],
+      [
+        5,
+        7
+      ],
+      [
+        6,
+        7
+      ],
+      [
+        7,
+        7
+      ],
+      [
+        8,
+        7
+      ],
+      [
+        9,
+        7
+      ],
+      [
+        10,
+        7
+      ],
+      [
+        0,
+        8
+      ],
+      [
+        1,
+        8
+      ],
+      [
+        2,
+        8
+      ],
+      [
+        3,
+        8
+      ],
+      [
+        4,
+        8
+      ],
+      [
+        5,
+        8
+      ],
+      [
+        6,
+        8
+      ],
+      [
+        7,
+        8
+      ],
+      [
+        8,
+        8
+      ],
+      [
+        9,
+        8
+      ],
+      [
+        10,
+        8
+      ],
+      [
+        0,
+        9
+      ],
+      [
+        1,
+        9
+      ],
+      [
+        2,
+        9
+      ],
+      [
+        3,
+        9
+      ],
+      [
+        4,
+        9
+      ],
+      [
+        5,
+        9
+      ],
+      [
+        6,
+        9
+      ],
+      [
+        7,
+        9
+      ],
+      [
+        8,
+        9
+      ],
+      [
+        9,
+        9
+      ],
+      [
+        10,
+        9
+      ]
+    ],
+    "block_distribution": [
+      {
+        "core": [
+          2,
+          0
+        ],
+        "start_block": 0,
+        "block_count": 10,
+        "start_tile": 0,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          3,
+          0
+        ],
+        "start_block": 10,
+        "block_count": 10,
+        "start_tile": 80,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          4,
+          0
+        ],
+        "start_block": 20,
+        "block_count": 10,
+        "start_tile": 160,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          5,
+          0
+        ],
+        "start_block": 30,
+        "block_count": 10,
+        "start_tile": 240,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          6,
+          0
+        ],
+        "start_block": 40,
+        "block_count": 10,
+        "start_tile": 320,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          7,
+          0
+        ],
+        "start_block": 50,
+        "block_count": 10,
+        "start_tile": 400,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          8,
+          0
+        ],
+        "start_block": 60,
+        "block_count": 10,
+        "start_tile": 480,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          9,
+          0
+        ],
+        "start_block": 70,
+        "block_count": 10,
+        "start_tile": 560,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          10,
+          0
+        ],
+        "start_block": 80,
+        "block_count": 10,
+        "start_tile": 640,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          0,
+          1
+        ],
+        "start_block": 90,
+        "block_count": 9,
+        "start_tile": 720,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          1,
+          1
+        ],
+        "start_block": 99,
+        "block_count": 9,
+        "start_tile": 792,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          2,
+          1
+        ],
+        "start_block": 108,
+        "block_count": 9,
+        "start_tile": 864,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          3,
+          1
+        ],
+        "start_block": 117,
+        "block_count": 9,
+        "start_tile": 936,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          4,
+          1
+        ],
+        "start_block": 126,
+        "block_count": 9,
+        "start_tile": 1008,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          5,
+          1
+        ],
+        "start_block": 135,
+        "block_count": 9,
+        "start_tile": 1080,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          6,
+          1
+        ],
+        "start_block": 144,
+        "block_count": 9,
+        "start_tile": 1152,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          7,
+          1
+        ],
+        "start_block": 153,
+        "block_count": 9,
+        "start_tile": 1224,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          8,
+          1
+        ],
+        "start_block": 162,
+        "block_count": 9,
+        "start_tile": 1296,
+        "tile_count": 72
+      }
+    ],
+    "work_distribution": [
+      {
+        "core": [
+          2,
+          0
+        ],
+        "start_tile": 0,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          3,
+          0
+        ],
+        "start_tile": 80,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          4,
+          0
+        ],
+        "start_tile": 160,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          5,
+          0
+        ],
+        "start_tile": 240,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          6,
+          0
+        ],
+        "start_tile": 320,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          7,
+          0
+        ],
+        "start_tile": 400,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          8,
+          0
+        ],
+        "start_tile": 480,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          9,
+          0
+        ],
+        "start_tile": 560,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          10,
+          0
+        ],
+        "start_tile": 640,
+        "tile_count": 80
+      },
+      {
+        "core": [
+          0,
+          1
+        ],
+        "start_tile": 720,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          1,
+          1
+        ],
+        "start_tile": 792,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          2,
+          1
+        ],
+        "start_tile": 864,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          3,
+          1
+        ],
+        "start_tile": 936,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          4,
+          1
+        ],
+        "start_tile": 1008,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          5,
+          1
+        ],
+        "start_tile": 1080,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          6,
+          1
+        ],
+        "start_tile": 1152,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          7,
+          1
+        ],
+        "start_tile": 1224,
+        "tile_count": 72
+      },
+      {
+        "core": [
+          8,
+          1
+        ],
+        "start_tile": 1296,
+        "tile_count": 72
+      }
+    ],
+    "l1_ledger": {
+      "workers": 18,
+      "max_blocks_per_core": 10,
+      "min_blocks_per_core": 9,
+      "work_invariant": {
+        "blocks_per_core": {
+          "min": 9,
+          "max": 10,
+          "allowed": [
+            9,
+            10
+          ]
+        },
+        "iterations": 12,
+        "matrix_block": 8,
+        "fixed": true
+      },
+      "max_tiles_per_core": 80,
+      "static_prefix_bytes": 111360,
+      "circular_buffer_bytes": 358400,
+      "tensor_bytes": 825344,
+      "total_bytes": 1295104,
+      "profile_overhead_bytes": 12288,
+      "profile_total_bytes": 1307392,
+      "budget_bytes": 1572864,
+      "within_budget": true,
+      "profile_within_budget": true,
+      "reference_total_bytes": 1295104,
+      "reference_profile_total_bytes": 1307392,
+      "reference_l1_equal": true,
+      "reference_equal": true,
+      "conservative_active_core": {
+        "total_bytes": 1295104,
+        "profile_total_bytes": 1307392,
+        "budget_bytes": 1572864,
+        "within_budget": true,
+        "profile_within_budget": true
+      },
+      "interleaved_input_allocation": {
+        "estimate_status": "estimate_only",
+        "payload_status": "source_derived_data_footprint",
+        "provenance": "Derived from newton_schulz_kernel._reader_input_values shape rules, _reader_input_dtypes, _reader_input_memories, and _device_tensor's interleaved memory configuration. Per-tensor reservations are page-rounded upper bounds, not measured physical bank mappings.",
+        "memory_config": "L1_MEMORY_CONFIG_interleaved",
+        "logical_batch": 1368,
+        "physical_tile_count": 1368,
+        "tensor_names": [
+          "R_plane_0",
+          "R_plane_1",
+          "R_plane_2",
+          "X0_plane_0",
+          "X0_plane_1",
+          "identity",
+          "zero"
+        ],
+        "tensor_shapes": [
+          [
+            1368,
+            1,
+            32,
+            32
+          ],
+          [
+            1368,
+            1,
+            32,
+            32
+          ],
+          [
+            1368,
+            1,
+            32,
+            32
+          ],
+          [
+            1368,
+            1,
+            32,
+            32
+          ],
+          [
+            1368,
+            1,
+            32,
+            32
+          ],
+          [
+            1,
+            1,
+            32,
+            32
+          ],
+          [
+            1,
+            1,
+            32,
+            32
+          ]
+        ],
+        "tensor_dtypes": [
+          "bfloat16",
+          "bfloat16",
+          "bfloat16",
+          "bfloat16",
+          "bfloat16",
+          "bfloat16",
+          "float32"
+        ],
+        "tensor_memories": [
+          "l1",
+          "l1",
+          "l1",
+          "l1",
+          "l1",
+          "l1",
+          "l1"
+        ],
+        "tensor_payload_bytes": [
+          2801664,
+          2801664,
+          2801664,
+          2801664,
+          2801664,
+          2048,
+          4096
+        ],
+        "input_payload_bytes": 14008320,
+        "constant_payload_bytes": 6144,
+        "global_payload_bytes": 14014464,
+        "bank_distribution_estimate": {
+          "bank_count": 110,
+          "mapping": "per_tensor_page_rounded_upper_bound",
+          "mapping_exact": false,
+          "reservation_scope": "ceil(each tensor page count / bank count) * aligned page bytes; constant tensors retain their own one-page allocation",
+          "per_tensor": [
+            {
+              "name": "R_plane_0",
+              "shape": [
+                1368,
+                1,
+                32,
+                32
+              ],
+              "dtype": "bfloat16",
+              "page_count": 1368,
+              "page_bytes": 2048,
+              "payload_bytes": 2801664,
+              "memory": "l1",
+              "constant": false,
+              "pages_per_bank_upper_bound": 13,
+              "per_bank_reservation_bytes_upper_bound": 26624
+            },
+            {
+              "name": "R_plane_1",
+              "shape": [
+                1368,
+                1,
+                32,
+                32
+              ],
+              "dtype": "bfloat16",
+              "page_count": 1368,
+              "page_bytes": 2048,
+              "payload_bytes": 2801664,
+              "memory": "l1",
+              "constant": false,
+              "pages_per_bank_upper_bound": 13,
+              "per_bank_reservation_bytes_upper_bound": 26624
+            },
+            {
+              "name": "R_plane_2",
+              "shape": [
+                1368,
+                1,
+                32,
+                32
+              ],
+              "dtype": "bfloat16",
+              "page_count": 1368,
+              "page_bytes": 2048,
+              "payload_bytes": 2801664,
+              "memory": "l1",
+              "constant": false,
+              "pages_per_bank_upper_bound": 13,
+              "per_bank_reservation_bytes_upper_bound": 26624
+            },
+            {
+              "name": "X0_plane_0",
+              "shape": [
+                1368,
+                1,
+                32,
+                32
+              ],
+              "dtype": "bfloat16",
+              "page_count": 1368,
+              "page_bytes": 2048,
+              "payload_bytes": 2801664,
+              "memory": "l1",
+              "constant": false,
+              "pages_per_bank_upper_bound": 13,
+              "per_bank_reservation_bytes_upper_bound": 26624
+            },
+            {
+              "name": "X0_plane_1",
+              "shape": [
+                1368,
+                1,
+                32,
+                32
+              ],
+              "dtype": "bfloat16",
+              "page_count": 1368,
+              "page_bytes": 2048,
+              "payload_bytes": 2801664,
+              "memory": "l1",
+              "constant": false,
+              "pages_per_bank_upper_bound": 13,
+              "per_bank_reservation_bytes_upper_bound": 26624
+            },
+            {
+              "name": "identity",
+              "shape": [
+                1,
+                1,
+                32,
+                32
+              ],
+              "dtype": "bfloat16",
+              "page_count": 1,
+              "page_bytes": 2048,
+              "payload_bytes": 2048,
+              "memory": "l1",
+              "constant": true,
+              "pages_per_bank_upper_bound": 1,
+              "per_bank_reservation_bytes_upper_bound": 2048
+            },
+            {
+              "name": "zero",
+              "shape": [
+                1,
+                1,
+                32,
+                32
+              ],
+              "dtype": "float32",
+              "page_count": 1,
+              "page_bytes": 4096,
+              "payload_bytes": 4096,
+              "memory": "l1",
+              "constant": true,
+              "pages_per_bank_upper_bound": 1,
+              "per_bank_reservation_bytes_upper_bound": 4096
+            }
+          ],
+          "busiest_bank_reservation_bytes_upper_bound": 139264,
+          "measured": false,
+          "unprofiled_l1_bytes_per_bank_upper_bound": 609024,
+          "profiled_l1_bytes_per_bank_upper_bound": 621312,
+          "budget_bytes": 1572864,
+          "within_budget": true,
+          "profile_within_budget": true
+        }
+      }
+    },
+    "selection_rule": "Remove resident cores, sort the remaining pool by (y, x), and take the first core_count coordinates.",
+    "core_plan": {
+      "selection_rule": "Remove resident cores, sort the remaining pool by (y, x), and take the first core_count coordinates.",
+      "worker_pool": [
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          7,
+          0
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          9,
+          0
+        ],
+        [
+          10,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          1
+        ],
+        [
+          7,
+          1
+        ],
+        [
+          8,
+          1
+        ],
+        [
+          9,
+          1
+        ],
+        [
+          10,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          6,
+          2
+        ],
+        [
+          7,
+          2
+        ],
+        [
+          8,
+          2
+        ],
+        [
+          9,
+          2
+        ],
+        [
+          10,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          6,
+          3
+        ],
+        [
+          7,
+          3
+        ],
+        [
+          8,
+          3
+        ],
+        [
+          9,
+          3
+        ],
+        [
+          10,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          6,
+          4
+        ],
+        [
+          7,
+          4
+        ],
+        [
+          8,
+          4
+        ],
+        [
+          9,
+          4
+        ],
+        [
+          10,
+          4
+        ],
+        [
+          0,
+          5
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          6,
+          5
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          8,
+          5
+        ],
+        [
+          9,
+          5
+        ],
+        [
+          10,
+          5
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          1,
+          6
+        ],
+        [
+          2,
+          6
+        ],
+        [
+          3,
+          6
+        ],
+        [
+          4,
+          6
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          6,
+          6
+        ],
+        [
+          7,
+          6
+        ],
+        [
+          8,
+          6
+        ],
+        [
+          9,
+          6
+        ],
+        [
+          10,
+          6
+        ],
+        [
+          0,
+          7
+        ],
+        [
+          1,
+          7
+        ],
+        [
+          2,
+          7
+        ],
+        [
+          3,
+          7
+        ],
+        [
+          4,
+          7
+        ],
+        [
+          5,
+          7
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          7,
+          7
+        ],
+        [
+          8,
+          7
+        ],
+        [
+          9,
+          7
+        ],
+        [
+          10,
+          7
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          1,
+          8
+        ],
+        [
+          2,
+          8
+        ],
+        [
+          3,
+          8
+        ],
+        [
+          4,
+          8
+        ],
+        [
+          5,
+          8
+        ],
+        [
+          6,
+          8
+        ],
+        [
+          7,
+          8
+        ],
+        [
+          8,
+          8
+        ],
+        [
+          9,
+          8
+        ],
+        [
+          10,
+          8
+        ],
+        [
+          0,
+          9
+        ],
+        [
+          1,
+          9
+        ],
+        [
+          2,
+          9
+        ],
+        [
+          3,
+          9
+        ],
+        [
+          4,
+          9
+        ],
+        [
+          5,
+          9
+        ],
+        [
+          6,
+          9
+        ],
+        [
+          7,
+          9
+        ],
+        [
+          8,
+          9
+        ],
+        [
+          9,
+          9
+        ],
+        [
+          10,
+          9
+        ]
+      ],
+      "worker_cores": [
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          7,
+          0
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          9,
+          0
+        ],
+        [
+          10,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          1
+        ],
+        [
+          7,
+          1
+        ],
+        [
+          8,
+          1
+        ]
+      ],
+      "core_count": 18,
+      "total_blocks": 171,
+      "matrix_block": 8,
+      "batch": 1368,
+      "block_distribution": [
+        {
+          "core": [
+            2,
+            0
+          ],
+          "start_block": 0,
+          "block_count": 10,
+          "start_tile": 0,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            3,
+            0
+          ],
+          "start_block": 10,
+          "block_count": 10,
+          "start_tile": 80,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            4,
+            0
+          ],
+          "start_block": 20,
+          "block_count": 10,
+          "start_tile": 160,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            5,
+            0
+          ],
+          "start_block": 30,
+          "block_count": 10,
+          "start_tile": 240,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            6,
+            0
+          ],
+          "start_block": 40,
+          "block_count": 10,
+          "start_tile": 320,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            7,
+            0
+          ],
+          "start_block": 50,
+          "block_count": 10,
+          "start_tile": 400,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            8,
+            0
+          ],
+          "start_block": 60,
+          "block_count": 10,
+          "start_tile": 480,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            9,
+            0
+          ],
+          "start_block": 70,
+          "block_count": 10,
+          "start_tile": 560,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            10,
+            0
+          ],
+          "start_block": 80,
+          "block_count": 10,
+          "start_tile": 640,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            0,
+            1
+          ],
+          "start_block": 90,
+          "block_count": 9,
+          "start_tile": 720,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            1,
+            1
+          ],
+          "start_block": 99,
+          "block_count": 9,
+          "start_tile": 792,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            2,
+            1
+          ],
+          "start_block": 108,
+          "block_count": 9,
+          "start_tile": 864,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            3,
+            1
+          ],
+          "start_block": 117,
+          "block_count": 9,
+          "start_tile": 936,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            4,
+            1
+          ],
+          "start_block": 126,
+          "block_count": 9,
+          "start_tile": 1008,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            5,
+            1
+          ],
+          "start_block": 135,
+          "block_count": 9,
+          "start_tile": 1080,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            6,
+            1
+          ],
+          "start_block": 144,
+          "block_count": 9,
+          "start_tile": 1152,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            7,
+            1
+          ],
+          "start_block": 153,
+          "block_count": 9,
+          "start_tile": 1224,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            8,
+            1
+          ],
+          "start_block": 162,
+          "block_count": 9,
+          "start_tile": 1296,
+          "tile_count": 72
+        }
+      ],
+      "work_distribution": [
+        {
+          "core": [
+            2,
+            0
+          ],
+          "start_tile": 0,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            3,
+            0
+          ],
+          "start_tile": 80,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            4,
+            0
+          ],
+          "start_tile": 160,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            5,
+            0
+          ],
+          "start_tile": 240,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            6,
+            0
+          ],
+          "start_tile": 320,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            7,
+            0
+          ],
+          "start_tile": 400,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            8,
+            0
+          ],
+          "start_tile": 480,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            9,
+            0
+          ],
+          "start_tile": 560,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            10,
+            0
+          ],
+          "start_tile": 640,
+          "tile_count": 80
+        },
+        {
+          "core": [
+            0,
+            1
+          ],
+          "start_tile": 720,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            1,
+            1
+          ],
+          "start_tile": 792,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            2,
+            1
+          ],
+          "start_tile": 864,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            3,
+            1
+          ],
+          "start_tile": 936,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            4,
+            1
+          ],
+          "start_tile": 1008,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            5,
+            1
+          ],
+          "start_tile": 1080,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            6,
+            1
+          ],
+          "start_tile": 1152,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            7,
+            1
+          ],
+          "start_tile": 1224,
+          "tile_count": 72
+        },
+        {
+          "core": [
+            8,
+            1
+          ],
+          "start_tile": 1296,
+          "tile_count": 72
+        }
+      ],
+      "l1_ledger": {
+        "workers": 18,
+        "max_blocks_per_core": 10,
+        "min_blocks_per_core": 9,
+        "work_invariant": {
+          "blocks_per_core": {
+            "min": 9,
+            "max": 10,
+            "allowed": [
+              9,
+              10
+            ]
+          },
+          "iterations": 12,
+          "matrix_block": 8,
+          "fixed": true
+        },
+        "max_tiles_per_core": 80,
+        "static_prefix_bytes": 111360,
+        "circular_buffer_bytes": 358400,
+        "tensor_bytes": 825344,
+        "total_bytes": 1295104,
+        "profile_overhead_bytes": 12288,
+        "profile_total_bytes": 1307392,
+        "budget_bytes": 1572864,
+        "within_budget": true,
+        "profile_within_budget": true,
+        "reference_total_bytes": 1295104,
+        "reference_profile_total_bytes": 1307392,
+        "reference_l1_equal": true,
+        "reference_equal": true,
+        "conservative_active_core": {
+          "total_bytes": 1295104,
+          "profile_total_bytes": 1307392,
+          "budget_bytes": 1572864,
+          "within_budget": true,
+          "profile_within_budget": true
+        },
+        "interleaved_input_allocation": {
+          "estimate_status": "estimate_only",
+          "payload_status": "source_derived_data_footprint",
+          "provenance": "Derived from newton_schulz_kernel._reader_input_values shape rules, _reader_input_dtypes, _reader_input_memories, and _device_tensor's interleaved memory configuration. Per-tensor reservations are page-rounded upper bounds, not measured physical bank mappings.",
+          "memory_config": "L1_MEMORY_CONFIG_interleaved",
+          "logical_batch": 1368,
+          "physical_tile_count": 1368,
+          "tensor_names": [
+            "R_plane_0",
+            "R_plane_1",
+            "R_plane_2",
+            "X0_plane_0",
+            "X0_plane_1",
+            "identity",
+            "zero"
+          ],
+          "tensor_shapes": [
+            [
+              1368,
+              1,
+              32,
+              32
+            ],
+            [
+              1368,
+              1,
+              32,
+              32
+            ],
+            [
+              1368,
+              1,
+              32,
+              32
+            ],
+            [
+              1368,
+              1,
+              32,
+              32
+            ],
+            [
+              1368,
+              1,
+              32,
+              32
+            ],
+            [
+              1,
+              1,
+              32,
+              32
+            ],
+            [
+              1,
+              1,
+              32,
+              32
+            ]
+          ],
+          "tensor_dtypes": [
+            "bfloat16",
+            "bfloat16",
+            "bfloat16",
+            "bfloat16",
+            "bfloat16",
+            "bfloat16",
+            "float32"
+          ],
+          "tensor_memories": [
+            "l1",
+            "l1",
+            "l1",
+            "l1",
+            "l1",
+            "l1",
+            "l1"
+          ],
+          "tensor_payload_bytes": [
+            2801664,
+            2801664,
+            2801664,
+            2801664,
+            2801664,
+            2048,
+            4096
+          ],
+          "input_payload_bytes": 14008320,
+          "constant_payload_bytes": 6144,
+          "global_payload_bytes": 14014464,
+          "bank_distribution_estimate": {
+            "bank_count": 110,
+            "mapping": "per_tensor_page_rounded_upper_bound",
+            "mapping_exact": false,
+            "reservation_scope": "ceil(each tensor page count / bank count) * aligned page bytes; constant tensors retain their own one-page allocation",
+            "per_tensor": [
+              {
+                "name": "R_plane_0",
+                "shape": [
+                  1368,
+                  1,
+                  32,
+                  32
+                ],
+                "dtype": "bfloat16",
+                "page_count": 1368,
+                "page_bytes": 2048,
+                "payload_bytes": 2801664,
+                "memory": "l1",
+                "constant": false,
+                "pages_per_bank_upper_bound": 13,
+                "per_bank_reservation_bytes_upper_bound": 26624
+              },
+              {
+                "name": "R_plane_1",
+                "shape": [
+                  1368,
+                  1,
+                  32,
+                  32
+                ],
+                "dtype": "bfloat16",
+                "page_count": 1368,
+                "page_bytes": 2048,
+                "payload_bytes": 2801664,
+                "memory": "l1",
+                "constant": false,
+                "pages_per_bank_upper_bound": 13,
+                "per_bank_reservation_bytes_upper_bound": 26624
+              },
+              {
+                "name": "R_plane_2",
+                "shape": [
+                  1368,
+                  1,
+                  32,
+                  32
+                ],
+                "dtype": "bfloat16",
+                "page_count": 1368,
+                "page_bytes": 2048,
+                "payload_bytes": 2801664,
+                "memory": "l1",
+                "constant": false,
+                "pages_per_bank_upper_bound": 13,
+                "per_bank_reservation_bytes_upper_bound": 26624
+              },
+              {
+                "name": "X0_plane_0",
+                "shape": [
+                  1368,
+                  1,
+                  32,
+                  32
+                ],
+                "dtype": "bfloat16",
+                "page_count": 1368,
+                "page_bytes": 2048,
+                "payload_bytes": 2801664,
+                "memory": "l1",
+                "constant": false,
+                "pages_per_bank_upper_bound": 13,
+                "per_bank_reservation_bytes_upper_bound": 26624
+              },
+              {
+                "name": "X0_plane_1",
+                "shape": [
+                  1368,
+                  1,
+                  32,
+                  32
+                ],
+                "dtype": "bfloat16",
+                "page_count": 1368,
+                "page_bytes": 2048,
+                "payload_bytes": 2801664,
+                "memory": "l1",
+                "constant": false,
+                "pages_per_bank_upper_bound": 13,
+                "per_bank_reservation_bytes_upper_bound": 26624
+              },
+              {
+                "name": "identity",
+                "shape": [
+                  1,
+                  1,
+                  32,
+                  32
+                ],
+                "dtype": "bfloat16",
+                "page_count": 1,
+                "page_bytes": 2048,
+                "payload_bytes": 2048,
+                "memory": "l1",
+                "constant": true,
+                "pages_per_bank_upper_bound": 1,
+                "per_bank_reservation_bytes_upper_bound": 2048
+              },
+              {
+                "name": "zero",
+                "shape": [
+                  1,
+                  1,
+                  32,
+                  32
+                ],
+                "dtype": "float32",
+                "page_count": 1,
+                "page_bytes": 4096,
+                "payload_bytes": 4096,
+                "memory": "l1",
+                "constant": true,
+                "pages_per_bank_upper_bound": 1,
+                "per_bank_reservation_bytes_upper_bound": 4096
+              }
+            ],
+            "busiest_bank_reservation_bytes_upper_bound": 139264,
+            "measured": false,
+            "unprofiled_l1_bytes_per_bank_upper_bound": 609024,
+            "profiled_l1_bytes_per_bank_upper_bound": 621312,
+            "budget_bytes": 1572864,
+            "within_budget": true,
+            "profile_within_budget": true
+          }
+        }
+      },
+      "workload": {
+        "shape": "newton_schulz_L32_b1368",
+        "L": 32,
+        "batch": 1368,
+        "total_blocks": 171,
+        "matrix_block": 8,
+        "worker_core_count": 18,
+        "worker_core_coordinates": [
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            0
+          ],
+          [
+            4,
+            0
+          ],
+          [
+            5,
+            0
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            0
+          ],
+          [
+            8,
+            0
+          ],
+          [
+            9,
+            0
+          ],
+          [
+            10,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ],
+          [
+            3,
+            1
+          ],
+          [
+            4,
+            1
+          ],
+          [
+            5,
+            1
+          ],
+          [
+            6,
+            1
+          ],
+          [
+            7,
+            1
+          ],
+          [
+            8,
+            1
+          ]
+        ],
+        "block_distribution": [
+          {
+            "core": [
+              2,
+              0
+            ],
+            "start_block": 0,
+            "block_count": 10,
+            "start_tile": 0,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              3,
+              0
+            ],
+            "start_block": 10,
+            "block_count": 10,
+            "start_tile": 80,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              4,
+              0
+            ],
+            "start_block": 20,
+            "block_count": 10,
+            "start_tile": 160,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              5,
+              0
+            ],
+            "start_block": 30,
+            "block_count": 10,
+            "start_tile": 240,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              6,
+              0
+            ],
+            "start_block": 40,
+            "block_count": 10,
+            "start_tile": 320,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              7,
+              0
+            ],
+            "start_block": 50,
+            "block_count": 10,
+            "start_tile": 400,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              8,
+              0
+            ],
+            "start_block": 60,
+            "block_count": 10,
+            "start_tile": 480,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              9,
+              0
+            ],
+            "start_block": 70,
+            "block_count": 10,
+            "start_tile": 560,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              10,
+              0
+            ],
+            "start_block": 80,
+            "block_count": 10,
+            "start_tile": 640,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              0,
+              1
+            ],
+            "start_block": 90,
+            "block_count": 9,
+            "start_tile": 720,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              1,
+              1
+            ],
+            "start_block": 99,
+            "block_count": 9,
+            "start_tile": 792,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              2,
+              1
+            ],
+            "start_block": 108,
+            "block_count": 9,
+            "start_tile": 864,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              3,
+              1
+            ],
+            "start_block": 117,
+            "block_count": 9,
+            "start_tile": 936,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              4,
+              1
+            ],
+            "start_block": 126,
+            "block_count": 9,
+            "start_tile": 1008,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              5,
+              1
+            ],
+            "start_block": 135,
+            "block_count": 9,
+            "start_tile": 1080,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              6,
+              1
+            ],
+            "start_block": 144,
+            "block_count": 9,
+            "start_tile": 1152,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              7,
+              1
+            ],
+            "start_block": 153,
+            "block_count": 9,
+            "start_tile": 1224,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              8,
+              1
+            ],
+            "start_block": 162,
+            "block_count": 9,
+            "start_tile": 1296,
+            "tile_count": 72
+          }
+        ],
+        "work_distribution": [
+          {
+            "core": [
+              2,
+              0
+            ],
+            "start_tile": 0,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              3,
+              0
+            ],
+            "start_tile": 80,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              4,
+              0
+            ],
+            "start_tile": 160,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              5,
+              0
+            ],
+            "start_tile": 240,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              6,
+              0
+            ],
+            "start_tile": 320,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              7,
+              0
+            ],
+            "start_tile": 400,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              8,
+              0
+            ],
+            "start_tile": 480,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              9,
+              0
+            ],
+            "start_tile": 560,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              10,
+              0
+            ],
+            "start_tile": 640,
+            "tile_count": 80
+          },
+          {
+            "core": [
+              0,
+              1
+            ],
+            "start_tile": 720,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              1,
+              1
+            ],
+            "start_tile": 792,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              2,
+              1
+            ],
+            "start_tile": 864,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              3,
+              1
+            ],
+            "start_tile": 936,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              4,
+              1
+            ],
+            "start_tile": 1008,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              5,
+              1
+            ],
+            "start_tile": 1080,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              6,
+              1
+            ],
+            "start_tile": 1152,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              7,
+              1
+            ],
+            "start_tile": 1224,
+            "tile_count": 72
+          },
+          {
+            "core": [
+              8,
+              1
+            ],
+            "start_tile": 1296,
+            "tile_count": 72
+          }
+        ],
+        "iterations": 12,
+        "variant": "bf16",
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "fp32_dest_acc_en": true,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "r_memory": "l1",
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      }
+    }
+  },
+  "command": [
+    "enodia/tt/bench/run_in_container.sh",
+    "<run-output-dir>",
+    "--",
+    "--device-id",
+    "0",
+    "--condition",
+    "newton_schulz",
+    "--configuration",
+    "C018",
+    "--requested-run-id",
+    "issue146-smoke-c018",
+    "--load-core-count",
+    "18",
+    "--load-total-blocks",
+    "171",
+    "--load-matrix-block",
+    "8",
+    "--outer-repetitions",
+    "16",
+    "--launches-per-sync",
+    "8",
+    "--target-seconds",
+    "40",
+    "--overrun-limit-seconds",
+    "10",
+    "--plan",
+    "docs/measurements/2026-10-20-host-newton-schulz-issue146-plan.json",
+    "--plan-hash",
+    "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a",
+    "--mode",
+    "smoke",
+    "--outer-timeout-seconds",
+    "90"
+  ],
+  "diagnostic_only": true,
+  "verdict_evidence": false,
+  "workload_started": false,
+  "environment": null,
+  "pre_run_snapshot": {
+    "path": "pre-run-snapshot-issue146-smoke-c018.json",
+    "schema": "issue146-tt-smi-snapshot-v1",
+    "sha256": "3388132a0fba5d049d078e009d8e88031871bbc5b1bcacaeb70edfee37c542eb",
+    "byte_count": 7952,
+    "selected_device": {
+      "board_id": "0000040331914124",
+      "bus_id": "0000:09:00.0"
+    },
+    "configuration": {
+      "limits": {
+        "board_power_limit_w": 300.0,
+        "asic_fmax_mhz": 1350.0,
+        "therm_trip_l1_limit_c": 90.0,
+        "gddr_thm_limit_c": 85.0,
+        "gddr_thm_limit_source": "firmware_config_table.pinned_19.6.0.0",
+        "board_power_limit_word": 300,
+        "enabled_max_arb_word": 465
+      },
+      "configuration_words": {
+        "BOARD_POWER_LIMIT": "0x12c",
+        "ENABLED_MAX_ARB": "0x1d1"
+      }
+    }
+  },
+  "post_run_snapshot": {
+    "path": "post-run-snapshot-issue146-smoke-c018.json",
+    "schema": "issue146-tt-smi-snapshot-v1",
+    "sha256": "21acd6c2c267247df1fb1b1b63e0c76580b7865cc6dc243d7f71fd7f9f456767",
+    "byte_count": 7953,
+    "selected_device": {
+      "board_id": "0000040331914124",
+      "bus_id": "0000:09:00.0"
+    }
+  },
+  "groups": null,
+  "trace": null,
+  "provenance": {
+    "wrapper_entrypoint": "enodia/tt/bench/run_in_container.sh",
+    "runner_entrypoint": "tools/issue146_device.py",
+    "requested_run_id": "issue146-smoke-c018",
+    "wrapper_run_id": null,
+    "plan_sha256": "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a",
+    "unit_provenance": null,
+    "unit_provenance_status": "unknown",
+    "host_identity_persisted": false
+  },
+  "cooldown_gate": {
+    "required": false,
+    "verified": true,
+    "gate_result": "not_applicable",
+    "aiclk_gate": false
+  },
+  "limits": {
+    "board_power_limit_w": 300.0,
+    "asic_fmax_mhz": 1350.0,
+    "thm_limit_c": 90,
+    "gddr_thm_limit_c": 85.0,
+    "source": "Read from the pre-run snapshot of each run: limits.board_power_limit, limits.asic_fmax and limits.therm_trip_l1_limit as in #137; smbus_telem.BOARD_POWER_LIMIT (expected 0x12c) and ENABLED_MAX_ARB (expected 0x1d1) as the per-run configuration check. The GDDR thermal limit has no telemetry tag; its value 85 is from the firmware config table and is recorded as such. A pre-run snapshot whose BOARD_POWER_LIMIT or ENABLED_MAX_ARB differs from the expected word makes the run not_evaluable (configuration), never substituted.",
+    "therm_trip_l1_limit_c": 90.0,
+    "gddr_thm_limit_source": "firmware_config_table.pinned_19.6.0.0",
+    "board_power_limit_word": 300,
+    "enabled_max_arb_word": 465
+  },
+  "failure": {
+    "kind": "runner_execution_failure",
+    "message": "runner result artifact identity is missing or ambiguous",
+    "returncode": 1
+  }
+}

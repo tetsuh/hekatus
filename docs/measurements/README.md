@@ -72,6 +72,116 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
+## Issue #146 grouped Doppler-slow conformance runner (revision 6)
+
+The Issue #146 planning command is board-free and consumes the immutable
+revision-6 plan without opening a device:
+
+```bash
+uv run python tools/issue146.py --mode plan
+```
+
+The plan contains only C018, C081, and C108 in the six-run order
+`C018, C108, C081, C081, C108, C018`. Smoke mode is 40 seconds with a
+90-second guard and is diagnostic-only. Long mode is 180 seconds with a
+230-second guard; each instance requires explicit owner approval and the
+runner never executes the series automatically:
+
+```bash
+uv run python tools/issue146.py --mode smoke --configuration C018 \
+  --run-id issue146-smoke-c018 --out-dir out/issue146 --execute
+uv run python tools/issue146.py --mode long --configuration C018 \
+  --run-id issue146-long-c018-1 --run-number 1 --approve-long-run \
+  --out-dir out/issue146 --execute
+# Every later long instance must name the preceding selected-device pre-run snapshot.
+uv run python tools/issue146.py --mode long --configuration C108 \
+  --run-id issue146-long-c108-2 --run-number 2 --approve-long-run \
+  --preceding-pre-snapshot out/issue146/pre-run-snapshot-issue146-long-c018-1.json \
+  --out-dir out/issue146 --execute
+```
+
+Execution is opt-in only. The wrapper binds host device 1
+(`/dev/tenstorrent/1`) to container device 0 and the selected serial/BDF,
+requires the clean-and-pushed harness preflight, and owns the result identity;
+callers must not provide `--out`. Direct wrapper invocations must also pass the
+safe semantic `--requested-run-id`; the wrapper's collision-safe invocation ID
+is retained separately in the device result and artifact names. The wrapper's
+legacy four-column power CSV is retained and fingerprinted as companion
+evidence; the new raw-arbiter trace remains the verdict source. The grouped
+load uses sixteen Newton-Schulz outer repetitions per launch, eight asynchronous
+launches per synchronization, and records every group boundary on the host
+monotonic clock.
+Cooldown between long instances is relative to the preceding selected-device
+pre-run snapshot (power +5 W, ASIC temperature +3 degC, cap 600 seconds).
+
+A completed canonical record is `issue146-measurement-v1`. It binds the plan
+hash, exact core/L1 plan, board serial and PCI identity, environment, pre/post
+snapshots, device result, raw group array plus its analyzer envelope, and the
+exact Issue #146 CSV trace bytes with SHA-256 and byte counts. GDDR temperatures
+are decoded only when the pinned tt-smi/tt-umd source provenance is present;
+otherwise raw words remain retained and the analysis is not evaluable for that
+criterion. Run analysis is board-free:
+
+```bash
+uv run python tools/analyze_issue146.py \
+  --plan docs/measurements/2026-10-20-host-newton-schulz-issue146-plan.json \
+  --record out/issue146/run-issue146-long-c018-1.json \
+  --output out/issue146/analysis.json
+uv run python tools/analyze_issue146.py --smoke \
+  --plan docs/measurements/2026-10-20-host-newton-schulz-issue146-plan.json \
+  --record out/issue146/run-issue146-smoke-c018.json \
+  --output out/issue146/smoke-analysis.json
+```
+
+Revision 6 retains the revision-5 host and wrapper-companion sampler cadence
+from `measurement_scope.trace_interval_seconds` (1.0 s); an explicit cadence is
+retained only as a named board-free test override and is recorded as such. The
+C018 control accepts exactly `0x80546/1350` and `0x70545/1343`; every retained
+row must match one of those pairs, and the clamped pair must satisfy the strict
+majority `clamped_count * 2 > sample_count` (exactly half fails). The dip pair
+is reported as an exploratory control dip, not as a physical pulse duration.
+Revision-6 smoke analysis may replay only the pinned revision-5 smoke lineage
+(plan canonical hash `5fc8d7a19533e10117e1b862603e5cb32ca37549b03194367b3396637dbff3ef`,
+harness `78b1b5480c785d492dd82eac99c07f088d734522`, cadence 1.0 s). Replay keeps
+all original plan, record, trace, group, snapshot, identity, and hash metadata
+unchanged and reports acquisition plan 5 separately from evaluation plan 6.
+The regulated R5 residual is the signed value
+`(AICLK_ARB_MAX & 0xffff) - aiclk_mhz`: -1 fails, 0 and 7 pass, and 8 fails.
+Smoke sample-selecting checks use strict points in `10 s <=
+(timestamp_monotonic_ns - first_launch_start_monotonic_ns) < 40 s` for R5 and
+R7. Exactly four smoke gates are reported: the [10,40) idle fraction, all-row
+four-word presence plus `ENABLED_MAX_ARB == 0x1d1`, signed R5, and R7. One
+separate reported diagnostic contains minimum current, the count below 150 A,
+and board-power mean/sample SD plus lag-1 `r1`; those observations never fail a
+gate or request plan revision. Rows captured after that workload window remain
+in the raw trace as diagnostics. Smoke output is explicitly diagnostic and
+never contributes verdict evidence. Regulated-run exploratory output includes
+strict current dips over [60,180) (or [10,40) for smoke), their board/ASIC
+power, timestamps, and raw group-boundary correspondence without a clustering
+cutoff or causal claim. The analyzer CLI is unchanged: use `--smoke` for
+this five-item smoke report and the normal invocation for long-run criteria.
+New report fields include `trace_cadence`, signed R5 min/max fields,
+`power_r1`, and exploratory `current_dips`.
+Failed, timed-out, missing, or identity-mismatched device artifacts are kept
+as diagnostics rather than converted into accepted measurements. Board-free
+pytest coverage uses fake capture/clock/TTNN seams and inert local wrapper
+stubs; no hardware, Docker container, or telemetry utility invocation is part
+of the default validation.
+
+Every executed Issue #146 wrapper invocation also retains two run-bound text
+artifacts beside the record: `wrapper-stdout-<run-id>.txt` and
+`wrapper-stderr-<run-id>.txt`. They are written for successful and failed
+invocations, including nonzero exits, missing result artifacts, timeouts, and
+process-start errors. The record's `wrapper_diagnostics` descriptor names only
+those basenames and carries bounded redacted tail lines for failure review.
+All local absolute paths are redacted before either file, tail, or
+exception-derived failure field is persisted, including paths outside the
+repository and paths whose components are unresolved symlinks. The runtime
+host name and FQDN are redacted as well. Useful exception class and
+`ModuleNotFoundError` text, URLs, relative source paths, and safe
+container-relative paths such as `/work/...` and `/out/...` remain. Artifact
+creation is exclusive and rejects collisions or symlinks.
+
 ## Issue #102 raw-record rebuild
 
 The Issue #101 runner writes a self-contained raw run artifact before record

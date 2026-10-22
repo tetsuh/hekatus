@@ -1,0 +1,794 @@
+{
+  "schema": "issue146-smoke-summary-v1",
+  "issue": "#146",
+  "mode": "smoke-diagnostic",
+  "affects_long_verdict": false,
+  "plan": {
+    "revision": 4,
+    "sha256": "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a",
+    "source": "2026-10-20-host-newton-schulz-issue146-plan.json"
+  },
+  "input_errors": [],
+  "runs": [
+    {
+      "run_id": "issue146-smoke-c018",
+      "configuration_id": "C018",
+      "run_number": null,
+      "mode": "smoke",
+      "record_status": "ok",
+      "included_in_successful_smoke_aggregate": true,
+      "record_provenance": {
+        "name": "run-issue146-smoke-c018.json",
+        "sha256": "f1396a0e6e9d8243af49527154ed7c2ff899ee47f451b7fa9f79e25e2ae5b077",
+        "byte_count": 162116
+      },
+      "artifact_provenance": {
+        "pre_snapshot": {
+          "name": "pre-run-snapshot-issue146-smoke-c018.json",
+          "sha256": "b10a2f0ac5635e510f1718f1c5c6e38abe7fabcf0371ca382a6b976d40ea3f03",
+          "byte_count": 7954
+        },
+        "post_snapshot": {
+          "name": "post-run-snapshot-issue146-smoke-c018.json",
+          "sha256": "97e63474e5017ffdcdd08262f239143b3bdda8b4c5c5169e58abf5d30c95ecb6",
+          "byte_count": 7955
+        },
+        "groups": {
+          "name": "group-timings-issue146-smoke-c018-envelope.json",
+          "sha256": "74d89f727cf60abd94d7f4bfff438bb4133eaa81f3ac0f94014b393fc39fb403",
+          "byte_count": 53513
+        },
+        "trace": {
+          "name": "issue146-power-trace-issue146-smoke-c018.csv",
+          "sha256": "6e6c3476bc23e85bc638ff616a2787fa0908267a4af154f19dbc85a759a5c968",
+          "byte_count": 3995
+        }
+      },
+      "pre_snapshot": {
+        "status": "ok",
+        "source": {
+          "name": "pre-run-snapshot-issue146-smoke-c018.json",
+          "sha256": "b10a2f0ac5635e510f1718f1c5c6e38abe7fabcf0371ca382a6b976d40ea3f03",
+          "byte_count": 7954
+        },
+        "limits": {
+          "vdd_min": "0.70",
+          "vdd_max": "0.90",
+          "tdp_limit": "150",
+          "tdc_limit": "200",
+          "asic_fmax": "1350",
+          "therm_trip_l1_limit": "90",
+          "thm_limit": "110",
+          "bus_peak_limit": 0,
+          "fan_rpm_limit": 0,
+          "board_power_limit": "300"
+        },
+        "configuration_words": {
+          "BOARD_POWER_LIMIT": "0x12c",
+          "ENABLED_MAX_ARB": "0x1d1"
+        },
+        "capture_timestamp_monotonic_ns": 6452337546192
+      },
+      "environment": {
+        "status": "ok",
+        "serial": "0000040331914124",
+        "board_id": "0000040331914124",
+        "bdf": "0000:09:00.0",
+        "firmware_bundle": "19.6.0.0",
+        "kmd_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "d553762ed82a01f93c1d787e9bf4a3652c825923",
+        "host_reader_versions": {
+          "tt_smi": "6.2.1",
+          "tt_umd": "0.9.8",
+          "pyluwen": "0.9.0"
+        }
+      },
+      "load": {
+        "group_count": 556,
+        "launch_count": 4448,
+        "overrun_seconds": 0.010481445,
+        "host_visible_idle_fraction": 3.569066666666667e-05,
+        "idle_window": {
+          "window": "[10,40)",
+          "status": "ok",
+          "host_visible_idle_fraction": 3.569066666666667e-05
+        }
+      },
+      "window_10_40": {
+        "window": "[10,40)",
+        "status": "ok",
+        "count": 14,
+        "minimum_current_a": 128.0,
+        "board_power_mean_w": 250.35714285714286,
+        "board_power_sample_sd_w": 7.967309582162725,
+        "aiclk_mean_mhz": 1350.0,
+        "r5_max_abs_mhz": 0.0,
+        "aiclk_arb_max_index_distribution": {
+          "8": 14
+        },
+        "errors": []
+      },
+      "temperatures": {
+        "gddr_provenance": "established",
+        "strict_window_10_40": {
+          "status": "ok",
+          "count": 14,
+          "max_gddr_temp_c": 58.0,
+          "max_asic_temp_c": 76.5,
+          "errors": []
+        },
+        "entire_rawtrace": {
+          "status": "ok",
+          "count": 21,
+          "max_gddr_temp_c": 58.0,
+          "max_asic_temp_c": 76.5,
+          "errors": []
+        }
+      },
+      "all_trace_arbiter_words": {
+        "status": "ok",
+        "raw_trace_row_count": 21,
+        "decoded_row_count": 21,
+        "all_four_words_present": true,
+        "enabled_max_arb_all_0x1d1": true,
+        "enabled_max_arb_values": [
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1"
+        ],
+        "errors": []
+      },
+      "post_load": {
+        "trace_rows_after_last_groupend": {
+          "status": "ok",
+          "reference": "last_synchronized_groupend",
+          "last_group_end_monotonic_ns": 6495457305325,
+          "rows": [
+            {
+              "timestamp_monotonic_ns": 6495970365934,
+              "time_delay_seconds": 0.513060609,
+              "aiclk_arb_max_raw": "0x80546",
+              "aiclk_arb_max_index": 8,
+              "aiclk_arb_max_frequency_mhz": 1350,
+              "aiclk_mhz": 800.0
+            }
+          ],
+          "errors": []
+        },
+        "post_snapshot_arbiter_release": {
+          "status": "ok",
+          "capture_timestamp_monotonic_ns": 6495970365934,
+          "aiclk_arb_max_raw": "0x80546",
+          "aiclk_arb_max_index": 8,
+          "aiclk_arb_max_frequency_mhz": 1350,
+          "aiclk_mhz": 800,
+          "time_delay_seconds": 0.513060609,
+          "errors": []
+        }
+      },
+      "smoke_acceptance": {
+        "status": "ok",
+        "pass": true,
+        "affects_long_verdict": false,
+        "items": [
+          {
+            "name": "idle_fraction_[10,40)",
+            "status": "pass",
+            "pass": true,
+            "details": {
+              "window": "[10,40)",
+              "idle_fraction": 3.569066666666667e-05
+            }
+          },
+          {
+            "name": "regulated_current_and_power_[10,40)",
+            "status": "not_applicable",
+            "pass": true,
+            "details": {
+              "window": "[10,40)",
+              "current_window": "[10,40)",
+              "power_sd_window": "[10,40)"
+            }
+          },
+          {
+            "name": "arbiter_words_and_enabled_max",
+            "status": "pass",
+            "pass": true,
+            "details": {}
+          },
+          {
+            "name": "R5_residual_[10,40)",
+            "status": "pass",
+            "pass": true,
+            "details": {
+              "window": "[10,40)",
+              "max_residual_mhz": 0.0
+            }
+          },
+          {
+            "name": "R7_index_distribution_[10,40)",
+            "status": "pass",
+            "pass": true,
+            "details": {
+              "window": "[10,40)",
+              "indices": [
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8
+              ]
+            }
+          },
+          {
+            "name": "smoke_failure_requires_plan_revision",
+            "status": "pass",
+            "pass": true,
+            "details": {}
+          }
+        ],
+        "errors": []
+      },
+      "analyzer_missing_fields": [
+        "plateau.samples"
+      ],
+      "errors": []
+    },
+    {
+      "run_id": "issue146-smoke-c081",
+      "configuration_id": "C081",
+      "run_number": null,
+      "mode": "smoke",
+      "record_status": "ok",
+      "included_in_successful_smoke_aggregate": true,
+      "record_provenance": {
+        "name": "run-issue146-smoke-c081.json",
+        "sha256": "670ba1256361fb476bf24f44e700c0be4498c0f3e1fca9750968dc145fafc8d2",
+        "byte_count": 306910
+      },
+      "artifact_provenance": {
+        "pre_snapshot": {
+          "name": "pre-run-snapshot-issue146-smoke-c081.json",
+          "sha256": "ddcf51d5b4b9c005553c41603c7026d3530d2911fa6867ed936c145812d718cb",
+          "byte_count": 7956
+        },
+        "post_snapshot": {
+          "name": "post-run-snapshot-issue146-smoke-c081.json",
+          "sha256": "2846faf08303a23735c8ea0d4a79887470fab16ecbae35327af87d32bea424c2",
+          "byte_count": 7965
+        },
+        "groups": {
+          "name": "group-timings-issue146-smoke-c081-envelope.json",
+          "sha256": "6f4d6f555500dd90cd2aa6d90c8cb71eb6d175d4a2fd443e01e9ee3b69b64580",
+          "byte_count": 45929
+        },
+        "trace": {
+          "name": "issue146-power-trace-issue146-smoke-c081.csv",
+          "sha256": "492957828f99da7873a70ab45b41a4526860eab5a33c8f4d0c19bfe3368bc63f",
+          "byte_count": 3994
+        }
+      },
+      "pre_snapshot": {
+        "status": "ok",
+        "source": {
+          "name": "pre-run-snapshot-issue146-smoke-c081.json",
+          "sha256": "ddcf51d5b4b9c005553c41603c7026d3530d2911fa6867ed936c145812d718cb",
+          "byte_count": 7956
+        },
+        "limits": {
+          "vdd_min": "0.70",
+          "vdd_max": "0.90",
+          "tdp_limit": "150",
+          "tdc_limit": "200",
+          "asic_fmax": "1350",
+          "therm_trip_l1_limit": "90",
+          "thm_limit": "110",
+          "bus_peak_limit": 0,
+          "fan_rpm_limit": 0,
+          "board_power_limit": "300"
+        },
+        "configuration_words": {
+          "BOARD_POWER_LIMIT": "0x12c",
+          "ENABLED_MAX_ARB": "0x1d1"
+        },
+        "capture_timestamp_monotonic_ns": 6537036033863
+      },
+      "environment": {
+        "status": "ok",
+        "serial": "0000040331914124",
+        "board_id": "0000040331914124",
+        "bdf": "0000:09:00.0",
+        "firmware_bundle": "19.6.0.0",
+        "kmd_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "d553762ed82a01f93c1d787e9bf4a3652c825923",
+        "host_reader_versions": {
+          "tt_smi": "6.2.1",
+          "tt_umd": "0.9.8",
+          "pyluwen": "0.9.0"
+        }
+      },
+      "load": {
+        "group_count": 477,
+        "launch_count": 3816,
+        "overrun_seconds": 0.006220301,
+        "host_visible_idle_fraction": 4.06948e-05,
+        "idle_window": {
+          "window": "[10,40)",
+          "status": "ok",
+          "host_visible_idle_fraction": 4.06948e-05
+        }
+      },
+      "window_10_40": {
+        "window": "[10,40)",
+        "status": "ok",
+        "count": 14,
+        "minimum_current_a": 138.0,
+        "board_power_mean_w": 292.2857142857143,
+        "board_power_sample_sd_w": 23.31532533773431,
+        "aiclk_mean_mhz": 1154.142857142857,
+        "r5_max_abs_mhz": 6.0,
+        "aiclk_arb_max_index_distribution": {
+          "7": 14
+        },
+        "errors": []
+      },
+      "temperatures": {
+        "gddr_provenance": "established",
+        "strict_window_10_40": {
+          "status": "ok",
+          "count": 14,
+          "max_gddr_temp_c": 62.0,
+          "max_asic_temp_c": 81.1,
+          "errors": []
+        },
+        "entire_rawtrace": {
+          "status": "ok",
+          "count": 21,
+          "max_gddr_temp_c": 62.0,
+          "max_asic_temp_c": 81.1,
+          "errors": []
+        }
+      },
+      "all_trace_arbiter_words": {
+        "status": "ok",
+        "raw_trace_row_count": 21,
+        "decoded_row_count": 21,
+        "all_four_words_present": true,
+        "enabled_max_arb_all_0x1d1": true,
+        "enabled_max_arb_values": [
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1"
+        ],
+        "errors": []
+      },
+      "post_load": {
+        "trace_rows_after_last_groupend": {
+          "status": "ok",
+          "reference": "last_synchronized_groupend",
+          "last_group_end_monotonic_ns": 6580320345978,
+          "rows": [
+            {
+              "timestamp_monotonic_ns": 6580890266715,
+              "time_delay_seconds": 0.569920737,
+              "aiclk_arb_max_raw": "0x704ec",
+              "aiclk_arb_max_index": 7,
+              "aiclk_arb_max_frequency_mhz": 1260,
+              "aiclk_mhz": 800.0
+            }
+          ],
+          "errors": []
+        },
+        "post_snapshot_arbiter_release": {
+          "status": "ok",
+          "capture_timestamp_monotonic_ns": 6580890266715,
+          "aiclk_arb_max_raw": "0x704ec",
+          "aiclk_arb_max_index": 7,
+          "aiclk_arb_max_frequency_mhz": 1260,
+          "aiclk_mhz": 800,
+          "time_delay_seconds": 0.569920737,
+          "errors": []
+        }
+      },
+      "smoke_acceptance": {
+        "status": "ok",
+        "pass": false,
+        "affects_long_verdict": false,
+        "items": [
+          {
+            "name": "idle_fraction_[10,40)",
+            "status": "pass",
+            "pass": true,
+            "details": {
+              "window": "[10,40)",
+              "idle_fraction": 4.06948e-05
+            }
+          },
+          {
+            "name": "regulated_current_and_power_[10,40)",
+            "status": "fail",
+            "pass": false,
+            "details": {
+              "window": "[10,40)",
+              "current_window": "[10,40)",
+              "power_sd_window": "[10,40)",
+              "minimum_current_a": 138.0,
+              "current_sample_count": 14,
+              "power_sample_count": 14,
+              "board_power_sample_sd_w": 23.31532533773431
+            }
+          },
+          {
+            "name": "arbiter_words_and_enabled_max",
+            "status": "pass",
+            "pass": true,
+            "details": {}
+          },
+          {
+            "name": "R5_residual_[10,40)",
+            "status": "fail",
+            "pass": false,
+            "details": {
+              "window": "[10,40)",
+              "max_residual_mhz": 6.0
+            }
+          },
+          {
+            "name": "R7_index_distribution_[10,40)",
+            "status": "pass",
+            "pass": true,
+            "details": {
+              "window": "[10,40)",
+              "indices": [
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7
+              ]
+            }
+          },
+          {
+            "name": "smoke_failure_requires_plan_revision",
+            "status": "fail",
+            "pass": false,
+            "details": {}
+          }
+        ],
+        "errors": []
+      },
+      "analyzer_missing_fields": [
+        "plateau.samples"
+      ],
+      "errors": []
+    },
+    {
+      "run_id": "issue146-smoke-c108",
+      "configuration_id": "C108",
+      "run_number": null,
+      "mode": "smoke",
+      "record_status": "ok",
+      "included_in_successful_smoke_aggregate": true,
+      "record_provenance": {
+        "name": "run-issue146-smoke-c108.json",
+        "sha256": "3c6f36f078dde839bd29467cd6ef9778a1986ebbffaab4c284d3ae2adc9bbb12",
+        "byte_count": 367145
+      },
+      "artifact_provenance": {
+        "pre_snapshot": {
+          "name": "pre-run-snapshot-issue146-smoke-c108.json",
+          "sha256": "12674b66b9f5240ddacd14ef071a5eec2d2c8616fa3ef4bd456b6d92dd7d872f",
+          "byte_count": 7956
+        },
+        "post_snapshot": {
+          "name": "post-run-snapshot-issue146-smoke-c108.json",
+          "sha256": "0c385511f51c71e60177c21cafd716cef6a80b7092a95740947e72d65e635789",
+          "byte_count": 7965
+        },
+        "groups": {
+          "name": "group-timings-issue146-smoke-c108-envelope.json",
+          "sha256": "31b9dd0cb90544c9f8c885fe1d167f6902885df14e5133c32d4aed68cf9b0f86",
+          "byte_count": 40937
+        },
+        "trace": {
+          "name": "issue146-power-trace-issue146-smoke-c108.csv",
+          "sha256": "0fe9f30af8c057b5ac085431cc2db5306f132756a125d5fdcae4146c3c6d9d37",
+          "byte_count": 3995
+        }
+      },
+      "pre_snapshot": {
+        "status": "ok",
+        "source": {
+          "name": "pre-run-snapshot-issue146-smoke-c108.json",
+          "sha256": "12674b66b9f5240ddacd14ef071a5eec2d2c8616fa3ef4bd456b6d92dd7d872f",
+          "byte_count": 7956
+        },
+        "limits": {
+          "vdd_min": "0.70",
+          "vdd_max": "0.90",
+          "tdp_limit": "150",
+          "tdc_limit": "200",
+          "asic_fmax": "1350",
+          "therm_trip_l1_limit": "90",
+          "thm_limit": "110",
+          "bus_peak_limit": 0,
+          "fan_rpm_limit": 0,
+          "board_power_limit": "300"
+        },
+        "configuration_words": {
+          "BOARD_POWER_LIMIT": "0x12c",
+          "ENABLED_MAX_ARB": "0x1d1"
+        },
+        "capture_timestamp_monotonic_ns": 6611066057189
+      },
+      "environment": {
+        "status": "ok",
+        "serial": "0000040331914124",
+        "board_id": "0000040331914124",
+        "bdf": "0000:09:00.0",
+        "firmware_bundle": "19.6.0.0",
+        "kmd_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "d553762ed82a01f93c1d787e9bf4a3652c825923",
+        "host_reader_versions": {
+          "tt_smi": "6.2.1",
+          "tt_umd": "0.9.8",
+          "pyluwen": "0.9.0"
+        }
+      },
+      "load": {
+        "group_count": 425,
+        "launch_count": 3400,
+        "overrun_seconds": 0.018092452,
+        "host_visible_idle_fraction": 3.52242e-05,
+        "idle_window": {
+          "window": "[10,40)",
+          "status": "ok",
+          "host_visible_idle_fraction": 3.52242e-05
+        }
+      },
+      "window_10_40": {
+        "window": "[10,40)",
+        "status": "ok",
+        "count": 14,
+        "minimum_current_a": 137.0,
+        "board_power_mean_w": 300.64285714285717,
+        "board_power_sample_sd_w": 25.300067323890794,
+        "aiclk_mean_mhz": 1026.357142857143,
+        "r5_max_abs_mhz": 6.0,
+        "aiclk_arb_max_index_distribution": {
+          "7": 14
+        },
+        "errors": []
+      },
+      "temperatures": {
+        "gddr_provenance": "established",
+        "strict_window_10_40": {
+          "status": "ok",
+          "count": 14,
+          "max_gddr_temp_c": 64.0,
+          "max_asic_temp_c": 81.6,
+          "errors": []
+        },
+        "entire_rawtrace": {
+          "status": "ok",
+          "count": 21,
+          "max_gddr_temp_c": 64.0,
+          "max_asic_temp_c": 81.6,
+          "errors": []
+        }
+      },
+      "all_trace_arbiter_words": {
+        "status": "ok",
+        "raw_trace_row_count": 21,
+        "decoded_row_count": 21,
+        "all_four_words_present": true,
+        "enabled_max_arb_all_0x1d1": true,
+        "enabled_max_arb_values": [
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1",
+          "0x1d1"
+        ],
+        "errors": []
+      },
+      "post_load": {
+        "trace_rows_after_last_groupend": {
+          "status": "ok",
+          "reference": "last_synchronized_groupend",
+          "last_group_end_monotonic_ns": 6654356603254,
+          "rows": [
+            {
+              "timestamp_monotonic_ns": 6654878866325,
+              "time_delay_seconds": 0.522263071,
+              "aiclk_arb_max_raw": "0x70442",
+              "aiclk_arb_max_index": 7,
+              "aiclk_arb_max_frequency_mhz": 1090,
+              "aiclk_mhz": 800.0
+            }
+          ],
+          "errors": []
+        },
+        "post_snapshot_arbiter_release": {
+          "status": "ok",
+          "capture_timestamp_monotonic_ns": 6654878866325,
+          "aiclk_arb_max_raw": "0x70442",
+          "aiclk_arb_max_index": 7,
+          "aiclk_arb_max_frequency_mhz": 1090,
+          "aiclk_mhz": 800,
+          "time_delay_seconds": 0.522263071,
+          "errors": []
+        }
+      },
+      "smoke_acceptance": {
+        "status": "ok",
+        "pass": false,
+        "affects_long_verdict": false,
+        "items": [
+          {
+            "name": "idle_fraction_[10,40)",
+            "status": "pass",
+            "pass": true,
+            "details": {
+              "window": "[10,40)",
+              "idle_fraction": 3.52242e-05
+            }
+          },
+          {
+            "name": "regulated_current_and_power_[10,40)",
+            "status": "fail",
+            "pass": false,
+            "details": {
+              "window": "[10,40)",
+              "current_window": "[10,40)",
+              "power_sd_window": "[10,40)",
+              "minimum_current_a": 137.0,
+              "current_sample_count": 14,
+              "power_sample_count": 14,
+              "board_power_sample_sd_w": 25.300067323890794
+            }
+          },
+          {
+            "name": "arbiter_words_and_enabled_max",
+            "status": "pass",
+            "pass": true,
+            "details": {}
+          },
+          {
+            "name": "R5_residual_[10,40)",
+            "status": "fail",
+            "pass": false,
+            "details": {
+              "window": "[10,40)",
+              "max_residual_mhz": 6.0
+            }
+          },
+          {
+            "name": "R7_index_distribution_[10,40)",
+            "status": "pass",
+            "pass": true,
+            "details": {
+              "window": "[10,40)",
+              "indices": [
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7
+              ]
+            }
+          },
+          {
+            "name": "smoke_failure_requires_plan_revision",
+            "status": "fail",
+            "pass": false,
+            "details": {}
+          }
+        ],
+        "errors": []
+      },
+      "analyzer_missing_fields": [
+        "plateau.samples"
+      ],
+      "errors": []
+    }
+  ],
+  "successful_smoke_aggregate": {
+    "status": "ok",
+    "included_run_ids": [
+      "issue146-smoke-c018",
+      "issue146-smoke-c081",
+      "issue146-smoke-c108"
+    ],
+    "included_configurations": [
+      "C018",
+      "C081",
+      "C108"
+    ],
+    "completed_run_count": 3,
+    "excluded_runs": [],
+    "note": "This aggregate excludes every non-ok or non-smoke input; it is not a long-run verdict."
+  }
+}

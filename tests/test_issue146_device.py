@@ -1,0 +1,250 @@
+"""Board-free Issue #146 device-runner preflight and grouped wiring."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from enodia.tt.bench import load_generators, newton_schulz_kernel
+from tests.test_issue146_runner import PLAN, _environment
+from tools import issue146, issue146_device
+
+
+def test_issue146_device_import_and_help_are_host_dependency_free() -> None:
+    """The owner verified the pinned image's Python has no SciPy installed."""
+    probe = """
+import sys
+sys.modules["scipy"] = None
+import tools.issue146_device as device
+assert "tools.issue146_analysis" not in sys.modules
+assert "tools.analyze_issue146" not in sys.modules
+plan = device.issue146.load_plan()
+assert plan["revision_history"][-1]["revision"] == 6
+try:
+    device.main(["--help"])
+except SystemExit as error:
+    assert error.code == 0
+assert "tools.issue146_analysis" not in sys.modules
+assert "tools.analyze_issue146" not in sys.modules
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_issue146_grouped_preparation_passes_plan_repetitions(monkeypatch) -> None:
+    captured: list[dict[str, object]] = []
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, _ttnn, _device, matrices, **kwargs):
+            captured.append({"batch": matrices.shape[0], **kwargs})
+            return object()
+
+    monkeypatch.setattr(newton_schulz_kernel, "NewtonSchulzKernel", FakeKernel)
+    config = issue146.configuration(issue146.load_plan(PLAN), "C018")
+    load_generators.prepare_newton_schulz_grouped_load(
+        object(), object(), core_plan=config.core_plan, profile=False, outer_repetitions=16
+    )
+    assert captured[0]["outer_repetitions"] == 16
+    assert captured[0]["iterations"] == 12
+    assert captured[0]["core_coordinates"] == config.core_plan.worker_cores
+
+
+def test_issue146_device_group_wiring_enqueues_eight_then_syncs_once(
+    tmp_path: Path, monkeypatch
+) -> None:
+    plan = issue146.load_plan(PLAN)
+    config = issue146.configuration(plan, "C018")
+    environment = _environment(config)
+    environment_path = tmp_path / "env.json"
+    environment_path.write_text(json.dumps(environment), encoding="utf-8")
+    result_path = tmp_path / "runner-result.json"
+    group_path = tmp_path / "device-group-timings-wrapper-fresh-run-id.json"
+    events: list[str] = []
+    clock = iter((0, 40_000_000_000))
+
+    class Prepared:
+        def launch(self):
+            events.append("launch")
+
+        def close(self):
+            events.append("close")
+
+    class FakeTtnn:
+        def open_device(self, *, device_id, num_command_queues):
+            assert (device_id, num_command_queues) == (0, 2)
+            events.append("open")
+            return object()
+
+        def synchronize_device(self, _device):
+            events.append("sync")
+
+        def close_device(self, _device):
+            events.append("device-close")
+
+    monkeypatch.setitem(sys.modules, "ttnn", FakeTtnn())
+    monkeypatch.setattr(
+        issue146_device,
+        "prepare_newton_schulz_grouped_load",
+        lambda *args, **kwargs: (events.append(f"prepare-{kwargs['outer_repetitions']}"), Prepared())[1],
+    )
+    monkeypatch.setattr(issue146_device.time, "monotonic_ns", lambda: next(clock))
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(result_path))
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "wrapper-fresh-run-id")
+    monkeypatch.setenv("HEKATUS_TT_REQUESTED_RUN_ID", "issue146-smoke-c018-1")
+    args = issue146_device._parser().parse_args(
+        [
+            "--env-json", str(environment_path), "--groups", str(group_path),
+            "--requested-run-id", "issue146-smoke-c018-1",
+            "--configuration", "C018", "--mode", "smoke", "--device-id", "0",
+            "--load-core-count", "18", "--load-total-blocks", "171",
+            "--load-matrix-block", "8", "--outer-repetitions", "16",
+            "--launches-per-sync", "8", "--target-seconds", "40",
+            "--outer-timeout-seconds", "90", "--plan-hash", issue146._plan_hash(plan),
+        ]
+    )
+    assert issue146_device.run(args) == 0
+    assert events == ["open", "prepare-16", *(["launch"] * 8), "sync", "close", "device-close"]
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["status"] == "ok"
+    assert result["launch_count"] == 8
+    assert json.loads(group_path.read_text(encoding="utf-8")) == [
+        {"start_monotonic_ns": 0, "end_monotonic_ns": 40_000_000_000}
+    ]
+
+
+def test_issue146_device_rejects_missing_reader_provenance_before_ttnn_import(tmp_path: Path, monkeypatch) -> None:
+    plan = issue146.load_plan(PLAN)
+    config = issue146.configuration(plan, "C018")
+    environment = _environment(config)
+    environment.pop("host_sw_vers")
+    environment_path = tmp_path / "env.json"
+    environment_path.write_text(json.dumps(environment), encoding="utf-8")
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(tmp_path / "runner-result.json"))
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "wrapper-fresh-run-id")
+    monkeypatch.setenv("HEKATUS_TT_REQUESTED_RUN_ID", "issue146-smoke-c018-1")
+    imported = False
+    real_import = __import__
+
+    def fake_import(name, *args, **kwargs):
+        nonlocal imported
+        if name == "ttnn":
+            imported = True
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    args = issue146_device._parser().parse_args(
+        [
+            "--env-json", str(environment_path), "--requested-run-id", "issue146-smoke-c018-1",
+            "--configuration", "C018", "--mode", "smoke",
+            "--load-core-count", "18", "--load-total-blocks", "171", "--load-matrix-block", "8",
+            "--outer-repetitions", "16", "--launches-per-sync", "8", "--target-seconds", "40",
+            "--outer-timeout-seconds", "90", "--plan-hash", issue146._plan_hash(plan),
+        ]
+    )
+    with pytest.raises(issue146.Issue146Error, match="host reader"):
+        issue146_device.run(args)
+    assert imported is False
+
+
+def test_issue146_device_cleanup_failure_is_published_after_both_closes(tmp_path: Path, monkeypatch) -> None:
+    plan = issue146.load_plan(PLAN)
+    config = issue146.configuration(plan, "C018")
+    environment = _environment(config)
+    environment_path = tmp_path / "env.json"
+    environment_path.write_text(json.dumps(environment), encoding="utf-8")
+    result_path = tmp_path / "runner-result.json"
+    group_path = tmp_path / "device-group-timings-wrapper-cleanup.json"
+    events: list[str] = []
+    clock = iter((0, 40_000_000_000))
+
+    class Prepared:
+        def launch(self):
+            events.append("launch")
+
+        def close(self):
+            events.append("close")
+            raise RuntimeError("prepared cleanup")
+
+    class FakeTtnn:
+        def open_device(self, *, device_id, num_command_queues):
+            events.append("open")
+            return object()
+
+        def synchronize_device(self, _device):
+            events.append("sync")
+
+        def close_device(self, _device):
+            events.append("device-close")
+            raise RuntimeError("device cleanup")
+
+    monkeypatch.setitem(sys.modules, "ttnn", FakeTtnn())
+    monkeypatch.setattr(
+        issue146_device,
+        "prepare_newton_schulz_grouped_load",
+        lambda *args, **kwargs: Prepared(),
+    )
+    monkeypatch.setattr(issue146_device.time, "monotonic_ns", lambda: next(clock))
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(result_path))
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "wrapper-cleanup")
+    monkeypatch.setenv("HEKATUS_TT_REQUESTED_RUN_ID", "issue146-smoke-c018-1")
+    args = issue146_device._parser().parse_args(
+        [
+            "--env-json", str(environment_path), "--groups", str(group_path),
+            "--requested-run-id", "issue146-smoke-c018-1",
+            "--configuration", "C018", "--mode", "smoke", "--device-id", "0",
+            "--load-core-count", "18", "--load-total-blocks", "171", "--load-matrix-block", "8",
+            "--outer-repetitions", "16", "--launches-per-sync", "8", "--target-seconds", "40",
+            "--outer-timeout-seconds", "90", "--plan-hash", issue146._plan_hash(plan),
+        ]
+    )
+    assert issue146_device.run(args) == 2
+    assert events[-2:] == ["close", "device-close"]
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["status"] == "failed"
+    assert result["failure"]["kind"] == "cleanup_failure"
+    assert result["cleanup"]["status"] == "failed"
+
+
+def test_issue146_device_rejects_bad_identity_before_ttnn_import(tmp_path: Path, monkeypatch) -> None:
+    plan = issue146.load_plan(PLAN)
+    config = issue146.configuration(plan, "C018")
+    environment = _environment(config)
+    environment["device_node"] = "/dev/tenstorrent/0"
+    environment_path = tmp_path / "env.json"
+    environment_path.write_text(json.dumps(environment), encoding="utf-8")
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(tmp_path / "runner-result.json"))
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "wrapper-fresh-run-id")
+    monkeypatch.setenv("HEKATUS_TT_REQUESTED_RUN_ID", "issue146-smoke-c018-1")
+    imported = False
+    real_import = __import__
+
+    def fake_import(name, *args, **kwargs):
+        nonlocal imported
+        if name == "ttnn":
+            imported = True
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    args = issue146_device._parser().parse_args(
+        [
+            "--env-json", str(environment_path), "--requested-run-id", "issue146-smoke-c018-1",
+            "--configuration", "C018", "--mode", "smoke",
+            "--load-core-count", "18", "--load-total-blocks", "171", "--load-matrix-block", "8",
+            "--outer-repetitions", "16", "--launches-per-sync", "8", "--target-seconds", "40",
+            "--outer-timeout-seconds", "90", "--plan-hash", issue146._plan_hash(plan),
+        ]
+    )
+    with pytest.raises(issue146.Issue146Error, match="device_node"):
+        issue146_device.run(args)
+    assert imported is False
