@@ -475,8 +475,8 @@ def _redact_diagnostic_text(
 ) -> str:
     """Allowlist diagnostic text before any persistence or tail truncation.
 
-    ``output_dir`` remains a caller-compatible argument, not a source of private
-    prefixes: path decisions are lexical and independent of the host filesystem.
+    The output_dir argument is intentionally retained for caller compatibility,
+    not for private prefixes: decisions are lexical and filesystem-independent.
     """
     if value is None:
         text = ""
