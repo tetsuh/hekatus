@@ -178,25 +178,32 @@ One diagnostic ingress handles both text and bytes before persistence and
 before any tail truncation, including failure fields, pre/post snapshot
 diagnostics, and embedded runner-result diagnostics. Nested diagnostic fields
 share one runtime host-token tuple throughout each persistence call and recursive
-JSON serialization, without rewriting structured metadata. Absolute slash-starting
-tokens extend to whitespace or quotes, not commas, semicolons, or parentheses.
-Tilde-leading user-specific tokens use the same boundaries and are always
-redacted; word-internal tildes in relative paths remain. A whitespace/quote-delimited
-token beginning with a dash classifies the suffix from its first slash or tilde
-using the same path allowlist, retaining the option prefix. Ordinary relative
-path tokens and slash starts after equals, colon, comma, or opening parenthesis
-remain distinct from this option rule.
-Only tokens with no `..` component whose `posixpath.normpath` is at or below
-`/work`, `/out`, or `/dev/tenstorrent` remain; every other absolute token becomes
-`<redacted-path>`. This is a lexical allowlist, not private-prefix matching or
-symlink resolution. Local `file://` and `scheme:///` URL payloads are removed;
-only public HTTP(S) URLs with a nonempty authority containing no userinfo marker
-retain their payloads. Userinfo-bearing URLs lose their payload, while query and
-fragment contents receive no additional filtering. The runtime host name, FQDN,
-and first label are masked as case-insensitive whole words regardless of length,
-even inside allowed paths and public URLs. Useful exception class and
-`ModuleNotFoundError` text, relative source paths, image digests, and validated
-container paths remain readable. Invalid byte sequences and lone surrogates are
+JSON serialization, without rewriting structured metadata. A token is a maximal
+sequence of characters other than whitespace or either quote; punctuation never
+ends a token. Classify complete `scheme://payload` URL tokens first. Public
+HTTP(S) URLs retain payloads only for a nonempty authority without `@`; authority
+ends before slash, query, or fragment. Other URLs retain the scheme and
+`://<redacted-path>` only. Query and fragment contents have no additional filter.
+Assignment-wrapped URL text is not a whole URL token.
+
+A relative token fully matches `^(?:\.\.?/)?(?:[\w.+~-]+/)*[\w.+~-]*$` and starts
+with neither `-` nor `~`; preserve it. For every other token, find the first slash
+or tilde at token start or after a non-word character, keeping the prefix before
+that position. Preserve the suffix only if it fully matches `^[\w./+~-]+$`,
+contains no `..` component, and its `posixpath.normpath` equals or lies beneath
+`/work`, `/out`, or `/dev/tenstorrent` at a component boundary. Otherwise replace
+the complete suffix with `<redacted-path>`. This one lexical grammar covers
+options, assignments, assignment-contained options, and wrappers without a list
+of introducers or filesystem resolution. Colon, comma, semicolon, and closing
+parenthesis in a suffix prevent it from being allowlisted, even under a safe root.
+
+After classification, mask the runtime host name, FQDN, and first label across
+the entire text as case-insensitive whole words regardless of length, including
+inside retained paths and URLs. Redaction markers remain intact. A later pass
+may conservatively remove a host-masked path whose marker brackets are not pure
+path characters. Useful exception class and `ModuleNotFoundError` text, admitted
+relative paths, standalone image digests, and validated container paths remain
+readable unless hostname masking applies. Invalid byte sequences and lone surrogates are
 replaced without raising. Nested diagnostic JSON scalars (`null`, booleans,
 integers, and floats) retain their types. Other unsupported diagnostic objects
 become `<unsupported-diagnostic>` without invoking their string conversion;

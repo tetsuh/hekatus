@@ -1,18 +1,22 @@
-"""Board-free Issue #150 invariants, enumerated before implementation.
+r"""Board-free Issue #150 invariants, enumerated before implementation.
 
-1. Only slash tokens whose posixpath.normpath is at/below /work, /out, or
-   /dev/tenstorrent, without any '..' component, may remain. Whitespace and
-   quotes delimit tokens; commas, semicolons, and parentheses never do.
-   Tilde-leading tokens are user-specific and always redacted; word-internal
-   tildes in relative paths remain. The same token boundaries apply.
-   A whitespace/quote-delimited dash-leading option token classifies its suffix
-   from the first slash or tilde by that allowlist, preserving the prefix.
-   Ordinary relative paths and slash starts after =, :, comma, and ( still work.
+1. Tokens are maximal sequences excluding whitespace and either quote. Classify
+   whole scheme://payload URL tokens first. A relative token fully matches
+   ^(?:\\.\\.?/)?(?:[\\w.+~-]+/)*[\\w.+~-]*$ and starts with neither '-' nor '~'.
+   Preserve relative tokens; otherwise split at the first slash or a tilde at
+   token start/after a non-word character. Keep the lexical prefix, not a list
+   of introducers. Suffix S remains only if it fully matches ^[\\w./+~-]+$,
+   has no '..' component, and posixpath.normpath(S) is at/below /work, /out, or
+   /dev/tenstorrent. Otherwise replace all of S with <redacted-path>.
+   Property tests use host_tokens=(): every slash-bearing output token is an
+   unchanged relative token, a public HTTP(S) URL, or prefix plus an allowed
+   pure suffix/redaction marker. Every input relative token stays unchanged.
 2. Only public HTTP(S) URLs retain payloads; file:// and scheme:/// do not.
    Public authority must be nonempty and contain no '@'; authority ends at a
    slash, query, or fragment. Query and fragment contents have no extra filter.
-3. Hostname, FQDN, and first label are case-insensitive whole words, even at
-   length one, including inside allowed paths and URLs; larger words remain.
+3. After token classification, mask hostname, FQDN, and first label across the
+   entire text as case-insensitive whole words even at length one. Larger words
+   and output markers remain. Host masking is tested separately from grammar.
 4. One ingress handles str/bytes and every diagnostic sink, before tail bounds:
    stdout/stderr files, tails, failure fields, record reason/trace_error,
    pre/post snapshot diagnostics, stored captures, and runner-result diagnostics.
@@ -20,11 +24,12 @@
    share one host-token tuple per persistence unit. With host_tokens=None,
    _safe_json_value obtains it once at the outermost call and propagates it.
    Non-diagnostic structured evidence remains unchanged. Writers are memory sinks.
-5. Relative paths, exception classes, ModuleNotFoundError text, and image
-   digests remain readable unless they contain a runtime host word.
+5. Admitted relative paths, exception classes, ModuleNotFoundError text, and
+   standalone image digests remain readable unless they contain a runtime host word.
 6. Empty, binary, mixed-encoding, surrogate, and unprintable-object inputs never
-   raise; output is UTF-8 encodable. Reapplying redaction is stable and cannot
-   restore user-supplied placeholder text as a protected path or URL.
+   raise; output is UTF-8 encodable. Markers remain stable; no user-supplied
+   placeholder can restore a protected path or URL. A host-masked path with
+   angle-bracket markers may be conservatively removed by a later pure-path pass.
    Nested diagnostic fields preserve None/bool/int/float JSON scalars; other
    unsupported objects become <unsupported-diagnostic> without invoking __str__.
    Secret-returning and throwing objects must be safe at record/snapshot/runner
@@ -36,6 +41,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import posixpath
+import random
+import re
+import string
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -55,6 +64,130 @@ def redact(value: object, *, host_tokens: tuple[str, ...] | None = None) -> str:
     return issue146._redact_diagnostic_text(
         value, output_dir=Path("/"), host_tokens=host_tokens
     )
+
+
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize("quote", ["", "'", '"'])
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (".", "."), ("..", ".."), ("a/b", "a/b"), ("./a", "./a"),
+        ("../a/b.py", "../a/b.py"), ("a~b/c", "a~b/c"),
+        ("tools/issue146.py", "tools/issue146.py"),
+        ("-I/home/example-user/x", "-I<redacted-path>"),
+        ("CFLAGS=-I/home/example-user/x", "CFLAGS=-I<redacted-path>"),
+        ("PATH=/home/example-user/bin:/usr/bin", "PATH=<redacted-path>"),
+        ("-o/out/x.json:/home/example-user", "-o<redacted-path>"),
+        ("--mount=/work/x", "--mount=/work/x"),
+        ("(/home/example-user/f.txt),", "(<redacted-path>"),
+        ("foo/bar:/home/example-user", "foo<redacted-path>"),
+        ("key:/out/x", "key:/out/x"), ("中文=/work/日本語+x", "中文=/work/日本語+x"),
+        ("key=/work/x,other", "key=<redacted-path>"),
+        ("key=(/work/x)", "key=(<redacted-path>"),
+        ("CFLAGS=-I/out/x.json", "CFLAGS=-I/out/x.json"),
+        ("x=~example/x", "x=<redacted-path>"),
+        ("-I~/x", "-I~<redacted-path>"), ("word~example/x", "word~example/x"),
+        ("/out/data;stuff", "<redacted-path>"),
+        ("https://example.test/x", "https://example.test/x"),
+        ("file:///private", "file://<redacted-path>"),
+        ("url=https://example.test/x", "url=https:<redacted-path>"),
+        ("https://user:synthetic@example.test/x", "https://<redacted-path>"),
+    ],
+)
+def test_whole_token_grammar_examples(
+    text: str, expected: str, quote: str, as_bytes: bool,
+) -> None:
+    wrapped = f"before {quote}{text}{quote} after"
+    assert redact(wrapped.encode() if as_bytes else wrapped, host_tokens=()) == (
+        f"before {quote}{expected}{quote} after"
+    )
+
+
+# Independent specification predicates: do not call the production classifier.
+_PROPERTY_TOKEN_RE = re.compile(r"[^\s\"']+")
+_PROPERTY_RELATIVE_RE = re.compile(r"(?:\.\.?/)?(?:[\w.+~-]+/)*[\w.+~-]*")
+_PROPERTY_PURE_RE = re.compile(r"[\w./+~-]+")
+_PROPERTY_URL_RE = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*)://(.*)")
+
+
+def _property_relative(token: str) -> bool:
+    return bool(_PROPERTY_RELATIVE_RE.fullmatch(token)) and not token.startswith(("-", "~"))
+
+
+def _property_allowed_suffix(suffix: str) -> bool:
+    normalized = posixpath.normpath(suffix)
+    return (
+        bool(_PROPERTY_PURE_RE.fullmatch(suffix))
+        and ".." not in suffix.split("/")
+        and any(
+            normalized == root or normalized.startswith(root + "/")
+            for root in ("/work", "/out", "/dev/tenstorrent")
+        )
+    )
+
+
+def _assert_property_output_token(original: str, output: str) -> None:
+    if "/" not in output:
+        return
+    if _property_relative(output):
+        assert output == original
+        return
+    url = _PROPERTY_URL_RE.fullmatch(output)
+    if url:
+        scheme, payload = url.groups()
+        authority = re.split(r"[/?#]", payload, maxsplit=1)[0]
+        # A redacted URL keeps scheme:// as its syntactic prefix (case c).
+        if payload == "<redacted-path>":
+            return
+        assert scheme.lower() in {"http", "https"} and authority and "@" not in authority
+        assert output == original
+        return
+    assert _property_allowed_suffix(output[output.index("/"):])
+
+
+def test_seeded_whole_token_output_grammar_property() -> None:
+    rng = random.Random(150)
+    alphabet = string.ascii_letters + string.digits + "._+~-/=:,;()漢字é \t\n\"'"
+    path_alphabet = "abcXYZ019._+~-/=:,;()漢字é"
+    urls = (
+        "https://example.test/path", "http://example.test?mail=a@b",
+        "file:///private", "custom:///work/x", "https:///private",
+        "https://user:synthetic@example.test/x",
+    )
+    tokens_checked = relative_checked = 0
+    for _ in range(6000):
+        raw = "".join(rng.choices(alphabet, k=rng.randrange(0, 180)))
+        relative = rng.choice((".", "..", "dir", "日本語", "a~b")) + "/" + rng.choice(
+            ("x.py", "é", "child/data", "a+b", "a~b")
+        )
+        prefix = "".join(rng.choices("ABCxyz_=:,-;(漢~", k=rng.randrange(15)))
+        suffix = rng.choice(("/work/", "/out/", "/dev/tenstorrent/", "/private/"))
+        suffix += "".join(rng.choices(path_alphabet, k=rng.randrange(1, 40)))
+        separator = rng.choice((" ", "'\t", '\"\n'))
+        text = separator.join((raw, relative, prefix + suffix, rng.choice(urls)))
+        output = redact(text, host_tokens=())
+        originals = _PROPERTY_TOKEN_RE.findall(text)
+        outputs = _PROPERTY_TOKEN_RE.findall(output)
+        assert _PROPERTY_TOKEN_RE.split(output) == _PROPERTY_TOKEN_RE.split(text)
+        for original, transformed in zip(originals, outputs, strict=True):
+            tokens_checked += 1
+            if _property_relative(original):
+                relative_checked += 1
+                assert transformed == original
+            _assert_property_output_token(original, transformed)
+    assert relative_checked >= 6000
+    print(f"grammar_property seed=150 texts=6000 tokens={tokens_checked} relative={relative_checked}")
+
+
+def test_host_masking_follows_classification_and_preserves_markers() -> None:
+    text = "CFLAGS=-I/private/x /work/q/x relative/q.py https://q.lab.example/x"
+    classified = "CFLAGS=-I<redacted-path> /work/q/x relative/q.py https://q.lab.example/x"
+    assert redact(text, host_tokens=()) == classified
+    assert redact(text) == (
+        "CFLAGS=-I<redacted-path> /work/<redacted>/x relative/<redacted>.py https://<redacted>/x"
+    )
+    markers = "<redacted-path> <unsupported-diagnostic>"
+    assert redact(markers, host_tokens=("redacted", "path", "unsupported", "diagnostic")) == markers
 
 
 @pytest.mark.parametrize(
@@ -89,7 +222,13 @@ def test_absolute_path_allowlist_rejects_entire_token(token: str, quote: str) ->
     ],
 )
 def test_allowlisted_context_remains(token: str) -> None:
-    assert redact(token) == token
+    # The approved pure-token grammar rejects punctuation in path suffixes and
+    # non-URL registry references; the standalone digest case still remains.
+    grammar_expectations = {
+        "/work/日本語/(source),v;1.py": "<redacted-path>",
+        "ghcr.io/public/image@sha256:" + "a" * 64: "ghcr.io<redacted-path>",
+    }
+    assert redact(token) == grammar_expectations.get(token, token)
 
 
 @pytest.mark.parametrize("quote", ["'", '"'])
@@ -266,10 +405,10 @@ def test_recursive_json_default_host_tokens_are_acquired_once(
         ("-I/home/example-user/include", "-I<redacted-path>"),
         ("--include=/home/example-user", "--include=<redacted-path>"),
         ("-L/日本語/(source),v;1", "-L<redacted-path>"),
-        ("---cache~example-user/cache", "---cache<redacted-path>"),
+        ("---cache~example-user/cache", "---cache~example-user<redacted-path>"),
         ("-I//private/secret", "-I<redacted-path>"),
         ("-I/work/../private/secret", "-I<redacted-path>"),
-        ("-I~/.local/bin/uv", "-I<redacted-path>"),
+        ("-I~/.local/bin/uv", "-I~<redacted-path>"),
         ("-o/out/x.json", "-o/out/x.json"),
         ("-I/work/source", "-I/work/source"),
         ("---node/dev/tenstorrent/1", "---node/dev/tenstorrent/1"),
@@ -334,6 +473,39 @@ def memory_json_artifacts(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         issue146, "_safe_artifact_path", lambda output_dir, name, **_kwargs: output_dir / name
     )
     return memory
+
+
+@pytest.mark.parametrize("sink", ["pre_run", "post_run", "record", "runner_result"])
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("CFLAGS=-I/home/example-user/include", "CFLAGS=-I<redacted-path>"),
+        ("CFLAGS=-I/out/include", "CFLAGS=-I/out/include"),
+        ("CFLAGS=-I/out/include:/private/secret", "CFLAGS=-I<redacted-path>"),
+        ("PATH=/home/example-user/bin:/usr/bin", "PATH=<redacted-path>"),
+        ("FLAGS=(/private/source),", "FLAGS=(<redacted-path>"),
+    ],
+)
+def test_assignment_option_failure_message_at_persistence(
+    memory_json_artifacts: dict[str, object], sink: str, as_bytes: bool,
+    text: str, expected: str,
+) -> None:
+    value = text.encode() if as_bytes else text
+    nested = {"rows": [{"failure": {"message": value}}], "metadata": {"mode": "q"}}
+    if sink in {"pre_run", "post_run"}:
+        descriptor = issue146._store_capture(
+            Path("/out"), run_id="grammar150", stage=sink, capture={"snapshot": nested}
+        )
+        saved = memory_json_artifacts[descriptor["path"]]["snapshot"]
+    else:
+        record = {"runner_result": nested} if sink == "runner_result" else nested
+        issue146._persist_record(Path("/out"), "grammar150", record)
+        payload = memory_json_artifacts["run-grammar150.json"]
+        assert payload == record
+        saved = payload["runner_result"] if sink == "runner_result" else payload
+    assert saved["rows"][0]["failure"]["message"] == expected
+    assert saved["metadata"] == {"mode": "q"}
 
 
 @pytest.mark.parametrize("sink", ["pre_run", "post_run", "record", "runner_result"])
@@ -408,7 +580,11 @@ def test_redaction_is_stable_without_placeholder_restoration(host: str) -> None:
         "file:///private/secret"
     )
     once = redact(text, host_tokens=(host,))
-    assert redact(once, host_tokens=(host,)) == once
+    # Marker brackets are not pure path characters. A later lexical pass may
+    # conservatively remove this suffix, but must never restore private text.
+    twice = redact(once, host_tokens=(host,))
+    assert twice == once.replace("/work/<redacted>/safe", "<redacted-path>")
+    assert redact(twice, host_tokens=(host,)) == twice
     assert "/private/secret" not in once
     assert "\\x00issue146-url-0\\x00" in once
     # User-supplied placeholder-like text is ordinary text, so host words in

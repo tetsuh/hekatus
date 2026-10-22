@@ -74,14 +74,12 @@ AUTHORITATIVE_PLAN_RAW_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_RAW_SHA256
 AUTHORITATIVE_PLAN_CANONICAL_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_CANONICAL_SHA256
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 _DIAGNOSTIC_ALLOWED_ROOTS = ("/work", "/out", "/dev/tenstorrent")
-# A delimiter-bound dash-leading option classifies its first slash/tilde suffix.
-# Otherwise URLs precede ordinary path starts, keeping relative paths distinct.
-# Punctuation is deliberately not a token terminator.
-_DIAGNOSTIC_TOKEN_RE = re.compile(
-    r"(?<![^\s\"'])(?P<option_prefix>-[^\s\"'/~]*)(?P<option_path>[/~][^\s\"']*)"
-    r"|(?<![\w+.-])(?P<url>[A-Za-z][A-Za-z0-9+.-]*://[^\s\"']*)"
-    r"|(?P<path>(?<![\w./~+-])[/~][^\s\"']*)"
-)
+# Classify maximal tokens, never a growing set of path-introducing prefixes.
+_DIAGNOSTIC_TOKEN_RE = re.compile(r"[^\s\"']+")
+_DIAGNOSTIC_URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://.*")
+_DIAGNOSTIC_RELATIVE_RE = re.compile(r"(?:\.\.?/)?(?:[\w.+~-]+/)*[\w.+~-]*")
+_DIAGNOSTIC_PURE_PATH_RE = re.compile(r"[\w./+~-]+")
+_DIAGNOSTIC_PATH_START_RE = re.compile(r"/|(?<!\w)~")
 _DIAGNOSTIC_MARKER_RE = r"<(?:redacted(?:-path)?|unsupported-diagnostic)>"
 _DIAGNOSTIC_TEXT_FIELDS = frozenset(
     {"message", "wrapper_error", "diagnostics_error", "diagnostic", "reason", "trace_error",
@@ -466,28 +464,34 @@ def _redact_diagnostic_hostnames(
 
 
 def _allowlisted_diagnostic_path(token: str) -> str:
-    """Use the same lexical allowlist for ordinary and option-attached paths."""
+    """Admit only a pure, traversal-free suffix under an allowed container root."""
     normalized = posixpath.normpath(token)
-    allowed = ".." not in token.split("/") and any(
-        normalized == root or normalized.startswith(root + "/")
-        for root in _DIAGNOSTIC_ALLOWED_ROOTS
+    allowed = (
+        _DIAGNOSTIC_PURE_PATH_RE.fullmatch(token) is not None
+        and ".." not in token.split("/")
+        and any(
+            normalized == root or normalized.startswith(root + "/")
+            for root in _DIAGNOSTIC_ALLOWED_ROOTS
+        )
     )
     return token if allowed else "<redacted-path>"
 
 
 def _allowlisted_diagnostic_token(match: re.Match[str]) -> str:
     """Classify one complete lexical token without touching the filesystem."""
-    prefix = match.group("option_prefix")
-    if prefix is not None:
-        return prefix + _allowlisted_diagnostic_path(match.group("option_path"))
     token = match.group(0)
-    if match.group("url") is not None:
+    if _DIAGNOSTIC_URL_RE.fullmatch(token):
         scheme, payload = token.split("://", 1)
         authority = re.split(r"[/?#]", payload, maxsplit=1)[0]
         if scheme.casefold() in {"http", "https"} and authority and "@" not in authority:
             return token
         return scheme + "://<redacted-path>"
-    return _allowlisted_diagnostic_path(token)
+    if not token.startswith(("-", "~")) and _DIAGNOSTIC_RELATIVE_RE.fullmatch(token):
+        return token
+    start = _DIAGNOSTIC_PATH_START_RE.search(token)
+    if start is None:
+        return token
+    return token[:start.start()] + _allowlisted_diagnostic_path(token[start.start():])
 
 
 def _redact_diagnostic_text(
@@ -515,17 +519,8 @@ def _redact_diagnostic_text(
     if host_tokens is None:
         host_tokens = _diagnostic_host_tokens()
 
-    def mask_hosts(part: str) -> str:
-        return _redact_diagnostic_hostnames(part, host_tokens=host_tokens)
-
-    parts: list[str] = []
-    end = 0
-    for match in _DIAGNOSTIC_TOKEN_RE.finditer(text):
-        parts.append(mask_hosts(text[end:match.start()]))
-        parts.append(mask_hosts(_allowlisted_diagnostic_token(match)))
-        end = match.end()
-    parts.append(mask_hosts(text[end:]))
-    return "".join(parts)
+    classified = _DIAGNOSTIC_TOKEN_RE.sub(_allowlisted_diagnostic_token, text)
+    return _redact_diagnostic_hostnames(classified, host_tokens=host_tokens)
 
 
 _DIAGNOSTIC_FAILURE_FIELDS = frozenset(
