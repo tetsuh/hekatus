@@ -5,6 +5,9 @@
    quotes delimit tokens; commas, semicolons, and parentheses never do.
    Tilde-leading tokens are user-specific and always redacted; word-internal
    tildes in relative paths remain. The same token boundaries apply.
+   A whitespace/quote-delimited dash-leading option token classifies its suffix
+   from the first slash or tilde by that allowlist, preserving the prefix.
+   Ordinary relative paths and slash starts after =, :, comma, and ( still work.
 2. Only public HTTP(S) URLs retain payloads; file:// and scheme:/// do not.
    Public authority must be nonempty and contain no '@'; authority ends at a
    slash, query, or fragment. Query and fragment contents have no extra filter.
@@ -22,6 +25,10 @@
 6. Empty, binary, mixed-encoding, surrogate, and unprintable-object inputs never
    raise; output is UTF-8 encodable. Reapplying redaction is stable and cannot
    restore user-supplied placeholder text as a protected path or URL.
+   Nested diagnostic fields preserve None/bool/int/float JSON scalars; other
+   unsupported objects become <unsupported-diagnostic> without invoking __str__.
+   Secret-returning and throwing objects must be safe at record/snapshot/runner
+   result persistence boundaries. The unsupported marker is stable output syntax.
 """
 
 from __future__ import annotations
@@ -251,6 +258,131 @@ def test_recursive_json_default_host_tokens_are_acquired_once(
     assert calls == ["lookup"]
 
 
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize("quote", ["", "'", '"'])
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("-I/home/example-user/include", "-I<redacted-path>"),
+        ("--include=/home/example-user", "--include=<redacted-path>"),
+        ("-L/日本語/(source),v;1", "-L<redacted-path>"),
+        ("---cache~example-user/cache", "---cache<redacted-path>"),
+        ("-I//private/secret", "-I<redacted-path>"),
+        ("-I/work/../private/secret", "-I<redacted-path>"),
+        ("-I~/.local/bin/uv", "-I<redacted-path>"),
+        ("-o/out/x.json", "-o/out/x.json"),
+        ("-I/work/source", "-I/work/source"),
+        ("---node/dev/tenstorrent/1", "---node/dev/tenstorrent/1"),
+        ("--include=/out/x", "--include=/out/x"),
+        ("--mount /work/x", "--mount /work/x"),
+    ],
+)
+def test_option_attached_paths_use_allowlist(
+    text: str, expected: str, quote: str, as_bytes: bool,
+) -> None:
+    # The first case reproduces the CodeRabbit include-option counterexample
+    # with a synthetic user path, not a path obtained from the execution host.
+    wrapped = f"before {quote}{text}{quote} after"
+    assert redact(wrapped.encode() if as_bytes else wrapped) == (
+        f"before {quote}{expected}{quote} after"
+    )
+
+
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize(
+    "text", ["tools/issue146.py", "enodia/tt/x", "./rel", "../rel", "a~b/c", "a-I/private"],
+)
+def test_relative_tokens_remain_distinct_from_option_paths(text: str, as_bytes: bool) -> None:
+    assert redact(text.encode() if as_bytes else text) == text
+
+
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize("introducer", ["=", ":", ",", "("])
+def test_punctuation_introduced_absolute_paths_are_still_detected(
+    introducer: str, as_bytes: bool,
+) -> None:
+    text = f"argument{introducer}/private/secret"
+    assert redact(text.encode() if as_bytes else text) == f"argument{introducer}<redacted-path>"
+
+
+class DiagnosticObject:
+    def __init__(self, *, throwing: bool) -> None:
+        self.throwing = throwing
+        self.string_calls = 0
+
+    def __str__(self) -> str:
+        self.string_calls += 1
+        if self.throwing:
+            raise ValueError("diagnostic object cannot be converted")
+        return "/private/secret q"
+
+
+@pytest.fixture
+def memory_json_artifacts(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    memory: dict[str, object] = {}
+
+    def writer(
+        path: Path, payload: object, *, host_tokens: tuple[str, ...] | None = None,
+    ) -> bytes:
+        safe = issue146._safe_json_value(payload, host_tokens=host_tokens)
+        raw = json.dumps(safe).encode()
+        memory[path.name] = json.loads(raw)
+        return raw
+
+    monkeypatch.setattr(issue146, "_write_artifact", writer)
+    monkeypatch.setattr(
+        issue146, "_safe_artifact_path", lambda output_dir, name, **_kwargs: output_dir / name
+    )
+    return memory
+
+
+@pytest.mark.parametrize("sink", ["pre_run", "post_run", "record", "runner_result"])
+@pytest.mark.parametrize(
+    ("kind", "scalar"),
+    [("secret", None), ("throwing", None), ("json", None), ("json", True),
+     ("json", False), ("json", 0), ("json", -17), ("json", 2.5)],
+)
+def test_nested_diagnostic_objects_and_json_scalars_at_persistence(
+    memory_json_artifacts: dict[str, object], sink: str, kind: str, scalar: object,
+) -> None:
+    diagnostic_object = DiagnosticObject(throwing=kind == "throwing") if kind != "json" else None
+    value = diagnostic_object if diagnostic_object is not None else scalar
+    expected = "<unsupported-diagnostic>" if diagnostic_object is not None else scalar
+    nested = {
+        "reason": value,
+        "rows": [{"diagnostic": value}, {"failure": {"message": value}}],
+        "metadata": {"mode": "q", "device_node": "/dev/tenstorrent/1"},
+    }
+    if sink in {"pre_run", "post_run"}:
+        descriptor = issue146._store_capture(
+            Path("/out"), run_id="objects150", stage=sink, capture={"snapshot": nested}
+        )
+        saved = memory_json_artifacts[descriptor["path"]]["snapshot"]
+    else:
+        record = {"runner_result": {"snapshot": nested}} if sink == "runner_result" else nested
+        issue146._persist_record(Path("/out"), "objects150", record)
+        payload = memory_json_artifacts["run-objects150.json"]
+        assert record == payload
+        saved = payload["runner_result"]["snapshot"] if sink == "runner_result" else payload
+    for actual in (
+        saved["reason"], saved["rows"][0]["diagnostic"], saved["rows"][1]["failure"]["message"],
+    ):
+        assert actual == expected
+        assert type(actual) is type(expected)
+    assert saved["metadata"] == {"mode": "q", "device_node": "/dev/tenstorrent/1"}
+    if diagnostic_object is not None:
+        assert diagnostic_object.string_calls == 0
+
+
+@pytest.mark.parametrize("host", ["q", "unsupported", "diagnostic"])
+def test_unsupported_diagnostic_marker_survives_host_masking(host: str) -> None:
+    value = DiagnosticObject(throwing=True)
+    once = redact(value, host_tokens=(host,))
+    assert once == "<unsupported-diagnostic>"
+    assert redact(once, host_tokens=(host,)) == once
+    assert value.string_calls == 0
+
+
 class Unprintable:
     def __str__(self) -> str:
         raise ValueError("unprintable diagnostic")
@@ -297,6 +429,7 @@ def test_all_persisted_diagnostic_sinks_use_ingress(
         "//private/secret /work/../private/secret /日本語/secret "
         "'/private/(secret),v;1' q.lab.example q "
         "~/.local/bin/uv ~alice/x http://example-user:example-pass@example.test/source "
+        "-I/home/example-user/include -o/out/x.json "
         "/work/tools/issue146.py relative/tools/issue146.py "
         "/work/tmp/source.py https://example.test/home/remote "
         "ModuleNotFoundError: No module named 'scipy' sha256:" + "a" * 64
@@ -305,6 +438,7 @@ def test_all_persisted_diagnostic_sinks_use_ingress(
         "<redacted-path> <redacted-path> <redacted-path> "
         "'<redacted-path>' <redacted> <redacted> "
         "<redacted-path> <redacted-path> http://<redacted-path> "
+        "-I<redacted-path> -o/out/x.json "
         "/work/tools/issue146.py relative/tools/issue146.py "
         "/work/tmp/source.py https://example.test/home/remote "
         "ModuleNotFoundError: No module named 'scipy' sha256:" + "a" * 64

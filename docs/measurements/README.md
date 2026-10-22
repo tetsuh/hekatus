@@ -181,7 +181,11 @@ share one runtime host-token tuple throughout each persistence call and recursiv
 JSON serialization, without rewriting structured metadata. Absolute slash-starting
 tokens extend to whitespace or quotes, not commas, semicolons, or parentheses.
 Tilde-leading user-specific tokens use the same boundaries and are always
-redacted; word-internal tildes in relative paths remain.
+redacted; word-internal tildes in relative paths remain. A whitespace/quote-delimited
+token beginning with a dash classifies the suffix from its first slash or tilde
+using the same path allowlist, retaining the option prefix. Ordinary relative
+path tokens and slash starts after equals, colon, comma, or opening parenthesis
+remain distinct from this option rule.
 Only tokens with no `..` component whose `posixpath.normpath` is at or below
 `/work`, `/out`, or `/dev/tenstorrent` remain; every other absolute token becomes
 `<redacted-path>`. This is a lexical allowlist, not private-prefix matching or
@@ -193,7 +197,11 @@ and first label are masked as case-insensitive whole words regardless of length,
 even inside allowed paths and public URLs. Useful exception class and
 `ModuleNotFoundError` text, relative source paths, image digests, and validated
 container paths remain readable. Invalid byte sequences and lone surrogates are
-replaced without raising. Structured non-diagnostic provenance is not rewritten.
+replaced without raising. Nested diagnostic JSON scalars (`null`, booleans,
+integers, and floats) retain their types. Other unsupported diagnostic objects
+become `<unsupported-diagnostic>` without invoking their string conversion;
+that marker is stable through subsequent host masking and serialization.
+Structured non-diagnostic provenance is not rewritten.
 Artifact creation is exclusive and rejects collisions or symlinks.
 
 ## Issue #102 raw-record rebuild

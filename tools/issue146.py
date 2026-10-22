@@ -74,13 +74,15 @@ AUTHORITATIVE_PLAN_RAW_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_RAW_SHA256
 AUTHORITATIVE_PLAN_CANONICAL_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_CANONICAL_SHA256
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 _DIAGNOSTIC_ALLOWED_ROOTS = ("/work", "/out", "/dev/tenstorrent")
-# URL recognition precedes slash tokens. Relative path components are not
-# absolute-path starts; punctuation is deliberately not a token terminator.
+# A delimiter-bound dash-leading option classifies its first slash/tilde suffix.
+# Otherwise URLs precede ordinary path starts, keeping relative paths distinct.
+# Punctuation is deliberately not a token terminator.
 _DIAGNOSTIC_TOKEN_RE = re.compile(
-    r"(?<![\w+.-])(?P<url>[A-Za-z][A-Za-z0-9+.-]*://[^\s\"']*)"
+    r"(?<![^\s\"'])(?P<option_prefix>-[^\s\"'/~]*)(?P<option_path>[/~][^\s\"']*)"
+    r"|(?<![\w+.-])(?P<url>[A-Za-z][A-Za-z0-9+.-]*://[^\s\"']*)"
     r"|(?P<path>(?<![\w./~+-])[/~][^\s\"']*)"
 )
-_DIAGNOSTIC_MARKER_RE = r"<redacted(?:-path)?>"
+_DIAGNOSTIC_MARKER_RE = r"<(?:redacted(?:-path)?|unsupported-diagnostic)>"
 _DIAGNOSTIC_TEXT_FIELDS = frozenset(
     {"message", "wrapper_error", "diagnostics_error", "diagnostic", "reason", "trace_error",
      "stdout_tail", "stderr_tail"}
@@ -348,7 +350,9 @@ def _safe_json_value(
     """
     if host_tokens is None:
         host_tokens = _diagnostic_host_tokens()
-    if diagnostic and isinstance(value, (bytes, str)):
+    if diagnostic and (value is None or isinstance(value, (bool, int, float))):
+        return value
+    if diagnostic and not isinstance(value, (Mapping, list, tuple)):
         return _redact_diagnostic_text(value, output_dir=Path("/"), host_tokens=host_tokens)
     if isinstance(value, Mapping):
         return {
@@ -461,8 +465,21 @@ def _redact_diagnostic_hostnames(
     )
 
 
+def _allowlisted_diagnostic_path(token: str) -> str:
+    """Use the same lexical allowlist for ordinary and option-attached paths."""
+    normalized = posixpath.normpath(token)
+    allowed = ".." not in token.split("/") and any(
+        normalized == root or normalized.startswith(root + "/")
+        for root in _DIAGNOSTIC_ALLOWED_ROOTS
+    )
+    return token if allowed else "<redacted-path>"
+
+
 def _allowlisted_diagnostic_token(match: re.Match[str]) -> str:
     """Classify one complete lexical token without touching the filesystem."""
+    prefix = match.group("option_prefix")
+    if prefix is not None:
+        return prefix + _allowlisted_diagnostic_path(match.group("option_path"))
     token = match.group(0)
     if match.group("url") is not None:
         scheme, payload = token.split("://", 1)
@@ -470,12 +487,7 @@ def _allowlisted_diagnostic_token(match: re.Match[str]) -> str:
         if scheme.casefold() in {"http", "https"} and authority and "@" not in authority:
             return token
         return scheme + "://<redacted-path>"
-    normalized = posixpath.normpath(token)
-    allowed = ".." not in token.split("/") and any(
-        normalized == root or normalized.startswith(root + "/")
-        for root in _DIAGNOSTIC_ALLOWED_ROOTS
-    )
-    return token if allowed else "<redacted-path>"
+    return _allowlisted_diagnostic_path(token)
 
 
 def _redact_diagnostic_text(
