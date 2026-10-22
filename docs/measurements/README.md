@@ -174,13 +174,21 @@ artifacts beside the record: `wrapper-stdout-<run-id>.txt` and
 invocations, including nonzero exits, missing result artifacts, timeouts, and
 process-start errors. The record's `wrapper_diagnostics` descriptor names only
 those basenames and carries bounded redacted tail lines for failure review.
-All local absolute paths are redacted before either file, tail, or
-exception-derived failure field is persisted, including paths outside the
-repository and paths whose components are unresolved symlinks. The runtime
-host name and FQDN are redacted as well. Useful exception class and
-`ModuleNotFoundError` text, URLs, relative source paths, and safe
-container-relative paths such as `/work/...` and `/out/...` remain. Artifact
-creation is exclusive and rejects collisions or symlinks.
+One diagnostic ingress handles both text and bytes before persistence and
+before any tail truncation, including failure fields, pre/post snapshot
+diagnostics, and embedded runner-result diagnostics. Absolute slash-starting
+tokens extend to whitespace or quotes, not commas, semicolons, or parentheses.
+Only tokens with no `..` component whose `posixpath.normpath` is at or below
+`/work`, `/out`, or `/dev/tenstorrent` remain; every other absolute token becomes
+`<redacted-path>`. This is a lexical allowlist, not private-prefix matching or
+symlink resolution. Local `file://` and `scheme:///` URL payloads are removed;
+only public HTTP(S) URLs retain their payloads. The runtime host name, FQDN,
+and first label are masked as case-insensitive whole words regardless of length,
+even inside allowed paths and public URLs. Useful exception class and
+`ModuleNotFoundError` text, relative source paths, image digests, and validated
+container paths remain readable. Invalid byte sequences and lone surrogates are
+replaced without raising. Structured non-diagnostic provenance is not rewritten.
+Artifact creation is exclusive and rejects collisions or symlinks.
 
 ## Issue #102 raw-record rebuild
 
