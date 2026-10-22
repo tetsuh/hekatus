@@ -338,6 +338,29 @@ def _safe_artifact_path(output_dir: Path, name: str, *, field: str) -> Path:
         raise Issue146Error(str(exc)) from exc
 
 
+def _safe_json_mapping(
+    value: Mapping[Any, Any], *, diagnostic: bool, host_tokens: tuple[str, ...],
+) -> dict[str, Any]:
+    """Inherit context downwards; filter original keys before last-wins redaction."""
+    result: dict[str, Any] = {}
+    for key, child in value.items():
+        if diagnostic:
+            key_text = key if isinstance(key, str) else "<unsupported-diagnostic>"
+        else:
+            key_text = str(key)
+        if key_text.casefold() in _FORBIDDEN_KEYS:
+            continue
+        safe_key = (
+            _redact_diagnostic_text(key_text, output_dir=Path("/"), host_tokens=host_tokens)
+            if diagnostic else key_text
+        )
+        result[safe_key] = _safe_json_value(
+            child, diagnostic=diagnostic or key_text in _DIAGNOSTIC_TEXT_FIELDS,
+            host_tokens=host_tokens,
+        )
+    return result
+
+
 def _safe_json_value(
     value: Any, *, diagnostic: bool = False, host_tokens: tuple[str, ...] | None = None,
 ) -> Any:
@@ -353,13 +376,7 @@ def _safe_json_value(
     if diagnostic and not isinstance(value, (Mapping, list, tuple)):
         return _redact_diagnostic_text(value, output_dir=Path("/"), host_tokens=host_tokens)
     if isinstance(value, Mapping):
-        return {
-            str(key): _safe_json_value(
-                child, diagnostic=str(key) in _DIAGNOSTIC_TEXT_FIELDS, host_tokens=host_tokens
-            )
-            for key, child in value.items()
-            if str(key).casefold() not in _FORBIDDEN_KEYS
-        }
+        return _safe_json_mapping(value, diagnostic=diagnostic, host_tokens=host_tokens)
     if isinstance(value, (list, tuple)):
         return [
             _safe_json_value(child, diagnostic=diagnostic, host_tokens=host_tokens)

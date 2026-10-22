@@ -178,8 +178,19 @@ One diagnostic ingress handles both text and bytes before persistence and
 before any tail truncation, including failure fields, pre/post snapshot
 diagnostics, and embedded runner-result diagnostics. Nested diagnostic fields
 share one runtime host-token tuple throughout each persistence call and recursive
-JSON serialization, without rewriting structured metadata. A token is a maximal
-sequence of characters other than whitespace or either quote; punctuation never
+JSON serialization. Diagnostic context is inherited downwards through every
+mapping, list, and tuple descendant regardless of child key names; it does not
+promote sibling environment/metadata mappings. Within diagnostic mappings,
+string keys use the same text ingress, and non-string keys become
+`<unsupported-diagnostic>` without string conversion. Original string keys in
+`_FORBIDDEN_KEYS` are still removed case-insensitively before key redaction;
+unsupported keys are not stringified for filtering. Redacted-key collisions
+keep the last entry in input iteration order. Non-diagnostic key conversion and
+metadata denylist behavior are unchanged. Diagnostic bytes, typed scalars, and
+unsupported objects obey the same ingress rules at every descendant depth.
+
+A token is a maximal sequence of characters other than whitespace or either
+quote; punctuation never
 ends a token. Classify complete `scheme://payload` URL tokens first. Public
 HTTP(S) URLs retain payloads only for a nonempty authority without `@`; authority
 ends before slash, query, or fragment. Other URLs retain the scheme and

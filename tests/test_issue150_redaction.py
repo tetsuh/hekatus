@@ -23,7 +23,15 @@ r"""Board-free Issue #150 invariants, enumerated before implementation.
    Nested diagnostic mappings/lists in snapshots, records, and runner results
    share one host-token tuple per persistence unit. With host_tokens=None,
    _safe_json_value obtains it once at the outermost call and propagates it.
-   Non-diagnostic structured evidence remains unchanged. Writers are memory sinks.
+   Diagnostic context is inherited downwards through every mapping/list/tuple
+   descendant regardless of child key names; it never promotes non-diagnostic
+   environment/metadata siblings. Diagnostic string keys use the same text
+   ingress; non-string keys become <unsupported-diagnostic> without __str__.
+   Decision: remove original string _FORBIDDEN_KEYS case-insensitively before
+   key redaction even in diagnostic mappings. Unsupported keys are not stringified
+   for filtering. Redacted-key collisions deterministically keep the last input
+   entry. Non-diagnostic key conversion and denylist behavior stay unchanged.
+   Writers are memory sinks.
 5. Admitted relative paths, exception classes, ModuleNotFoundError text, and
    standalone image digests remain readable unless they contain a runtime host word.
 6. Empty, binary, mixed-encoding, surrogate, and unprintable-object inputs never
@@ -33,7 +41,12 @@ r"""Board-free Issue #150 invariants, enumerated before implementation.
    Nested diagnostic fields preserve None/bool/int/float JSON scalars; other
    unsupported objects become <unsupported-diagnostic> without invoking __str__.
    Secret-returning and throwing objects must be safe at record/snapshot/runner
-   result persistence boundaries. The unsupported marker is stable output syntax.
+   result persistence boundaries, at every depth of diagnostic mappings and
+   mappings inside lists/tuples. Bytes decode through the ingress; scalars retain
+   their JSON types. Non-string diagnostic keys never invoke __str__ either.
+   Test every sink in both directions against non-diagnostic sibling behavior,
+   forbidden-key removal, and last-entry-wins key collisions. The unsupported
+   marker is stable output syntax.
 """
 
 from __future__ import annotations
@@ -475,6 +488,220 @@ def memory_json_artifacts(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         issue146, "_safe_artifact_path", lambda output_dir, name, **_kwargs: output_dir / name
     )
     return memory
+
+
+_CONTEXT_SINKS = ("record", "runner_result", "pre_run", "post_run")
+_CONTEXT_SHAPES = ("mapping", "list", "tuple")
+_CONTEXT_VALUES = {
+    "private": ("q /private/secret", "<redacted> <redacted-path>", "q /private/secret"),
+    "private_home": ("q /home/example-user/secret", "<redacted> <redacted-path>", "<redacted-path>"),
+    "bytes": (b"q /private/secret", "<redacted> <redacted-path>", "b'q /private/secret'"),
+    "relative": ("relative/tmp/source.py", "relative/tmp/source.py", "<redacted-path>"),
+    "url": ("https://example.test/tmp/source.py", "https://example.test/tmp/source.py", "<redacted-path>"),
+    "null": (None, None, None), "true": (True, True, True), "false": (False, False, False),
+    "zero": (0, 0, 0), "integer": (-17, -17, -17), "float": (2.5, 2.5, 2.5),
+}
+_CONTEXT_KINDS = (*_CONTEXT_VALUES, "secret_object", "throwing_object")
+
+
+def _context_value(kind: str) -> tuple[object, object, object]:
+    if kind in {"secret_object", "throwing_object"}:
+        value = DiagnosticObject(throwing=kind == "throwing_object")
+        return value, "<unsupported-diagnostic>", "/private/secret q"
+    return _CONTEXT_VALUES[kind]
+
+
+def _context_shape(shape: str, entries: dict[object, object]) -> dict[str, object]:
+    branch = {"branch": entries}
+    if shape == "mapping":
+        return {"container": branch}
+    if shape == "list":
+        return {"container": [branch]}
+    return {"container": (branch,)}
+
+
+def _context_entries(saved: dict, shape: str, field: str = "diagnostic") -> dict:
+    container = saved[field]["container"]
+    return (container if shape == "mapping" else container[0])["branch"]
+
+
+def _persist_context_payload(memory: dict[str, object], sink: str, payload: dict) -> dict:
+    if sink in {"pre_run", "post_run"}:
+        descriptor = issue146._store_capture(
+            Path("/out"), run_id="context150", stage=sink, capture={"snapshot": payload}
+        )
+        return memory[descriptor["path"]]["snapshot"]
+    record = {"runner_result": payload} if sink == "runner_result" else payload
+    issue146._persist_record(Path("/out"), "context150", record)
+    saved = memory["run-context150.json"]
+    assert saved == record
+    return saved["runner_result"] if sink == "runner_result" else saved
+
+
+@pytest.mark.parametrize("sink", _CONTEXT_SINKS)
+@pytest.mark.parametrize("shape", _CONTEXT_SHAPES)
+@pytest.mark.parametrize("kind", _CONTEXT_KINDS)
+def test_diagnostic_context_inherits_at_every_persistence_depth(
+    memory_json_artifacts: dict[str, object], sink: str, shape: str, kind: str,
+) -> None:
+    value, expected, _ = _context_value(kind)
+    sibling = {"q": "q /private/secret", "filtered": "/home/example-user/secret"}
+    saved = _persist_context_payload(memory_json_artifacts, sink, {
+        "diagnostic": _context_shape(shape, {"detail": value}),
+        "environment": {"nested": sibling}, "metadata": {"nested": sibling},
+    })
+    actual = _context_entries(saved, shape)["detail"]
+    assert actual == expected
+    assert type(actual) is type(expected)
+    for field in ("environment", "metadata"):
+        assert saved[field] == {
+            "nested": {"q": "q /private/secret", "filtered": "<redacted-path>"},
+        }
+    if isinstance(value, DiagnosticObject):
+        assert value.string_calls == 0
+
+
+@pytest.mark.parametrize("sink", _CONTEXT_SINKS)
+@pytest.mark.parametrize("shape", _CONTEXT_SHAPES)
+@pytest.mark.parametrize("kind", _CONTEXT_KINDS)
+def test_non_diagnostic_siblings_keep_legacy_value_behavior(
+    memory_json_artifacts: dict[str, object], sink: str, shape: str, kind: str,
+) -> None:
+    diagnostic, expected, legacy_expected = _context_value(kind)
+    metadata, _, _ = _context_value(kind)
+    sibling = "metadata" if sink in {"pre_run", "post_run"} else "environment"
+    payload = {
+        "diagnostic": _context_shape(shape, {"detail": diagnostic}),
+        sibling: _context_shape(shape, {"detail": metadata}),
+    }
+    if kind == "throwing_object":
+        # The legacy metadata exception must still originate outside diagnostics.
+        with pytest.raises(ValueError, match="diagnostic object cannot be converted"):
+            _persist_context_payload(memory_json_artifacts, sink, payload)
+        assert diagnostic.string_calls == 0
+        assert metadata.string_calls == 1
+        return
+    saved = _persist_context_payload(memory_json_artifacts, sink, payload)
+    assert _context_entries(saved, shape)["detail"] == expected
+    actual = _context_entries(saved, shape, sibling)["detail"]
+    assert actual == legacy_expected
+    assert type(actual) is type(legacy_expected)
+    if isinstance(diagnostic, DiagnosticObject):
+        assert diagnostic.string_calls == 0
+        assert metadata.string_calls == 1
+
+
+@pytest.mark.parametrize("sink", _CONTEXT_SINKS)
+@pytest.mark.parametrize("shape", _CONTEXT_SHAPES)
+@pytest.mark.parametrize("field", [
+    "message", "wrapper_error", "diagnostics_error", "diagnostic", "reason",
+    "trace_error", "stdout_tail", "stderr_tail",
+])
+def test_every_diagnostic_field_promotes_only_its_descendants(
+    memory_json_artifacts: dict[str, object], sink: str, shape: str, field: str,
+) -> None:
+    saved = _persist_context_payload(memory_json_artifacts, sink, {
+        field: _context_shape(shape, {"detail": b"q /private/secret"}),
+        "metadata": {"detail": "q /private/secret"},
+    })
+    assert _context_entries(saved, shape, field)["detail"] == "<redacted> <redacted-path>"
+    assert saved["metadata"] == {"detail": "q /private/secret"}
+
+
+def _context_key(kind: str) -> tuple[object, str]:
+    if kind in {"secret_object", "throwing_object"}:
+        return DiagnosticObject(throwing=kind == "throwing_object"), "<unsupported-diagnostic>"
+    return {
+        "private": ("/private/key", "<redacted-path>"),
+        "host": ("q", "<redacted>"), "fqdn": ("q.lab.example", "<redacted>"),
+        "bytes": (b"q /private/key", "<unsupported-diagnostic>"),
+        "integer": (17, "<unsupported-diagnostic>"),
+        "bool": (True, "<unsupported-diagnostic>"),
+        "null": (None, "<unsupported-diagnostic>"),
+    }[kind]
+
+
+@pytest.mark.parametrize("sink", _CONTEXT_SINKS)
+@pytest.mark.parametrize("shape", _CONTEXT_SHAPES)
+@pytest.mark.parametrize("kind", [
+    "private", "host", "fqdn", "bytes", "integer", "bool", "null",
+    "secret_object", "throwing_object",
+])
+def test_diagnostic_mapping_keys_use_ingress_without_string_conversion(
+    memory_json_artifacts: dict[str, object], sink: str, shape: str, kind: str,
+) -> None:
+    key, expected = _context_key(kind)
+    saved = _persist_context_payload(memory_json_artifacts, sink, {
+        "diagnostic": _context_shape(shape, {key: "value"}),
+        "metadata": {"/private/key": "path", "q": "host", 17: "integer"},
+    })
+    assert _context_entries(saved, shape) == {expected: "value"}
+    assert saved["metadata"] == {"/private/key": "path", "q": "host", "17": "integer"}
+    if isinstance(key, DiagnosticObject):
+        assert key.string_calls == 0
+
+
+@pytest.mark.parametrize("sink", _CONTEXT_SINKS)
+@pytest.mark.parametrize("shape", _CONTEXT_SHAPES)
+def test_forbidden_original_string_keys_are_removed_in_both_contexts(
+    memory_json_artifacts: dict[str, object], sink: str, shape: str,
+) -> None:
+    hidden = DiagnosticObject(throwing=True)
+    forbidden = (
+        "hostname", "host_name", "username", "user_name", "worktree_path",
+        "repository_path", "working_directory", "cwd",
+    )
+    entries = {variant: hidden for key in forbidden for variant in (key, key.upper())}
+    entries["kept"] = "q"
+    saved = _persist_context_payload(memory_json_artifacts, sink, {
+        "diagnostic": _context_shape(shape, entries),
+        "metadata": _context_shape(shape, entries),
+    })
+    assert _context_entries(saved, shape) == {"kept": "<redacted>"}
+    assert _context_entries(saved, shape, "metadata") == {"kept": "q"}
+    assert hidden.string_calls == 0
+
+
+@pytest.mark.parametrize("sink", _CONTEXT_SINKS)
+@pytest.mark.parametrize("shape", _CONTEXT_SHAPES)
+@pytest.mark.parametrize("kind", ["paths", "hosts", "objects", "literal_marker"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_diagnostic_key_collisions_are_deterministic_last_entry_wins(
+    memory_json_artifacts: dict[str, object], sink: str, shape: str, kind: str,
+    reverse: bool,
+) -> None:
+    first = DiagnosticObject(throwing=False)
+    second = DiagnosticObject(throwing=True)
+    keys, marker = {
+        "paths": (("/private/first", "/private/second"), "<redacted-path>"),
+        "hosts": (("q", "Q"), "<redacted>"),
+        "objects": ((first, second), "<unsupported-diagnostic>"),
+        "literal_marker": ((first, "<unsupported-diagnostic>"), "<unsupported-diagnostic>"),
+    }[kind]
+    pairs = [(keys[0], "first"), (keys[1], "second")]
+    if reverse:
+        pairs.reverse()
+    saved = _persist_context_payload(memory_json_artifacts, sink, {
+        "diagnostic": _context_shape(shape, dict(pairs)),
+    })
+    assert _context_entries(saved, shape) == {marker: "first" if reverse else "second"}
+    assert first.string_calls == 0
+    assert second.string_calls == 0
+
+
+@pytest.mark.parametrize("sink", _CONTEXT_SINKS)
+@pytest.mark.parametrize("kind", ["secret_object", "throwing_object"])
+def test_non_diagnostic_object_keys_keep_legacy_conversion(
+    memory_json_artifacts: dict[str, object], sink: str, kind: str,
+) -> None:
+    key, _ = _context_key(kind)
+    payload = {"metadata": {key: "value"}}
+    if kind == "throwing_object":
+        with pytest.raises(ValueError, match="diagnostic object cannot be converted"):
+            _persist_context_payload(memory_json_artifacts, sink, payload)
+        return
+    saved = _persist_context_payload(memory_json_artifacts, sink, payload)
+    assert saved["metadata"] == {"/private/secret q": "value"}
 
 
 @pytest.mark.parametrize("sink", ["pre_run", "post_run", "record", "runner_result"])
