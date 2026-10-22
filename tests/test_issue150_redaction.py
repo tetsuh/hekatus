@@ -139,7 +139,9 @@ def _assert_property_output_token(original: str, output: str) -> None:
         # A redacted URL keeps scheme:// as its syntactic prefix (case c).
         if payload == "<redacted-path>":
             return
-        assert scheme.lower() in {"http", "https"} and authority and "@" not in authority
+        assert scheme.lower() in {"http", "https"}
+        assert authority
+        assert "@" not in authority
         assert output == original
         return
     assert _property_allowed_suffix(output[output.index("/"):])
