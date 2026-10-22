@@ -176,13 +176,19 @@ process-start errors. The record's `wrapper_diagnostics` descriptor names only
 those basenames and carries bounded redacted tail lines for failure review.
 One diagnostic ingress handles both text and bytes before persistence and
 before any tail truncation, including failure fields, pre/post snapshot
-diagnostics, and embedded runner-result diagnostics. Absolute slash-starting
+diagnostics, and embedded runner-result diagnostics. Nested diagnostic fields
+share one runtime host-token tuple throughout each persistence call and recursive
+JSON serialization, without rewriting structured metadata. Absolute slash-starting
 tokens extend to whitespace or quotes, not commas, semicolons, or parentheses.
+Tilde-leading user-specific tokens use the same boundaries and are always
+redacted; word-internal tildes in relative paths remain.
 Only tokens with no `..` component whose `posixpath.normpath` is at or below
 `/work`, `/out`, or `/dev/tenstorrent` remain; every other absolute token becomes
 `<redacted-path>`. This is a lexical allowlist, not private-prefix matching or
 symlink resolution. Local `file://` and `scheme:///` URL payloads are removed;
-only public HTTP(S) URLs retain their payloads. The runtime host name, FQDN,
+only public HTTP(S) URLs with a nonempty authority containing no userinfo marker
+retain their payloads. Userinfo-bearing URLs lose their payload, while query and
+fragment contents receive no additional filtering. The runtime host name, FQDN,
 and first label are masked as case-insensitive whole words regardless of length,
 even inside allowed paths and public URLs. Useful exception class and
 `ModuleNotFoundError` text, relative source paths, image digests, and validated

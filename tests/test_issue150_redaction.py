@@ -3,12 +3,19 @@
 1. Only slash tokens whose posixpath.normpath is at/below /work, /out, or
    /dev/tenstorrent, without any '..' component, may remain. Whitespace and
    quotes delimit tokens; commas, semicolons, and parentheses never do.
+   Tilde-leading tokens are user-specific and always redacted; word-internal
+   tildes in relative paths remain. The same token boundaries apply.
 2. Only public HTTP(S) URLs retain payloads; file:// and scheme:/// do not.
+   Public authority must be nonempty and contain no '@'; authority ends at a
+   slash, query, or fragment. Query and fragment contents have no extra filter.
 3. Hostname, FQDN, and first label are case-insensitive whole words, even at
    length one, including inside allowed paths and URLs; larger words remain.
 4. One ingress handles str/bytes and every diagnostic sink, before tail bounds:
    stdout/stderr files, tails, failure fields, record reason/trace_error,
    pre/post snapshot diagnostics, stored captures, and runner-result diagnostics.
+   Nested diagnostic mappings/lists in snapshots, records, and runner results
+   share one host-token tuple per persistence unit. With host_tokens=None,
+   _safe_json_value obtains it once at the outermost call and propagates it.
    Non-diagnostic structured evidence remains unchanged. Writers are memory sinks.
 5. Relative paths, exception classes, ModuleNotFoundError text, and image
    digests remain readable unless they contain a runtime host word.
@@ -119,6 +126,131 @@ def test_hostname_first_labels_and_unicode_word_boundaries() -> None:
     )
 
 
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize("quote", ["", "'", '"'])
+@pytest.mark.parametrize(
+    "token", ["~/.local/bin/uv", "~alice/x", "~日本語/(source),v;1", "~/x;comma,(tail)"],
+)
+def test_tilde_leading_tokens_are_user_specific(
+    token: str, quote: str, as_bytes: bool,
+) -> None:
+    text = f"before {quote}{token}{quote} after"
+    value = text.encode() if as_bytes else text
+    assert redact(value) == f"before {quote}<redacted-path>{quote} after"
+
+
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize("token", ["a~b/c", "relative/a~b/c", "word~alice/x", "/work/a~b/c"])
+def test_word_internal_tildes_remain(token: str, as_bytes: bool) -> None:
+    assert redact(token.encode() if as_bytes else token) == token
+
+
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("http://user:example-pass@example.test/source", "http://<redacted-path>"),
+        ("https://user@example.test/source?x=1#part", "https://<redacted-path>"),
+        ("HTTPS://user:example-pass@q.lab.example/source", "HTTPS://<redacted-path>"),
+        ("https://@example.test", "https://<redacted-path>"),
+        ("http://example.test/source", "http://example.test/source"),
+        ("https://example.test?mail=a@b", "https://example.test?mail=a@b"),
+        ("https://example.test#mail=a@b", "https://example.test#mail=a@b"),
+        ("https://example.test/source?mail=a@b#c@d", "https://example.test/source?mail=a@b#c@d"),
+        ("https://q.lab.example?mail=a@b", "https://<redacted>?mail=a@b"),
+    ],
+)
+def test_public_url_authority_excludes_userinfo_without_query_filtering(
+    text: str, expected: str, as_bytes: bool,
+) -> None:
+    assert redact(text.encode() if as_bytes else text) == expected
+
+
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize("sink", ["pre_run", "post_run", "record", "runner_result"])
+def test_nested_diagnostics_mask_hosts_once_per_persistence(
+    monkeypatch: pytest.MonkeyPatch, as_bytes: bool, sink: str,
+) -> None:
+    calls = {"hostname": 0, "fqdn": 0}
+
+    def hostname() -> str:
+        calls["hostname"] += 1
+        return "q"
+
+    def fqdn() -> str:
+        calls["fqdn"] += 1
+        return "q.lab.example"
+
+    monkeypatch.setattr(issue146.socket, "gethostname", hostname)
+    monkeypatch.setattr(issue146.socket, "getfqdn", fqdn)
+    monkeypatch.setattr(
+        issue146, "_safe_artifact_path", lambda output_dir, name, **_kwargs: output_dir / name
+    )
+    memory: dict[str, object] = {}
+
+    def json_sink(
+        path: Path, payload: object, *, host_tokens: tuple[str, ...] | None = None,
+    ) -> bytes:
+        safe = (
+            issue146._safe_json_value(payload)
+            if host_tokens is None
+            else issue146._safe_json_value(payload, host_tokens=host_tokens)
+        )
+        memory[path.name] = copy.deepcopy(safe)
+        return json.dumps(safe).encode()
+
+    monkeypatch.setattr(issue146, "_write_artifact", json_sink)
+    text = "q q.lab.example /private/secret relative/tools/source.py"
+    diagnostic = text.encode() if as_bytes else text
+    metadata = {"mode": "q", "name": "q.lab.example", "device_node": "/dev/tenstorrent/1"}
+    nested = {
+        "reason": diagnostic,
+        "rows": [{"diagnostic": diagnostic}, {"failure": {"message": diagnostic}}],
+        "metadata": metadata,
+    }
+    if sink in {"pre_run", "post_run"}:
+        descriptor = issue146._store_capture(
+            Path("/out"), run_id="nested150", stage=sink, capture={"snapshot": nested}
+        )
+        payload = memory[descriptor["path"]]
+        saved = payload["snapshot"]
+        raw = json.dumps(payload).encode()
+        assert descriptor["sha256"] == hashlib.sha256(raw).hexdigest()
+        assert descriptor["byte_count"] == len(raw)
+    else:
+        record = {"runner_result": {"snapshot": nested}} if sink == "runner_result" else nested
+        issue146._persist_record(Path("/out"), "nested150", record)
+        payload = memory["run-nested150.json"]
+        assert record == payload
+        saved = payload["runner_result"]["snapshot"] if sink == "runner_result" else payload
+    expected = "<redacted> <redacted> <redacted-path> relative/tools/source.py"
+    assert saved["reason"] == expected
+    assert saved["rows"][0]["diagnostic"] == expected
+    assert saved["rows"][1]["failure"]["message"] == expected
+    assert saved["metadata"] == metadata
+    assert calls == {"hostname": 1, "fqdn": 1}
+
+
+@pytest.mark.parametrize("as_bytes", [False, True])
+def test_recursive_json_default_host_tokens_are_acquired_once(
+    monkeypatch: pytest.MonkeyPatch, as_bytes: bool,
+) -> None:
+    calls: list[str] = []
+
+    def tokens() -> tuple[str, ...]:
+        calls.append("lookup")
+        return ("q",)
+
+    monkeypatch.setattr(issue146, "_diagnostic_host_tokens", tokens)
+    text = b"q /private/secret" if as_bytes else "q /private/secret"
+    value = {"reason": text, "rows": [{"diagnostic": text}], "mode": "q"}
+    assert issue146._safe_json_value(value) == {
+        "reason": "<redacted> <redacted-path>",
+        "rows": [{"diagnostic": "<redacted> <redacted-path>"}], "mode": "q",
+    }
+    assert calls == ["lookup"]
+
+
 class Unprintable:
     def __str__(self) -> str:
         raise ValueError("unprintable diagnostic")
@@ -164,6 +296,7 @@ def test_all_persisted_diagnostic_sinks_use_ingress(
     text = (
         "//private/secret /work/../private/secret /日本語/secret "
         "'/private/(secret),v;1' q.lab.example q "
+        "~/.local/bin/uv ~alice/x http://example-user:example-pass@example.test/source "
         "/work/tools/issue146.py relative/tools/issue146.py "
         "/work/tmp/source.py https://example.test/home/remote "
         "ModuleNotFoundError: No module named 'scipy' sha256:" + "a" * 64
@@ -171,6 +304,7 @@ def test_all_persisted_diagnostic_sinks_use_ingress(
     expected = (
         "<redacted-path> <redacted-path> <redacted-path> "
         "'<redacted-path>' <redacted> <redacted> "
+        "<redacted-path> <redacted-path> http://<redacted-path> "
         "/work/tools/issue146.py relative/tools/issue146.py "
         "/work/tmp/source.py https://example.test/home/remote "
         "ModuleNotFoundError: No module named 'scipy' sha256:" + "a" * 64
@@ -182,9 +316,15 @@ def test_all_persisted_diagnostic_sinks_use_ingress(
         persisted[path.name] = payload
         return payload
 
-    def json_sink(path: Path, payload: object) -> bytes:
+    def json_sink(
+        path: Path, payload: object, *, host_tokens: tuple[str, ...] | None = None,
+    ) -> bytes:
         # Keep the production metadata/JSON transform; replace only file I/O.
-        safe = issue146._safe_json_value(payload)
+        safe = (
+            issue146._safe_json_value(payload)
+            if host_tokens is None
+            else issue146._safe_json_value(payload, host_tokens=host_tokens)
+        )
         persisted[path.name] = copy.deepcopy(safe)
         return json.dumps(safe).encode()
 

@@ -78,7 +78,7 @@ _DIAGNOSTIC_ALLOWED_ROOTS = ("/work", "/out", "/dev/tenstorrent")
 # absolute-path starts; punctuation is deliberately not a token terminator.
 _DIAGNOSTIC_TOKEN_RE = re.compile(
     r"(?<![\w+.-])(?P<url>[A-Za-z][A-Za-z0-9+.-]*://[^\s\"']*)"
-    r"|(?P<path>(?<![\w./~+-])/[^\s\"']*)"
+    r"|(?P<path>(?<![\w./~+-])[/~][^\s\"']*)"
 )
 _DIAGNOSTIC_MARKER_RE = r"<redacted(?:-path)?>"
 _DIAGNOSTIC_TEXT_FIELDS = frozenset(
@@ -338,32 +338,43 @@ def _safe_artifact_path(output_dir: Path, name: str, *, field: str) -> Path:
         raise Issue146Error(str(exc)) from exc
 
 
-def _safe_json_value(value: Any, *, diagnostic: bool = False) -> Any:
-    """Keep metadata privacy rules without reclassifying diagnostic allowlists.
+def _safe_json_value(
+    value: Any, *, diagnostic: bool = False, host_tokens: tuple[str, ...] | None = None,
+) -> Any:
+    """Keep metadata privacy rules and one host-token tuple for nested diagnostics.
 
-    Diagnostic callers mask host words before reaching this structural adapter.
-    Applying the inherited private-prefix denylist to those strings would erase
-    allowed URLs, relative paths, and exception context along with private paths.
+    Applying the inherited private-prefix denylist to diagnostic strings would
+    erase allowed URLs, relative paths, and exception context with private paths.
     """
+    if host_tokens is None:
+        host_tokens = _diagnostic_host_tokens()
     if diagnostic and isinstance(value, (bytes, str)):
-        return _redact_diagnostic_text(value, output_dir=Path("/"), host_tokens=())
+        return _redact_diagnostic_text(value, output_dir=Path("/"), host_tokens=host_tokens)
     if isinstance(value, Mapping):
         return {
-            str(key): _safe_json_value(child, diagnostic=str(key) in _DIAGNOSTIC_TEXT_FIELDS)
+            str(key): _safe_json_value(
+                child, diagnostic=str(key) in _DIAGNOSTIC_TEXT_FIELDS, host_tokens=host_tokens
+            )
             for key, child in value.items()
             if str(key).casefold() not in _FORBIDDEN_KEYS
         }
     if isinstance(value, (list, tuple)):
-        return [_safe_json_value(child, diagnostic=diagnostic) for child in value]
+        return [
+            _safe_json_value(child, diagnostic=diagnostic, host_tokens=host_tokens)
+            for child in value
+        ]
     return issue137._safe_json_value(value)
 
 
-def _write_artifact(path: Path, payload: Any) -> bytes:
+def _write_artifact(
+    path: Path, payload: Any, *, host_tokens: tuple[str, ...] | None = None,
+) -> bytes:
     destination = _trusted_path(path, field="Issue #146 artifact")
     if destination.exists() or destination.is_symlink():
         raise Issue146Error(f"Issue #146 artifact already exists: {destination.name}")
     try:
-        encoded = (strict_json_dumps(_safe_json_value(payload), indent=2) + "\n").encode("utf-8")
+        safe = _safe_json_value(payload, host_tokens=host_tokens)
+        encoded = (strict_json_dumps(safe, indent=2) + "\n").encode("utf-8")
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
         descriptor = os.open(destination, flags, 0o666)
         try:
@@ -455,8 +466,8 @@ def _allowlisted_diagnostic_token(match: re.Match[str]) -> str:
     token = match.group(0)
     if match.group("url") is not None:
         scheme, payload = token.split("://", 1)
-        authority = payload.split("/", 1)[0]
-        if scheme.casefold() in {"http", "https"} and authority:
+        authority = re.split(r"[/?#]", payload, maxsplit=1)[0]
+        if scheme.casefold() in {"http", "https"} and authority and "@" not in authority:
             return token
         return scheme + "://<redacted-path>"
     normalized = posixpath.normpath(token)
@@ -626,9 +637,10 @@ def _sanitize_post_snapshot(
 
 
 def _sanitize_record_diagnostics(
-    record: Mapping[str, Any], *, output_dir: Path
+    record: Mapping[str, Any], *, output_dir: Path, host_tokens: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    host_tokens = _diagnostic_host_tokens()
+    if host_tokens is None:
+        host_tokens = _diagnostic_host_tokens()
     result = dict(record)
     for field in ("reason", "trace_error"):
         text = result.get(field)
@@ -1588,14 +1600,18 @@ def _failure_record(record: Mapping[str, Any], *, kind: str, message: str, retur
 
 def _persist_record(output_dir: Path, run_id: str, record: Mapping[str, Any]) -> Path:
     path = _safe_artifact_path(output_dir, f"run-{run_id}.json", field="record")
-    sanitized = _sanitize_record_diagnostics(record, output_dir=output_dir)
+    host_tokens = _diagnostic_host_tokens()
+    sanitized = _sanitize_record_diagnostics(
+        record, output_dir=output_dir, host_tokens=host_tokens
+    )
+    sanitized = _safe_json_value(sanitized, host_tokens=host_tokens)
     if isinstance(record, dict):
         record.clear()
         record.update(sanitized)
         payload: Mapping[str, Any] = record
     else:
         payload = sanitized
-    _write_artifact(path, payload)
+    _write_artifact(path, payload, host_tokens=host_tokens)
     return path
 
 
@@ -1609,7 +1625,7 @@ def _store_capture(output_dir: Path, *, run_id: str, stage: str, capture: Mappin
     sanitized = _sanitize_post_snapshot(
         sanitized, output_dir=output_dir, host_tokens=host_tokens
     )
-    raw = _write_artifact(path, sanitized)
+    raw = _write_artifact(path, sanitized, host_tokens=host_tokens)
     return {
         "path": name,
         "schema": ISSUE146_SNAPSHOT_SCHEMA,
@@ -2352,11 +2368,7 @@ def _ingest_result(prepared: _PreparedRun, state: _ExecutionState, *, before: se
     path, name = _resolve_result(prepared.output_dir, before=before, completed=state.completed)
     result, raw = _read_json(path, field="Issue #146 runner result")
     state.result = result
-    prepared.record["runner_result"] = _safe_json_value(
-        _sanitize_runner_result(
-            result, output_dir=prepared.output_dir, host_tokens=_diagnostic_host_tokens()
-        )
-    )
+    prepared.record["runner_result"] = _safe_json_value(result)
     descriptor = {"path": name, "sha256": hashlib.sha256(raw).hexdigest(), "byte_count": len(raw), "schema": result.get("record_schema")}
     prepared.record["provenance"]["device_result"] = descriptor
     facts, groups = _validate_runner_result(
