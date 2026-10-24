@@ -13,6 +13,7 @@ import itertools
 import json
 import math
 import os
+import posixpath
 import re
 import socket
 import subprocess
@@ -72,21 +73,17 @@ DIAGNOSTIC_TAIL_CHARS = 2000
 AUTHORITATIVE_PLAN_RAW_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_RAW_SHA256
 AUTHORITATIVE_PLAN_CANONICAL_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_CANONICAL_SHA256
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-_DIAGNOSTIC_LOCAL_URL_RE = re.compile(
-    r"(?<![A-Za-z0-9_.-])(?:file://[^\s\"'<>]+|"
-    r"[A-Za-z][A-Za-z0-9+.-]*:/{3,}[^\s\"'<>]+)",
-    re.IGNORECASE,
-)
-_DIAGNOSTIC_URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'<>]+")
-_DIAGNOSTIC_ABSOLUTE_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9_.-])(?<!/)/(?!/)(?!(?:work|out)(?:/|$)|dev/tenstorrent(?:/|$))"
-    r"(?=[A-Za-z0-9_.~+-])[^\s\"'<>()[\]{};,]*"
-)
-_DIAGNOSTIC_SAFE_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9_.-])/(?:work|out)(?=/|$)"
-    r"(?:/[^\s\"'<>()[\]{};,]*)?"
-    r"|(?<![A-Za-z0-9_.-])/dev/tenstorrent(?=/|$)"
-    r"(?:/[^\s\"'<>()[\]{};,]*)?"
+_DIAGNOSTIC_ALLOWED_ROOTS = ("/work", "/out", "/dev/tenstorrent")
+# Classify maximal tokens, never a growing set of path-introducing prefixes.
+_DIAGNOSTIC_TOKEN_RE = re.compile(r"[^\s\"']+")
+_DIAGNOSTIC_URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://.*")
+_DIAGNOSTIC_RELATIVE_RE = re.compile(r"(?:\.\.?/)?(?:[\w.+~-]+/)*[\w.+~-]*")
+_DIAGNOSTIC_PURE_PATH_RE = re.compile(r"[\w./+~-]+")
+_DIAGNOSTIC_PATH_START_RE = re.compile(r"/|(?<!\w)~")
+_DIAGNOSTIC_MARKER_RE = r"<(?:redacted(?:-path)?|unsupported-diagnostic)>"
+_DIAGNOSTIC_TEXT_FIELDS = frozenset(
+    {"message", "wrapper_error", "diagnostics_error", "diagnostic", "reason", "trace_error",
+     "stdout_tail", "stderr_tail"}
 )
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -341,16 +338,62 @@ def _safe_artifact_path(output_dir: Path, name: str, *, field: str) -> Path:
         raise Issue146Error(str(exc)) from exc
 
 
-def _safe_json_value(value: Any) -> Any:
+def _safe_json_mapping(
+    value: Mapping[Any, Any], *, diagnostic: bool, host_tokens: tuple[str, ...],
+) -> dict[str, Any]:
+    """Inherit context downwards; filter original keys before last-wins redaction."""
+    result: dict[str, Any] = {}
+    for key, child in value.items():
+        if diagnostic:
+            key_text = key if isinstance(key, str) else "<unsupported-diagnostic>"
+        else:
+            key_text = str(key)
+        if key_text.casefold() in _FORBIDDEN_KEYS:
+            continue
+        safe_key = (
+            _redact_diagnostic_text(key_text, output_dir=Path("/"), host_tokens=host_tokens)
+            if diagnostic else key_text
+        )
+        result[safe_key] = _safe_json_value(
+            child, diagnostic=diagnostic or key_text in _DIAGNOSTIC_TEXT_FIELDS,
+            host_tokens=host_tokens,
+        )
+    return result
+
+
+def _safe_json_value(
+    value: Any, *, diagnostic: bool = False, host_tokens: tuple[str, ...] | None = None,
+) -> Any:
+    """Keep metadata privacy rules and one host-token tuple for nested diagnostics.
+
+    Applying the inherited private-prefix denylist to diagnostic strings would
+    erase allowed URLs, relative paths, and exception context with private paths.
+    """
+    if host_tokens is None:
+        host_tokens = _diagnostic_host_tokens()
+    if diagnostic and (value is None or isinstance(value, (bool, int, float))):
+        return value
+    if diagnostic and not isinstance(value, (Mapping, list, tuple)):
+        return _redact_diagnostic_text(value, output_dir=Path("/"), host_tokens=host_tokens)
+    if isinstance(value, Mapping):
+        return _safe_json_mapping(value, diagnostic=diagnostic, host_tokens=host_tokens)
+    if isinstance(value, (list, tuple)):
+        return [
+            _safe_json_value(child, diagnostic=diagnostic, host_tokens=host_tokens)
+            for child in value
+        ]
     return issue137._safe_json_value(value)
 
 
-def _write_artifact(path: Path, payload: Any) -> bytes:
+def _write_artifact(
+    path: Path, payload: Any, *, host_tokens: tuple[str, ...] | None = None,
+) -> bytes:
     destination = _trusted_path(path, field="Issue #146 artifact")
     if destination.exists() or destination.is_symlink():
         raise Issue146Error(f"Issue #146 artifact already exists: {destination.name}")
     try:
-        encoded = (strict_json_dumps(_safe_json_value(payload), indent=2) + "\n").encode("utf-8")
+        safe = _safe_json_value(payload, host_tokens=host_tokens)
+        encoded = (strict_json_dumps(safe, indent=2) + "\n").encode("utf-8")
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
         descriptor = os.open(destination, flags, 0o666)
         try:
@@ -409,10 +452,10 @@ def _diagnostic_host_tokens() -> tuple[str, ...]:
         if not isinstance(value, str):
             continue
         token = value.strip().rstrip(".")
-        if len(token) >= 2:
+        if token:
             values.add(token)
             short = token.split(".", 1)[0]
-            if len(short) >= 2:
+            if short:
                 values.add(short)
     return tuple(sorted(values, key=len, reverse=True))
 
@@ -421,15 +464,51 @@ def _redact_diagnostic_hostnames(
     text: str, *, host_tokens: tuple[str, ...] | None = None
 ) -> str:
     tokens = _diagnostic_host_tokens() if host_tokens is None else host_tokens
+    tokens = tuple(sorted({token for token in tokens if token}, key=len, reverse=True))
     if not tokens:
         return text
     pattern = re.compile(
-        r"(?<![A-Za-z0-9_.-])(?:"
+        _DIAGNOSTIC_MARKER_RE + r"|(?<!\w)(?:"
         + "|".join(re.escape(token) for token in tokens)
-        + r")(?![A-Za-z0-9_-])",
+        + r")(?!\w)",
         re.IGNORECASE,
     )
-    return pattern.sub("<redacted>", text)
+    # Markers are output syntax, not host words, including on subsequent passes.
+    return pattern.sub(
+        lambda match: match.group(0) if match.group(0).startswith("<") else "<redacted>",
+        text,
+    )
+
+
+def _allowlisted_diagnostic_path(token: str) -> str:
+    """Admit only a pure, traversal-free suffix under an allowed container root."""
+    normalized = posixpath.normpath(token)
+    allowed = (
+        _DIAGNOSTIC_PURE_PATH_RE.fullmatch(token) is not None
+        and ".." not in token.split("/")
+        and any(
+            normalized == root or normalized.startswith(root + "/")
+            for root in _DIAGNOSTIC_ALLOWED_ROOTS
+        )
+    )
+    return token if allowed else "<redacted-path>"
+
+
+def _allowlisted_diagnostic_token(match: re.Match[str]) -> str:
+    """Classify one complete lexical token without touching the filesystem."""
+    token = match.group(0)
+    if _DIAGNOSTIC_URL_RE.fullmatch(token):
+        scheme, payload = token.split("://", 1)
+        authority = re.split(r"[/?#]", payload, maxsplit=1)[0]
+        if scheme.casefold() in {"http", "https"} and authority and "@" not in authority:
+            return token
+        return scheme + "://<redacted-path>"
+    if not token.startswith(("-", "~")) and _DIAGNOSTIC_RELATIVE_RE.fullmatch(token):
+        return token
+    start = _DIAGNOSTIC_PATH_START_RE.search(token)
+    if start is None:
+        return token
+    return token[:start.start()] + _allowlisted_diagnostic_path(token[start.start():])
 
 
 def _redact_diagnostic_text(
@@ -438,6 +517,11 @@ def _redact_diagnostic_text(
     output_dir: Path,
     host_tokens: tuple[str, ...] | None = None,
 ) -> str:
+    """Allowlist diagnostic text before any persistence or tail truncation.
+
+    The output_dir argument is intentionally retained for caller compatibility,
+    not for private prefixes: decisions are lexical and filesystem-independent.
+    """
     if value is None:
         text = ""
     elif isinstance(value, bytes):
@@ -445,46 +529,15 @@ def _redact_diagnostic_text(
     elif isinstance(value, str):
         text = value
     else:
-        text = str(value)
+        # Do not invoke arbitrary __str__ implementations at a privacy boundary.
+        text = "<unsupported-diagnostic>"
+    # Lone surrogates may arrive through exception text, not only byte streams.
+    text = text.encode("utf-8", errors="replace").decode("utf-8")
     if host_tokens is None:
         host_tokens = _diagnostic_host_tokens()
-    def redact_local_url(match: re.Match[str]) -> str:
-        scheme = match.group(0).split(":", 1)[0]
-        return f"{scheme}://<redacted-path>"
 
-    text = _DIAGNOSTIC_LOCAL_URL_RE.sub(redact_local_url, text)
-    protected_urls: list[str] = []
-    protected_safe_paths: list[str] = []
-
-    def protect_url(match: re.Match[str]) -> str:
-        protected_urls.append(
-            _redact_diagnostic_hostnames(match.group(0), host_tokens=host_tokens)
-        )
-        return f"\\x00issue146-url-{len(protected_urls) - 1}\\x00"
-
-    def protect_safe_path(match: re.Match[str]) -> str:
-        protected_safe_paths.append(match.group(0))
-        return f"\\x00issue146-safe-path-{len(protected_safe_paths) - 1}\\x00"
-
-    text = _DIAGNOSTIC_URL_RE.sub(protect_url, text)
-    text = _DIAGNOSTIC_SAFE_PATH_RE.sub(protect_safe_path, text)
-    for prefix in _diagnostic_path_prefixes(output_dir):
-        pattern = re.compile(
-            r"(?<![A-Za-z0-9_.-])(?<!/)"
-            + re.escape(prefix)
-            + r"(?=/|$)(?:/[^\s\"'<>()[\]{};,]*)?"
-        )
-        text = pattern.sub("<redacted-path>", text)
-    text = _DIAGNOSTIC_ABSOLUTE_PATH_RE.sub("<redacted-path>", text)
-    text = _redact_diagnostic_hostnames(text, host_tokens=host_tokens)
-    for index, url in enumerate(protected_urls):
-        text = text.replace(f"\\x00issue146-url-{index}\\x00", url)
-    for index, path in enumerate(protected_safe_paths):
-        text = text.replace(
-            f"\\x00issue146-safe-path-{index}\\x00",
-            _redact_diagnostic_hostnames(path, host_tokens=host_tokens),
-        )
-    return text
+    classified = _DIAGNOSTIC_TOKEN_RE.sub(_allowlisted_diagnostic_token, text)
+    return _redact_diagnostic_hostnames(classified, host_tokens=host_tokens)
 
 
 _DIAGNOSTIC_FAILURE_FIELDS = frozenset(
@@ -504,7 +557,7 @@ def _sanitize_text_fields(
     result = dict(value)
     for field in fields:
         text = result.get(field)
-        if isinstance(text, str):
+        if isinstance(text, (bytes, str)):
             result[field] = _redact_diagnostic_text(
                 text, output_dir=output_dir, host_tokens=host_tokens
             )
@@ -553,9 +606,14 @@ def _sanitize_failure(
 def _sanitize_runner_result(
     value: Any, *, output_dir: Path, host_tokens: tuple[str, ...]
 ) -> Any:
-    if not isinstance(value, Mapping):
-        return value
-    result = dict(value)
+    result = _sanitize_text_fields(
+        value,
+        fields=frozenset({"reason", "trace_error"}),
+        output_dir=output_dir,
+        host_tokens=host_tokens,
+    )
+    if not isinstance(result, Mapping):
+        return result
     if "failure" in result:
         result["failure"] = _sanitize_failure(
             result["failure"], output_dir=output_dir, host_tokens=host_tokens
@@ -576,7 +634,7 @@ def _sanitize_pre_snapshot(
         return value
     configuration = value.get("configuration")
     if not isinstance(configuration, Mapping) or not isinstance(
-        configuration.get("diagnostic"), str
+        configuration.get("diagnostic"), (bytes, str)
     ):
         return value
     result = dict(value)
@@ -593,7 +651,7 @@ def _sanitize_pre_snapshot(
 def _sanitize_post_snapshot(
     value: Any, *, output_dir: Path, host_tokens: tuple[str, ...]
 ) -> Any:
-    if not isinstance(value, Mapping) or not isinstance(value.get("reason"), str):
+    if not isinstance(value, Mapping) or not isinstance(value.get("reason"), (bytes, str)):
         return value
     result = dict(value)
     result["reason"] = _redact_diagnostic_text(
@@ -603,13 +661,14 @@ def _sanitize_post_snapshot(
 
 
 def _sanitize_record_diagnostics(
-    record: Mapping[str, Any], *, output_dir: Path
+    record: Mapping[str, Any], *, output_dir: Path, host_tokens: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    host_tokens = _diagnostic_host_tokens()
+    if host_tokens is None:
+        host_tokens = _diagnostic_host_tokens()
     result = dict(record)
     for field in ("reason", "trace_error"):
         text = result.get(field)
-        if isinstance(text, str):
+        if isinstance(text, (bytes, str)):
             result[field] = _redact_diagnostic_text(
                 text, output_dir=output_dir, host_tokens=host_tokens
             )
@@ -1565,21 +1624,32 @@ def _failure_record(record: Mapping[str, Any], *, kind: str, message: str, retur
 
 def _persist_record(output_dir: Path, run_id: str, record: Mapping[str, Any]) -> Path:
     path = _safe_artifact_path(output_dir, f"run-{run_id}.json", field="record")
-    sanitized = _sanitize_record_diagnostics(record, output_dir=output_dir)
+    host_tokens = _diagnostic_host_tokens()
+    sanitized = _sanitize_record_diagnostics(
+        record, output_dir=output_dir, host_tokens=host_tokens
+    )
+    sanitized = _safe_json_value(sanitized, host_tokens=host_tokens)
     if isinstance(record, dict):
         record.clear()
         record.update(sanitized)
         payload: Mapping[str, Any] = record
     else:
         payload = sanitized
-    _write_artifact(path, payload)
+    _write_artifact(path, payload, host_tokens=host_tokens)
     return path
 
 
 def _store_capture(output_dir: Path, *, run_id: str, stage: str, capture: Mapping[str, Any]) -> dict[str, Any]:
     name = f"{stage.replace('_', '-')}-snapshot-{run_id}.json"
     path = _safe_artifact_path(output_dir, name, field=f"{stage} snapshot")
-    raw = _write_artifact(path, capture)
+    host_tokens = _diagnostic_host_tokens()
+    sanitized = _sanitize_pre_snapshot(
+        capture, output_dir=output_dir, host_tokens=host_tokens
+    )
+    sanitized = _sanitize_post_snapshot(
+        sanitized, output_dir=output_dir, host_tokens=host_tokens
+    )
+    raw = _write_artifact(path, sanitized, host_tokens=host_tokens)
     return {
         "path": name,
         "schema": ISSUE146_SNAPSHOT_SCHEMA,

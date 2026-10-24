@@ -174,13 +174,53 @@ artifacts beside the record: `wrapper-stdout-<run-id>.txt` and
 invocations, including nonzero exits, missing result artifacts, timeouts, and
 process-start errors. The record's `wrapper_diagnostics` descriptor names only
 those basenames and carries bounded redacted tail lines for failure review.
-All local absolute paths are redacted before either file, tail, or
-exception-derived failure field is persisted, including paths outside the
-repository and paths whose components are unresolved symlinks. The runtime
-host name and FQDN are redacted as well. Useful exception class and
-`ModuleNotFoundError` text, URLs, relative source paths, and safe
-container-relative paths such as `/work/...` and `/out/...` remain. Artifact
-creation is exclusive and rejects collisions or symlinks.
+One diagnostic ingress handles both text and bytes before persistence and
+before any tail truncation, including failure fields, pre/post snapshot
+diagnostics, and embedded runner-result diagnostics. Nested diagnostic fields
+share one runtime host-token tuple throughout each persistence call and recursive
+JSON serialization. Diagnostic context is inherited downwards through every
+mapping, list, and tuple descendant regardless of child key names; it does not
+promote sibling environment/metadata mappings. Within diagnostic mappings,
+string keys use the same text ingress, and non-string keys become
+`<unsupported-diagnostic>` without string conversion. Original string keys in
+`_FORBIDDEN_KEYS` are still removed case-insensitively before key redaction;
+unsupported keys are not stringified for filtering. Redacted-key collisions
+keep the last entry in input iteration order. Non-diagnostic key conversion and
+metadata denylist behavior are unchanged. Diagnostic bytes, typed scalars, and
+unsupported objects obey the same ingress rules at every descendant depth.
+
+A token is a maximal sequence of characters other than whitespace or either
+quote; punctuation never
+ends a token. Classify complete `scheme://payload` URL tokens first. Public
+HTTP(S) URLs retain payloads only for a nonempty authority without `@`; authority
+ends before slash, query, or fragment. Other URLs retain the scheme and
+`://<redacted-path>` only. Query and fragment contents have no additional filter.
+Assignment-wrapped URL text is not a whole URL token.
+
+A relative token fully matches `^(?:\.\.?/)?(?:[\w.+~-]+/)*[\w.+~-]*$` and starts
+with neither `-` nor `~`; preserve it. For every other token, find the first slash
+or tilde at token start or after a non-word character, keeping the prefix before
+that position. Preserve the suffix only if it fully matches `^[\w./+~-]+$`,
+contains no `..` component, and its `posixpath.normpath` equals or lies beneath
+`/work`, `/out`, or `/dev/tenstorrent` at a component boundary. Otherwise replace
+the complete suffix with `<redacted-path>`. This one lexical grammar covers
+options, assignments, assignment-contained options, and wrappers without a list
+of introducers or filesystem resolution. Colon, comma, semicolon, and closing
+parenthesis in a suffix prevent it from being allowlisted, even under a safe root.
+
+After classification, mask the runtime host name, FQDN, and first label across
+the entire text as case-insensitive whole words regardless of length, including
+inside retained paths and URLs. Redaction markers remain intact. A later pass
+may conservatively remove a host-masked path whose marker brackets are not pure
+path characters. Useful exception class and `ModuleNotFoundError` text, admitted
+relative paths, standalone image digests, and validated container paths remain
+readable unless hostname masking applies. Invalid byte sequences and lone surrogates are
+replaced without raising. Nested diagnostic JSON scalars (`null`, booleans,
+integers, and floats) retain their types. Other unsupported diagnostic objects
+become `<unsupported-diagnostic>` without invoking their string conversion;
+that marker is stable through subsequent host masking and serialization.
+Structured non-diagnostic provenance is not rewritten.
+Artifact creation is exclusive and rejects collisions or symlinks.
 
 ## Issue #102 raw-record rebuild
 

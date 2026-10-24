@@ -246,6 +246,7 @@ def test_issue146_wrapper_diagnostics_persist_on_success_and_redact_paths(
         "link=/var/lib/issue146-link/trace opt=/opt/issue146-private/log\n"
         "safe-work=/work/tools/issue146_device.py safe-out=/out/result.json\n"
         "url=https://example.test/var/lib/remote\n"
+        "https://example.test/standalone-remote\n"
         "ModuleNotFoundError: No module named 'scipy'\n"
         + "diagnostic line\n" * 25
     )
@@ -279,7 +280,10 @@ def test_issue146_wrapper_diagnostics_persist_on_success_and_redact_paths(
         assert path not in saved_stdout
     assert "/work/tools/issue146_device.py" in saved_stdout
     assert "/out/result.json" in saved_stdout
-    assert "https://example.test/var/lib/remote" in saved_stdout
+    # Only whole URL tokens bypass the path grammar, not assignment-wrapped URLs.
+    assert "url=https:<redacted-path>" in saved_stdout
+    assert "https://example.test/var/lib/remote" not in saved_stdout
+    assert "https://example.test/standalone-remote" in saved_stdout
     assert "/out/runner-result-wrapper-diagnostics-success.json" in saved_stdout
     assert "ModuleNotFoundError: No module named 'scipy'" in saved_stdout
     assert len(diagnostics["stdout_tail"]) <= 20
@@ -359,13 +363,17 @@ def test_issue146_record_sanitizer_preserves_structured_host_tokens(
 def test_issue146_diagnostic_redacts_local_file_urls() -> None:
     text = (
         "remote=https://example.test/var/lib/remote "
+        "https://example.test/standalone-remote "
         "file:///homeowner/private.db "
         "file://localhost/var/lib/private.db "
         "FILE://localhost/var/lib/private-upper.db "
         "sqlite:////opt/private.db"
     )
     redacted = issue146._redact_diagnostic_text(text, output_dir=Path("/"))
-    assert "https://example.test/var/lib/remote" in redacted
+    # Assignment-wrapped URLs follow the full-token path grammar instead.
+    assert "remote=https:<redacted-path>" in redacted
+    assert "https://example.test/var/lib/remote" not in redacted
+    assert "https://example.test/standalone-remote" in redacted
     assert "file:///homeowner/private.db" not in redacted
     assert "file://localhost/var/lib/private.db" not in redacted
     assert "FILE://localhost/var/lib/private-upper.db" not in redacted
