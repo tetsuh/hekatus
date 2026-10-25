@@ -167,8 +167,9 @@ def test_cli_round_trips_schedule_and_profiles():
     assert cfg.switch_schedule == ((10, 8, 3),)
     assert cfg.initial_identity == (7, 3)
     assert cfg.swap_strategy == "prefetch"
+    parser = run_resident._parser()
     with pytest.raises(SystemExit):
-        run_resident._parser().parse_args(["--switch", "1:2"])
+        parser.parse_args(["--switch", "1:2"])
 
 
 def test_oversize_rejection_record_retains_reason_and_configuration():
@@ -252,7 +253,8 @@ def test_kernel_contract_copies_are_budgeted_and_discards_retire_without_timesta
     consumer = (root / "resident_consumer.cpp").read_text()
     common = (root / "resident_tables.h").read_text()
     assert "a.config == b.config && a.generation == b.generation" in common
-    assert "page < pages" in common and "noc_async_read_barrier();" in common
+    assert "page < pages" in common
+    assert "noc_async_read_barrier();" in common
     assert producer.index("attempted >= metadata") < producer.index("if (slot_full)")
     for word in range(4):
         assert f"source[{word}] =" in producer
@@ -265,9 +267,11 @@ def test_kernel_contract_copies_are_budgeted_and_discards_retire_without_timesta
     ])
     assert "selected_table[work % (table_pages * page_words)]" in consumer
     discard = consumer[consumer.index("if (discard) {"):consumer.index("previous_completion = end;")]
-    assert "discard_count += 1" in discard and "frames_retired += 1" in discard
+    assert "discard_count += 1" in discard
+    assert "frames_retired += 1" in discard
     assert "noc_semaphore_inc(free_noc, 1)" in discard
-    assert "continue;" in discard and "noc_async_write_page" not in discard
+    assert "continue;" in discard
+    assert "noc_async_write_page" not in discard
     assert "elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)" in consumer
     assert "failure_code = failure_consumer_fixed_work_budget;" in consumer
 

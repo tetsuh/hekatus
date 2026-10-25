@@ -109,8 +109,9 @@ def test_i6_i7_i8_l1_ledger_and_oversize_rejection(strategy, copies):
     assert next(row for row in rows if row["component"] == "profile_table_copies")["bytes"] == (
         cfg.table_bytes * copies
     )
+    oversized = replace(cfg, table_bytes=1024 * 1024)
     with pytest.raises(ResidentPreflightError, match="L1"):
-        validate_configuration(replace(cfg, table_bytes=1024 * 1024))
+        validate_configuration(oversized)
 
 
 @pytest.mark.parametrize("delay", [0, 1, 5, 10])
@@ -179,5 +180,6 @@ def test_i9_empty_schedule_preserves_legacy_config_and_ring():
     {"initial_identity": (-1, 0)},
 ])
 def test_invalid_parameters_reject_before_execution(changes):
+    invalid = replace(tables(), **changes)
     with pytest.raises(ResidentPreflightError):
-        validate_configuration(replace(tables(), **changes))
+        validate_configuration(invalid)

@@ -86,7 +86,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
-from typing import Any, Self
+from typing import Any, Self, cast
 
 from enodia.tt.bench.clock_source_audit import (
     CLOCK_SOURCE_AUDIT_TABLE,
@@ -3652,7 +3652,11 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
 
 def _table_retired(record: Mapping[str, Any], consumed: int) -> int:
     """Validate optional Issue #119 evidence; legacy records keep consumed semantics."""
-    from enodia.tt.bench.resident_tables import TABLE_CONFIG_FIELDS, validate_table_evidence
+    from enodia.tt.bench.resident_tables import (
+        TABLE_CONFIG_FIELDS,
+        TableConfiguration,
+        validate_table_evidence,
+    )
 
     params = record.get("parameters", {})
     if record.get("status") == "rejected":
@@ -3663,8 +3667,10 @@ def _table_retired(record: Mapping[str, Any], consumed: int) -> int:
         if evidence is not None:
             raise ValueError("table swap evidence has no configured profiles or schedule")
         return consumed
-    config = SimpleNamespace(**{name: params.get(name) for name in TABLE_CONFIG_FIELDS},
-                             frame_count=params.get("frame_count"))
+    config = cast(TableConfiguration, SimpleNamespace(
+        **{name: params.get(name) for name in TABLE_CONFIG_FIELDS},
+        frame_count=params.get("frame_count"), work_per_frame=params.get("work_per_frame"),
+    ))
     validate_table_evidence(config, evidence, consumed)
     ring = record["ring"]
     if not _is_int(ring.get("discard_count"), nonnegative=True) or ring.get("discard_count") != evidence["discard_count"]:

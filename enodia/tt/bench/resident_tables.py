@@ -11,10 +11,32 @@ from __future__ import annotations
 
 import hashlib
 import struct
-from typing import TYPE_CHECKING
+from typing import Protocol
 
-if TYPE_CHECKING:
-    from enodia.tt.bench.resident_harness import ResidentConfig
+
+class TableConfiguration(Protocol):
+    """Structural input shared by ResidentConfig and validated record views."""
+
+    @property
+    def frame_count(self) -> int: ...
+
+    @property
+    def work_per_frame(self) -> int: ...
+
+    @property
+    def profile_tables(self) -> tuple[tuple[int, int, int], ...]: ...
+
+    @property
+    def switch_schedule(self) -> tuple[tuple[int, int, int], ...]: ...
+
+    @property
+    def initial_identity(self) -> tuple[int, int]: ...
+
+    @property
+    def table_bytes(self) -> int: ...
+
+    @property
+    def swap_strategy(self) -> str: ...
 
 WORDS = 1024
 MASK = 0xffffffff
@@ -23,7 +45,7 @@ TABLE_CONFIG_FIELDS = (
 )
 
 
-def enabled(config: ResidentConfig) -> bool:
+def enabled(config: TableConfiguration) -> bool:
     return bool(config.profile_tables or config.switch_schedule or config.table_bytes)
 
 
@@ -31,7 +53,7 @@ def _uint(value) -> bool:
     return type(value) is int and 0 <= value <= MASK
 
 
-def _validate_profile_rows(config: ResidentConfig) -> None:
+def _validate_profile_rows(config: TableConfiguration) -> None:
     identities = set()
     for row in config.profile_tables:
         if len(row) != 3 or not all(map(_uint, row)):
@@ -41,7 +63,7 @@ def _validate_profile_rows(config: ResidentConfig) -> None:
         identities.add(tuple(row[:2]))
 
 
-def _validate_schedule(config: ResidentConfig) -> None:
+def _validate_schedule(config: TableConfiguration) -> None:
     previous = -1
     for row in config.switch_schedule:
         if len(row) != 3 or not all(map(_uint, row)):
@@ -51,7 +73,7 @@ def _validate_schedule(config: ResidentConfig) -> None:
         previous = row[0]
 
 
-def validate_tables(config: ResidentConfig) -> None:
+def validate_tables(config: TableConfiguration) -> None:
     """Validate bounded wire-format inputs; caller translates ValueError to preflight."""
     if config.swap_strategy not in {"copy_on_demand", "prefetch"}:
         raise ValueError("swap_strategy must be copy_on_demand or prefetch")
@@ -71,7 +93,7 @@ def validate_tables(config: ResidentConfig) -> None:
         raise ValueError("preloaded profile tables exceed the DRAM allocation bound")
 
 
-def identity_at(config: ResidentConfig, frame: int) -> tuple[tuple[int, int], int]:
+def identity_at(config: TableConfiguration, frame: int) -> tuple[tuple[int, int], int]:
     identity = config.initial_identity
     segment = 0
     for index, (start, config_id, generation) in enumerate(config.switch_schedule):
@@ -82,14 +104,14 @@ def identity_at(config: ResidentConfig, frame: int) -> tuple[tuple[int, int], in
     return tuple(identity), segment
 
 
-def ready_index(config: ResidentConfig, frame: int, identity: tuple[int, int]) -> int | None:
+def ready_index(config: TableConfiguration, frame: int, identity: tuple[int, int]) -> int | None:
     for index, (config_id, generation, ready_frame) in enumerate(config.profile_tables):
         if identity == (config_id, generation) and frame >= ready_frame:
             return index
     return None
 
 
-def metadata_words(config: ResidentConfig) -> list[int]:
+def metadata_words(config: TableConfiguration) -> list[int]:
     validate_tables(config)
     words = [len(config.profile_tables), len(config.switch_schedule), *config.initial_identity]
     for row in config.profile_tables:
@@ -105,7 +127,7 @@ def table_word(identity: tuple[int, int], word: int) -> int:
     return ((config_id + 1) * 0x9e3779b1 ^ (generation + 1) * 0x85ebca77 ^ word) & MASK
 
 
-def frame_checksum(config: ResidentConfig, frame: int, identity: tuple[int, int]) -> int:
+def frame_checksum(config: TableConfiguration, frame: int, identity: tuple[int, int]) -> int:
     accumulator = 0
     for work in range(config.work_per_frame):
         word = work % WORDS
@@ -118,7 +140,7 @@ def frame_checksum(config: ResidentConfig, frame: int, identity: tuple[int, int]
 
 
 def _verify_frame_rows(
-    config: ResidentConfig, rows: list[list[int]], timestamps: list[int],
+    config: TableConfiguration, rows: list[list[int]], timestamps: list[int],
 ) -> tuple[dict, dict[int, int | None]]:
     """Verify every downloaded frame; rows are checksum,elapsed,frame,id,gen,segment."""
     if len(rows) != len(timestamps):
@@ -145,7 +167,7 @@ def _verify_frame_rows(
 
 
 def build_table_evidence(
-    config: ResidentConfig, rows: list[list[int]], timestamps: list[int], summary: list[int],
+    config: TableConfiguration, rows: list[list[int]], timestamps: list[int], summary: list[int],
 ) -> dict:
     checksum, intervals = _verify_frame_rows(config, rows, timestamps)
     switches = []
@@ -176,7 +198,7 @@ def build_table_evidence(
     return result
 
 
-def validate_table_evidence(config: ResidentConfig, evidence: dict, consumed: int) -> None:
+def validate_table_evidence(config: TableConfiguration, evidence: dict, consumed: int) -> None:
     """Check persisted evidence relationships, without pretending it proves board execution."""
     validate_tables(config)
     if not isinstance(evidence, dict) or evidence.get("schema") != "resident-table-swap-v1":
@@ -238,7 +260,7 @@ def _validate_checksum_evidence(checksum, consumed) -> None:
 class TableConsumerModel:
     """One-pass consumer beside RingAccounting; discarded slots still retire."""
 
-    def __init__(self, config: ResidentConfig):
+    def __init__(self, config: TableConfiguration):
         validate_tables(config)
         self.config = config
         self.discard_count = 0
