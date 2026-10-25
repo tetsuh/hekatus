@@ -43,16 +43,21 @@ accessor page. Both buffers are uploaded and synchronized before launch. Each
 kernel reads metadata once into its own L1 page. The producer stamps identities;
 the consumer scans all profile descriptors and requires both identity fields and
 readiness. The consumer frees discarded slots as well as processed slots, with
-no catch-up and no substitution of its previous L1 copy.
+no catch-up and no substitution of its previous L1 copy. GenericOp receives
+all table inputs before the legacy IO tensors, keeping `consumer_stats` last
+as its output specification; without tables the legacy IO order is unchanged.
 
 Copy-on-demand uses one L1 table slot. Prefetch uses two: the previous attempted
-frame may copy the next scheduled ready profile into the inactive slot. A missed
+frame, when processed rather than discarded, may copy the next scheduled ready
+profile into the inactive slot. A missed
 lookahead (for example producer overflow) or delayed readiness takes the demand
 path. A cached copy never overrides readiness. Every copy reads exactly the
 configured page count and waits for each page's read barrier. Demand and
 prefetch copies are both inside the per-frame timer; reaching the existing work
 budget retains failure code 4 and producer cancellation. This does not claim a
 measured copy duration or prove that a particular budget will fit.
+With prefetch, copy cost appears in the preceding processed frame's interval,
+not just the interval of the new segment's first processed frame.
 
 ## Accounting and bounds
 
@@ -71,6 +76,9 @@ retain words 0..3 and add attempted frame, config, generation, segment at 4..7.
 The host checks stamped identities against the schedule, readiness, increasing
 frame indices, every frame checksum, and card switch intervals against downloaded
 completion timestamps. A checksum mismatch marks the record as an error.
+Discarded frames do not update fixed-work min/max/valid or receive per-frame
+work-budget checks; only the run budget applies. Thus an all-discard run has
+`work_valid=0`, and a readiness delay of D discards removes D work samples.
 
 The optional `table_swap` extension contains total/initial/per-switch discards,
 retired count, per-switch intervals, checked-frame and mismatch counts, verification
@@ -78,8 +86,14 @@ status, and SHA-256 of `(frame, config, generation, checksum)` words. The normal
 histogram remains beside it and includes intervals spanning discards; the
 switch interval is specifically the previous completion to the first processed
 frame in a schedule segment. If no such frame or predecessor exists, it is null,
-not zero or a fabricated interval. The parameters retain the complete schedule,
-table configuration, and L1 ledger. Legacy records need no new fields.
+not zero or a fabricated interval. Each switch additionally carries host-derived
+`pre_switch_interval`: the completion interval ending at the last processed frame
+before that scheduled switch, in device ticks, or null without two preceding
+completions. It uses the last actual processed frame even if an intervening
+segment contained only discards. The field is optional when reading older
+records; no kernel timestamp row or summary word is added for this observation.
+The parameters retain the complete schedule, table configuration, and L1 ledger.
+Legacy records need no new fields.
 
 ## Board-free demonstration
 

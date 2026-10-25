@@ -636,7 +636,10 @@ def _run_device(
         program = _program(ttnn, config, tensors, watcher=watcher)
         program_launch_ns = time.monotonic_ns()
         program_launch_utc = datetime.datetime.now(datetime.UTC).isoformat()
-        ttnn.generic_op(list(tensors.values()), program)
+        table_keys = {"table_metadata", "profile_tables"}
+        io_tensors = [tensor for name, tensor in tensors.items() if name in table_keys]
+        io_tensors.extend(tensor for name, tensor in tensors.items() if name not in table_keys)
+        ttnn.generic_op(io_tensors, program)
         ttnn.synchronize_device(device, cq_id=0)
         program_completion_ns = time.monotonic_ns()
         program_completion_utc = datetime.datetime.now(datetime.UTC).isoformat()

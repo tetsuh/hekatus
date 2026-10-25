@@ -1,4 +1,7 @@
-"""Wire protocol and runner tests independent of TTNN and physical devices."""
+"""Board-free I3/I10/I11 contracts: discard excludes work stats/budgets,
+GenericOp keeps the legacy IO order with consumer_stats last, and host evidence
+reports pre-switch intervals so prefetch cost is not hidden by segment edges.
+"""
 
 import copy
 from collections import defaultdict
@@ -28,11 +31,6 @@ def outputs(cfg):
     rows, timestamps = [], []
     summary = [0] * 1024
     summary[3] = cfg.frame_count
-    summary[4] = 1
-    summary[6] = 1
-    summary[13] = 1
-    summary[15] = 2
-    summary[17] = 1
     for frame in range(cfg.frame_count):
         identity, segment = identity_at(cfg, frame)
         base = 20 + 4 * segment
@@ -47,6 +45,12 @@ def outputs(cfg):
             rows.append([frame_checksum(cfg, frame, identity), 1, frame, *identity, segment])
             timestamps.append(timestamp)
     summary[1] = len(rows)
+    summary[4] = int(bool(rows))
+    summary[6] = int(bool(rows))
+    summary[13] = min((row[1] for row in rows), default=0xffffffff)
+    summary[14] = 0 if rows else 0xffffffff
+    summary[15] = max((row[1] for row in rows), default=0)
+    summary[17] = int(bool(rows))
     summary[19] = cfg.frame_count
     return rows, timestamps, summary
 
@@ -274,6 +278,100 @@ def test_kernel_contract_copies_are_budgeted_and_discards_retire_without_timesta
     assert "noc_async_write_page" not in discard
     assert "elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)" in consumer
     assert "failure_code = failure_consumer_fixed_work_budget;" in consumer
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_run_device_keeps_consumer_stats_last_and_legacy_io_order(monkeypatch, active):
+    """I10: inspect actual generic_op arguments without importing/opening TTNN."""
+    legacy = ["ring", "control", "producer_anchor", "timestamps", "producer_stats", "consumer_stats"]
+    names = legacy + (["table_metadata", "profile_tables"] if active else [])
+    tensors = {name: object() for name in names}
+    program = object()
+    calls = []
+    fake = FakeTT()
+    fake.generic_op = lambda io, descriptor: calls.append((io, descriptor))
+    monkeypatch.setattr(run_resident, "_allocate_resident_tensors", lambda *args: tensors)
+    monkeypatch.setattr(run_resident, "_program", lambda *args, **kwargs: program)
+    monkeypatch.setattr(run_resident, "_decode_resident_result", lambda *args: {})
+    monkeypatch.setattr(run_resident, "_deallocate_resident_tensors", lambda *args: None)
+    run_resident._run_device(fake, None, tables() if active else config(), watcher=False)
+    expected = (["table_metadata", "profile_tables"] if active else []) + legacy
+    assert calls == [([tensors[name] for name in expected], program)]
+    assert calls[0][0][-1] is tensors["consumer_stats"]
+
+
+def test_discard_kernel_excludes_fixed_work_statistics_and_budget():
+    """I3: all fixed-work samples and code-4 checks are guarded by !discard."""
+    source = Path("enodia/tt/bench/kernels/resident_consumer.cpp").read_text()
+    start = source.index("const std::uint64_t elapsed = end - start;")
+    tail = source[start:source.index("if (error_flag != 0 && !error_sent)", start)]
+    guard = tail.index("if (!discard) {")
+    depth = 1
+    end = guard + len("if (!discard) {")
+    while depth:
+        depth += (tail[end] == "{") - (tail[end] == "}")
+        end += 1
+    processed = tail[guard:end]
+    for token in ("work_min_ticks =", "work_max_ticks =", "work_valid = 1;",
+                  "elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)",
+                  "failure_code = failure_consumer_fixed_work_budget;"):
+        assert token in processed
+        assert token not in tail[end:]
+    assert "end - run_start >= run_budget_ticks" in tail[end:]
+    assert "failure_code = failure_run_wide_budget;" in tail[end:]
+    assert "if (!discard && prefetch && segment < metadata[1])" in source
+
+
+def test_pre_switch_interval_exposes_prefetch_on_previous_frame():
+    """I11: a modeled prefetch raises the preceding interval, not the switch row."""
+    cfg = config(frame_count=6, profile_tables=((0, 0, 0), (1, 0, 0)),
+                 switch_schedule=((4, 1, 0),), table_bytes=4096, swap_strategy="prefetch")
+    rows, timestamps, summary = outputs(cfg)
+    timestamps[3] += 300
+    summary[25] = 700
+    evidence = build_table_evidence(cfg, rows, timestamps, summary)
+    assert evidence["switches"][0]["pre_switch_interval"] == 1300
+    assert evidence["switches"][0]["switch_frame_interval_ticks"] == 700
+    built = record(cfg, evidence, timestamps)
+    assert built["table_swap"]["switches"][0]["pre_switch_interval"] == 1300
+
+
+@pytest.mark.parametrize("switch_frame,expected", [(0, None), (1, None), (4, 1000)])
+def test_pre_switch_interval_uses_last_processed_frame_or_null(switch_frame, expected):
+    """I11: no interval is fabricated without two preceding completions."""
+    cfg = config(profile_tables=((0, 0, 0),), switch_schedule=((switch_frame, 9, 0),),
+                 table_bytes=4096)
+    rows, timestamps, summary = outputs(cfg)
+    evidence = build_table_evidence(cfg, rows, timestamps, summary)
+    assert evidence["switches"][0]["pre_switch_interval"] == expected
+
+
+def test_pre_switch_interval_survives_an_empty_segment_without_invention():
+    cfg = config(profile_tables=((0, 0, 0), (2, 0, 0)),
+                 switch_schedule=((2, 9, 0), (5, 2, 0)), table_bytes=4096)
+    rows, timestamps, summary = outputs(cfg)
+    evidence = build_table_evidence(cfg, rows, timestamps, summary)
+    assert [row["pre_switch_interval"] for row in evidence["switches"]] == [1000, 1000]
+
+
+def test_prior_table_evidence_without_pre_switch_interval_remains_readable():
+    cfg = tables()
+    rows, timestamps, summary = outputs(cfg)
+    evidence = build_table_evidence(cfg, rows, timestamps, summary)
+    evidence.pop("pre_switch_interval_definition")
+    for switch in evidence["switches"]:
+        switch.pop("pre_switch_interval")
+    validate_table_evidence(cfg, evidence, len(rows))
+    assert record(cfg, evidence, timestamps)["status"] == "ok_with_drops"
+
+
+def test_pre_switch_interval_rejects_nonpositive_ticks():
+    cfg = tables()
+    rows, timestamps, summary = outputs(cfg)
+    evidence = build_table_evidence(cfg, rows, timestamps, summary)
+    evidence["switches"][0]["pre_switch_interval"] = 0
+    with pytest.raises(ValueError, match="pre-switch interval"):
+        validate_table_evidence(cfg, evidence, len(rows))
 
 
 def test_default_program_has_only_legacy_buffers_and_cbs(monkeypatch):

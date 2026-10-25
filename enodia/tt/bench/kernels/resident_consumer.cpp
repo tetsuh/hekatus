@@ -184,7 +184,7 @@ void kernel_main() {
                 accumulator = 0;
             }
             // One-frame lookahead. Skipped/unready lookahead uses demand copy, never fallback.
-            if (prefetch && segment < metadata[1]) {
+            if (!discard && prefetch && segment < metadata[1]) {
                 const std::uint32_t offset = resident_tables::schedule_offset(metadata) + 3 * segment;
                 if (frame + 1 == metadata[offset]) {
                     const resident_tables::Identity next{metadata[offset + 1], metadata[offset + 2]};
@@ -213,15 +213,18 @@ void kernel_main() {
         }
         const std::uint64_t end = clock.read();
         const std::uint64_t elapsed = end - start;
-        work_min_ticks = elapsed < work_min_ticks ? elapsed : work_min_ticks;
-        work_max_ticks = elapsed > work_max_ticks ? elapsed : work_max_ticks;
-        work_valid = 1;
-        if (elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)) {
-            error_flag = 1;
-            failure_code = failure_consumer_fixed_work_budget;
-            failure_elapsed_ticks = elapsed;
-            failure_limit_ticks = per_frame_work_budget_ticks;
-        } else if (end - run_start >= run_budget_ticks) {
+        if (!discard) {
+            work_min_ticks = elapsed < work_min_ticks ? elapsed : work_min_ticks;
+            work_max_ticks = elapsed > work_max_ticks ? elapsed : work_max_ticks;
+            work_valid = 1;
+            if (elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)) {
+                error_flag = 1;
+                failure_code = failure_consumer_fixed_work_budget;
+                failure_elapsed_ticks = elapsed;
+                failure_limit_ticks = per_frame_work_budget_ticks;
+            }
+        }
+        if (error_flag == 0 && end - run_start >= run_budget_ticks) {
             error_flag = 1;
             failure_code = failure_run_wide_budget;
             failure_elapsed_ticks = end - run_start;

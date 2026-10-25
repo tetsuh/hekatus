@@ -1,4 +1,9 @@
-"""Board-free Issue #119 invariants; no TTNN or device access."""
+"""Board-free Issue #119 invariants; no TTNN or device access.
+
+I3 includes fixed-work min/max/valid and per-frame budget exclusion for discarded
+frames: an all-discard run has no work samples; delay D=3 removes three samples.
+Only the run budget applies to a discarded frame.
+"""
 
 from dataclasses import replace
 
@@ -154,6 +159,59 @@ def test_producer_overflow_and_identity_discard_are_distinct():
     assert model.discard_count == 1
     assert ring.producer_full_count == 1
     assert ring.reserve_producer() == 0
+
+
+def test_all_discard_has_no_work_samples_or_per_frame_budget_failure():
+    """I3: even a large discard elapsed is not fixed consumer work."""
+    cfg = config(table_bytes=4096)
+    model = TableConsumerModel(cfg)
+    for frame in range(cfg.frame_count):
+        assert model.consume(frame, (0, 0), (frame + 1) * 1000,
+                             elapsed_ticks=999, cycle_budget=100) is None
+    assert model.work_count == 0
+    assert model.work_valid is False
+    assert model.work_min_ticks is None
+    assert model.work_max_ticks is None
+    assert model.work_budget_exceeded is False
+    assert model.timestamps == []
+
+
+def test_readiness_delay_three_excludes_discard_work_statistics():
+    """I3: D=3 samples neither zero elapsed nor the oversized discard elapsed."""
+    cfg = tables()
+    model = TableConsumerModel(cfg)
+    expected = []
+    for frame in range(cfg.frame_count):
+        identity, _ = identity_at(cfg, frame)
+        elapsed = 9999 if 4 <= frame < 7 else 1062 + frame
+        model.consume(frame, identity, (frame + 1) * 2000,
+                      elapsed_ticks=elapsed, cycle_budget=1087)
+        if not 4 <= frame < 7:
+            expected.append(elapsed)
+    assert model.discard_count == 3
+    assert model.work_count == len(expected)
+    assert model.work_count == cfg.frame_count - 3
+    assert model.work_valid is True
+    assert model.work_min_ticks == min(expected)
+    assert model.work_max_ticks == max(expected)
+    assert model.work_budget_exceeded is False
+
+
+@pytest.mark.parametrize("ready", [False, True])
+def test_work_budget_applies_only_to_processed_frames_and_keeps_inclusive_boundary(ready):
+    cfg = config(profile_tables=((0, 0, 0),) if ready else (), table_bytes=4096)
+    model = TableConsumerModel(cfg)
+    model.consume(0, (0, 0), 1000, elapsed_ticks=100, cycle_budget=100)
+    assert model.work_budget_exceeded is ready
+
+
+def test_discard_still_receives_run_budget_check():
+    model = TableConsumerModel(config(table_bytes=4096))
+    model.consume(0, (0, 0), 1000, elapsed_ticks=999, cycle_budget=100,
+                  run_elapsed_ticks=500, run_budget_ticks=500)
+    assert model.work_budget_exceeded is False
+    assert model.run_budget_exceeded is True
+    assert model.work_valid is False
 
 
 def test_i9_empty_schedule_preserves_legacy_config_and_ring():

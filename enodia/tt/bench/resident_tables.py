@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
+from bisect import bisect_left
 from typing import Protocol
 
 
@@ -166,10 +167,18 @@ def _verify_frame_rows(
             "passed": mismatches == 0, "sha256": digest.hexdigest()}, intervals
 
 
+def _pre_switch_interval(frame_indices: list[int], timestamps: list[int], frame: int) -> int | None:
+    previous = bisect_left(frame_indices, frame) - 1
+    if previous < 1:
+        return None
+    return timestamps[previous] - timestamps[previous - 1]
+
+
 def build_table_evidence(
     config: TableConfiguration, rows: list[list[int]], timestamps: list[int], summary: list[int],
 ) -> dict:
     checksum, intervals = _verify_frame_rows(config, rows, timestamps)
+    frame_indices = [row[2] for row in rows]
     switches = []
     all_discards = []
     for segment in range(len(config.switch_schedule) + 1):
@@ -186,12 +195,14 @@ def build_table_evidence(
             switches.append({
                 "frame_index": frame, "identity": [config_id, generation],
                 "discard_count": discards, "switch_frame_interval_ticks": actual_interval,
+                "pre_switch_interval": _pre_switch_interval(frame_indices, timestamps, frame),
             })
     result = {
         "schema": "resident-table-swap-v1",
         "discard_count": summary[18], "retired_frame_count": summary[19],
         "initial_discard_count": all_discards[0], "switches": switches,
         "switch_interval_definition": "previous completion to first consumed frame in schedule segment",
+        "pre_switch_interval_definition": "previous completion to last processed frame before scheduled switch",
         "checksum": checksum,
     }
     validate_table_evidence(config, result, len(rows))
@@ -217,12 +228,17 @@ def validate_table_evidence(config: TableConfiguration, evidence: dict, consumed
         if row.get("frame_index") != frame or row.get("identity") != [config_id, generation]:
             raise ValueError("switch stats identity differs from schedule")
         total += _count(row.get("discard_count"))
-        interval = row.get("switch_frame_interval_ticks")
-        if interval is not None and (type(interval) is not int or interval <= 0):
-            raise ValueError("switch interval must be positive ticks or null")
+        _validate_interval(row.get("switch_frame_interval_ticks"), "switch interval")
+        # Optional for records written before this observational extension.
+        _validate_interval(row.get("pre_switch_interval"), "pre-switch interval")
     if total != discarded:
         raise ValueError("per-switch discard sum differs from total")
     _validate_checksum_evidence(evidence.get("checksum", {}), consumed)
+
+
+def _validate_interval(interval, name: str) -> None:
+    if interval is not None and (type(interval) is not int or interval <= 0):
+        raise ValueError(f"{name} must be positive ticks or null")
 
 
 def _count(value) -> int:
@@ -258,7 +274,12 @@ def _validate_checksum_evidence(checksum, consumed) -> None:
 
 
 class TableConsumerModel:
-    """One-pass consumer beside RingAccounting; discarded slots still retire."""
+    """One-pass consumer beside RingAccounting; only processed frames sample work.
+
+    Supplied elapsed ticks are observations, not a prediction of hardware timing.
+    Discarded slots retire without work statistics or a per-frame budget check;
+    the run budget still applies to every retired frame.
+    """
 
     def __init__(self, config: TableConfiguration):
         validate_tables(config)
@@ -268,8 +289,28 @@ class TableConsumerModel:
         self.switch_intervals: list[int | None] = [None] * len(config.switch_schedule)
         self.timestamps: list[int] = []
         self._seen_segments: set[int] = set()
+        self.work_count = 0
+        self.work_min_ticks: int | None = None
+        self.work_max_ticks: int | None = None
+        self.work_valid = False
+        self.work_budget_exceeded = False
+        self.run_budget_exceeded = False
 
-    def consume(self, frame: int, identity: tuple[int, int], timestamp: int) -> int | None:
+    def _observe_work(self, elapsed: int, cycle_budget: int | None) -> None:
+        self.work_count += 1
+        self.work_min_ticks = elapsed if self.work_min_ticks is None else min(self.work_min_ticks, elapsed)
+        self.work_max_ticks = elapsed if self.work_max_ticks is None else max(self.work_max_ticks, elapsed)
+        self.work_valid = True
+        if cycle_budget is not None and elapsed >= cycle_budget:
+            self.work_budget_exceeded = True
+
+    def consume(
+        self, frame: int, identity: tuple[int, int], timestamp: int, *, elapsed_ticks: int = 0,
+        cycle_budget: int | None = None, run_elapsed_ticks: int = 0,
+        run_budget_ticks: int | None = None,
+    ) -> int | None:
+        if run_budget_ticks is not None and run_elapsed_ticks >= run_budget_ticks:
+            self.run_budget_exceeded = True
         _, segment = identity_at(self.config, frame)
         if ready_index(self.config, frame, identity) is None:
             self.discard_count += 1
@@ -281,4 +322,5 @@ class TableConsumerModel:
                 self.switch_intervals[segment - 1] = timestamp - self.timestamps[-1]
             self._seen_segments.add(segment)
         self.timestamps.append(timestamp)
+        self._observe_work(elapsed_ticks, cycle_budget)
         return frame_checksum(self.config, frame, identity)
