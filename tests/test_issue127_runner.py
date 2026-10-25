@@ -2371,7 +2371,37 @@ esac
 def test_issue127_wrapper_refuses_measurement_when_cooldown_gate_reaches_cap(
     tmp_path: Path, run_scope: str | None, expected_run_scope: str | None
 ):
+    """Latch NOW below the cap for one read after the first complete CSV mv.
+
+    The sampler timestamps after the clock freezes, so the gate rejects it as
+    "after the current wait time". Observations are assigned before that check:
+    the failure record must still retain 800 MHz and 80 W on the next cap check.
+    """
     bindir = _fake_wrapper_tools(tmp_path)
+    (bindir / "date").write_text(
+        """#!/bin/sh
+set -eu
+if [ "$#" -ne 1 ] || [ "$1" != '+%s%N' ]; then
+  exec /bin/date "$@"
+fi
+if [ ! -f "${CLOCK_STATE:?}" ]; then
+  /bin/date +%s%N > "${CLOCK_STATE}.tmp"
+  mv "${CLOCK_STATE}.tmp" "$CLOCK_STATE"
+fi
+read -r frozen < "$CLOCK_STATE"
+if [ ! -f "${READY:?}" ]; then
+  printf '%s\\n' "$frozen"
+elif [ ! -f "${CLOCK_STATE}.latched" ]; then
+  : > "${CLOCK_STATE}.latched"
+  printf '%s\\n' "$frozen"
+else
+  # Advance past the test-only 0.2-second cap by one second.
+  printf '%s\\n' "$((frozen + 200000000 + 1000000000))"
+fi
+""",
+        encoding="utf-8",
+    )
+    (bindir / "date").chmod(stat.S_IRWXU)
     (bindir / "python3").write_text(
         """#!/bin/sh
 set -eu
@@ -2391,15 +2421,15 @@ case "${2:-}" in
       shift
     done
     trap 'exit 0' TERM INT
-    while :; do
-      timestamp="$(date -u '+%Y-%m-%dT%H:%M:%S.%N%:z')"
-      {
-        printf '%s\\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c'
-        printf '%s\\n' "${timestamp},80,800,70"
-      } > "${out}.tmp"
-      mv "${out}.tmp" "$out"
-      /bin/sleep 0.05
-    done
+    while [ ! -f "${CLOCK_STATE:?}" ]; do /bin/sleep 0.01; done
+    timestamp="$(date -u '+%Y-%m-%dT%H:%M:%S.%N%:z')"
+    {
+      printf '%s\\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c'
+      printf '%s\\n' "${timestamp},80,800,70"
+    } > "${out}.tmp"
+    mv "${out}.tmp" "$out"
+    : > "${READY:?}"
+    while :; do /bin/sleep 0.05; done
     ;;
 esac
 """,
@@ -2439,6 +2469,8 @@ esac
             "DOCKER_CALLS": str(docker_history),
             "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue127.py",
             "HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS": "0.2",
+            "CLOCK_STATE": str(tmp_path / "clock-state"),
+            "READY": str(tmp_path / "sample-ready"),
         },
         capture_output=True,
         text=True,
@@ -2462,6 +2494,105 @@ esac
     assert failure["run_scope"] == expected_run_scope
     assert failure["wait_cap_seconds"] == 600.0
     assert failure["observed_idle_aiclk_mhz"] == 800.0
+    assert failure["observed_power_w"] == 80.0
+    assert "after the current wait time" in completed.stderr
+
+
+@pytest.mark.parametrize(
+    ("run_scope", "expected_run_scope"),
+    (
+        (None, None),
+        ("measurement-2-rerun", "measurement-2-rerun"),
+    ),
+)
+@pytest.mark.usefixtures("wrapper_execution")
+def test_issue127_wrapper_refuses_measurement_without_complete_sample_at_startup(
+    tmp_path: Path, run_scope: str | None, expected_run_scope: str | None
+):
+    """Real-time cap expiry records null observations while a silent sampler lives."""
+    bindir = _fake_wrapper_tools(tmp_path)
+    (bindir / "python3").write_text(
+        """#!/bin/sh
+set -eu
+case "${2:-}" in
+  capture-env)
+    out=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --out ]; then out="$2"; shift 2; continue; fi
+      shift
+    done
+    printf '%s\\n' '{"fake": true}' > "$out"
+    ;;
+  sample)
+    trap 'exit 0' TERM INT
+    while :; do /bin/sleep 0.05; done
+    ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    (bindir / "python3").chmod(stat.S_IRWXU)
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "enodia/tt/bench/run_in_container.sh", copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    docker_args = tmp_path / "docker-args"
+    docker_history = tmp_path / "docker-calls"
+    output_dir = tmp_path / "no-complete-sample"
+    command = [
+        str(copied_wrapper),
+        str(output_dir),
+        "--",
+        "--run-number",
+        "2",
+    ]
+    if run_scope is not None:
+        command.extend(
+            [
+                "--run-scope",
+                run_scope,
+                "--run-timeout-seconds",
+                "90",
+            ]
+        )
+    completed = subprocess.run(
+        command,
+        cwd=tmp_path / "repo",
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(docker_args),
+            "DOCKER_CALLS": str(docker_history),
+            "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue127.py",
+            "HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS": "0.2",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 1
+    assert "cooldown gate failure" in completed.stderr
+    assert "measurement was not started" in completed.stderr
+    assert "did not pass before the wait cap" in completed.stderr
+    docker_call_history = docker_history.read_text(encoding="utf-8").splitlines()
+    assert docker_call_history
+    assert all(call == "kill" for call in docker_call_history)
+    failures = list(output_dir.glob("cooldown-gate-failure-*.json"))
+    assert len(failures) == 1
+    failure = json.loads(failures[0].read_text(encoding="utf-8"))
+    assert failure["failure_type"] == "cooldown_gate_failure"
+    assert failure["measurement_started"] is False
+    assert failure["run_scope"] == expected_run_scope
+    assert failure["wait_cap_seconds"] == 600.0
+    for field in (
+        "observed_power_w",
+        "observed_temperature_c",
+        "observed_idle_aiclk_mhz",
+        "observed_sample_timestamp_utc",
+    ):
+        assert failure[field] is None
+    assert not list(output_dir.glob("power-*.csv"))
 
 
 @pytest.mark.usefixtures("wrapper_execution")
