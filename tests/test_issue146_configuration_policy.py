@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -240,7 +241,7 @@ def test_i5_shared_smoke_policy_keeps_four_gates(configuration, fault):
         assert result["policy"]["plan_revision_required"] is True
 
 
-def test_i7_i8_archived_long_outcome_and_canonical_bytes_are_unchanged():
+def test_i7_i8_archived_long_outcome_and_canonical_bytes_except_onset_are_unchanged():
     records = [
         ARCHIVE / "runs" / f"run{number}-{config}" / f"run-issue146-long-run{number}-{config}.json"
         for number, config in enumerate(ORDER, 1)
@@ -252,12 +253,30 @@ def test_i7_i8_archived_long_outcome_and_canonical_bytes_are_unchanged():
         assert report["eligible_for_verdict"] is True
         assert report["missing_fields"] == []
         assert report["failed_criteria"] == []
-    raw = (dumps(analyzer._safe_public(result), indent=2) + "\n").encode()
+    public = analyzer._safe_public(result)
     original = (ARCHIVE / "analysis.json").read_bytes()
     assert hashlib.sha256(original).hexdigest() == (
         "2d1537fea1d40d8964b0e0fa145808274b733c89c6cd382f5964103314656445"
     )
-    assert raw == original
+    historical = json.loads(original)
+    supplement = json.loads((ARCHIVE / "raw-trace-onset-supplement.json").read_bytes())
+    # The same reports are serialized in both collections; constrain both copies.
+    for report_key in ("runs", "verdict_runs"):
+        for current_run, old_run, raw_run in zip(
+            public[report_key], historical[report_key], supplement["runs"], strict=True
+        ):
+            onset = current_run["exploratory"].pop("onset")
+            old_onset = old_run["exploratory"].pop("onset")
+            first = raw_run["raw_trace_onset"]["clock"]["first"]
+            expected = (
+                first["offset_seconds"] if raw_run["raw_trace_onset"]["clock"]["count"] else None
+            )
+            assert onset["first_aiclk_arb_max_below_fmax_seconds"] == expected
+            assert onset["first_board_power_within_5_w_of_limit_seconds"] == old_onset[
+                "first_board_power_within_5_w_of_limit_seconds"
+            ]
+    # Byte identity of every other key/value, including all other exploratory data.
+    assert dumps(public, indent=2).encode() == dumps(historical, indent=2).encode()
 
 
 def test_i7_archived_revision5_smoke_replay_keeps_twelve_passes():
