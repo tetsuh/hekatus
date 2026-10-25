@@ -1997,16 +1997,16 @@ class TestResidentSemaphoreDecisionAudit:
                 "const std::uint32_t fresh_ready_count = *ready_sem;", invalidate
             )
             fresh_decision = block.index(
-                "if (fresh_ready_count == frames_consumed) {", fresh_ready
+                "if (fresh_ready_count == frames_retired) {", fresh_ready
             )
             assert done < invalidate < fresh_ready < fresh_decision
-            assert block.count("fresh_ready_count == frames_consumed") == 1
+            assert block.count("fresh_ready_count == frames_retired") == 1
             assert "if (ready_count == frames_consumed)" not in block
             assert "*ready_sem == frames_consumed" not in block
 
         assert re.search(
             r"invalidate_l1_cache\(\);\s*"
-            r"const std::uint32_t required = frames_consumed \+ 1;\s*"
+            r"const std::uint32_t required = frames_retired \+ 1;\s*"
             r"const std::uint32_t ready_count = \*ready_sem;",
             consumer,
         )
@@ -2111,7 +2111,9 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "get_timestamp_32b()" in producer
     assert "extended += static_cast<std::uint32_t>(low - static_cast<std::uint32_t>(extended))" in producer
     assert "noc_async_write_page" in producer
-    assert "noc_async_read_page" not in producer
+    assert producer.count("noc_async_read_page") == 1
+    assert "noc_async_read_page(0, metadata_accessor, address)" in producer
+    assert "noc_async_read_page(ready_count" not in producer
     assert "control.get_noc_addr(0)" in producer
     assert "consumer_x" not in producer
     assert "noc_inline_dw_write" not in producer
@@ -2211,7 +2213,12 @@ def test_every_resident_noc_signal_and_write_has_a_matching_barrier():
             next_write = source.find("noc_async_write_page(", position + 1)
             assert next_write < 0 or barrier < next_write
 
-    assert "noc_async_read_page(" not in producer + consumer
+    for source in (producer, consumer):
+        assert source.count("noc_async_read_page(") == 1
+        assert source.index("noc_async_read_page(") < source.index("noc_async_read_barrier()")
+    table_copy = Path("enodia/tt/bench/kernels/resident_tables.h").read_text()
+    assert table_copy.count("noc_async_read_page(") == 1
+    assert table_copy.index("noc_async_read_page(") < table_copy.index("noc_async_read_barrier()")
     assert_signal_barriers(producer, 2)
     assert_signal_barriers(consumer, 4)
     assert_write_barriers(producer, 3)

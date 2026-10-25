@@ -107,6 +107,14 @@ from enodia.tt.bench.resident_harness import (
     validate_resident_record,
     validate_run_budget_fits_outer_cap,
 )
+from enodia.tt.bench.resident_tables import (
+    build_table_evidence,
+    metadata_words,
+    table_word,
+)
+from enodia.tt.bench.resident_tables import (
+    enabled as tables_enabled,
+)
 from enodia.tt.bench.run_binding import (
     RunBindingError,
     current_run_id,
@@ -244,7 +252,7 @@ RESIDENT_PRODUCER_CB_INDEX = 20
 RESIDENT_CONSUMER_CB_INDEX = 21
 
 
-def _cb(ttnn: Any, *, index: int, core_ranges):
+def _cb(ttnn: Any, *, index: int, core_ranges, total_size: int = PAGE_BYTES):
     format_descriptor = ttnn.CBFormatDescriptor(
         buffer_index=index,
         data_format=ttnn.uint32,
@@ -252,7 +260,7 @@ def _cb(ttnn: Any, *, index: int, core_ranges):
         tile=ttnn.TileDescriptor(32, 32, False),
     )
     return ttnn.CBDescriptor(
-        total_size=PAGE_BYTES,
+        total_size=total_size,
         core_ranges=core_ranges,
         format_descriptors=[format_descriptor],
     )
@@ -319,12 +327,19 @@ def _program(
     timestamp_compile = ttnn.TensorAccessorArgs(timestamps).get_compile_time_args()
     consumer_stats_compile = ttnn.TensorAccessorArgs(consumer_stats).get_compile_time_args()
 
-    producer_compile = [*ring_compile, *control_compile, *producer_stats_compile]
+    active = tables_enabled(config)
+    metadata = tensors["table_metadata"] if active else producer_stats
+    tables = tensors["profile_tables"] if active else consumer_stats
+    metadata_compile = ttnn.TensorAccessorArgs(metadata).get_compile_time_args()
+    tables_compile = ttnn.TensorAccessorArgs(tables).get_compile_time_args()
+    producer_compile = [*ring_compile, *control_compile, *producer_stats_compile, *metadata_compile]
     consumer_compile = [
         *ring_compile,
         *producer_anchor_compile,
         *timestamp_compile,
         *consumer_stats_compile,
+        *metadata_compile,
+        *tables_compile,
     ]
     run_budget_low, run_budget_high = split_u64(
         run_budget_breakdown(config, watcher=watcher)["run_budget_ticks"]
@@ -341,6 +356,8 @@ def _program(
             config.ring_pages,
             run_budget_low,
             run_budget_high,
+            int(active),
+            _runtime_u32(metadata.buffer_address(), "table metadata address"),
         ],
     )
     consumer_args = _runtime_args(
@@ -357,6 +374,11 @@ def _program(
             config.cycle_budget,
             run_budget_low,
             run_budget_high,
+            int(active),
+            _runtime_u32(metadata.buffer_address(), "table metadata address"),
+            _runtime_u32(tables.buffer_address(), "profile tables address"),
+            config.table_bytes // PAGE_BYTES if active else 0,
+            int(config.swap_strategy == "prefetch"),
         ],
     )
     kernels = [
@@ -387,6 +409,14 @@ def _program(
         _cb(ttnn, index=RESIDENT_PRODUCER_CB_INDEX, core_ranges=producer_ranges),
         _cb(ttnn, index=RESIDENT_CONSUMER_CB_INDEX, core_ranges=consumer_ranges),
     ]
+    if active:
+        cbs.extend([
+            _cb(ttnn, index=22, core_ranges=producer_ranges),
+            _cb(ttnn, index=23, core_ranges=consumer_ranges),
+            _cb(ttnn, index=24, core_ranges=consumer_ranges,
+                total_size=config.table_bytes * (2 if config.swap_strategy == "prefetch" else 1)),
+            _cb(ttnn, index=25, core_ranges=consumer_ranges),
+        ])
     if return_parts:
         return kernels, semaphores, cbs
     return ttnn.ProgramDescriptor(kernels=kernels, semaphores=semaphores, cbs=cbs)
@@ -479,7 +509,7 @@ def _allocate_resident_tensors(ttnn: Any, device: Any, config: ResidentConfig) -
         device,
         ttnn.DRAM_MEMORY_CONFIG,
     )
-    return {
+    tensors = {
         "ring": ring,
         "control": control,
         "producer_anchor": producer_anchor,
@@ -487,6 +517,30 @@ def _allocate_resident_tensors(ttnn: Any, device: Any, config: ResidentConfig) -
         "producer_stats": producer_stats,
         "consumer_stats": consumer_stats,
     }
+    if tables_enabled(config):
+        import numpy as np
+
+        def preload(values):
+            host = ttnn.Tensor(np.asarray(values, dtype=np.uint32).reshape(1, -1, PAGE_WORDS),
+                               ttnn.uint32)
+            return ttnn.to_device(host, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+
+        try:
+            tensors["table_metadata"] = preload(metadata_words(config))
+            # Vectorize host generation; do not build a Python-int list per table.
+            # Keep a real accessor even for an all-unknown-identity positive control.
+            count = len(config.profile_tables)
+            words_per_table = config.table_bytes // 4
+            words = np.zeros((max(count, 1), words_per_table), dtype=np.uint32)
+            indices = np.arange(words_per_table, dtype=np.uint32)
+            for index, (config_id, generation, _) in enumerate(config.profile_tables):
+                words[index] = indices ^ table_word((config_id, generation), 0)
+            tensors["profile_tables"] = preload(words)
+            ttnn.synchronize_device(device, cq_id=0)
+        except Exception:
+            _deallocate_resident_tensors(ttnn, tensors)
+            raise
+    return tensors
 
 
 def _decode_resident_result(ttnn: Any, config: ResidentConfig, tensors: dict[str, Any]) -> dict[str, Any]:
@@ -501,9 +555,10 @@ def _decode_resident_result(ttnn: Any, config: ResidentConfig, tensors: dict[str
     frames_attempted = _device_word(producer_values[3], "frames attempted")
     frames_produced = _device_word(producer_values[1], "frames produced")
     frames_dropped = _device_word(producer_values[4], "frames dropped")
-    frames_consumed = min(
-        _device_word(consumer_values[1], "frames consumed"), config.frame_count
-    )
+    reported_consumed = _device_word(consumer_values[1], "frames consumed")
+    if tables_enabled(config) and reported_consumed > config.frame_count:
+        raise ResidentResultUnavailable("consumed frame count exceeds configured frame_count")
+    frames_consumed = min(reported_consumed, config.frame_count)
     raw_timestamps = [
         _device_word(timestamp_values[index, 0, 0, 0], f"timestamp {index} low word")
         | (_device_word(timestamp_values[index, 0, 0, 1], f"timestamp {index} high word") << 32)
@@ -529,7 +584,19 @@ def _decode_resident_result(ttnn: Any, config: ResidentConfig, tensors: dict[str
     kernel_error_flag = int(bool(producer_error or consumer_error))
     if kernel_error_flag != int(failure_classification.error_flag):
         raise ResidentResultUnavailable("kernel summary error flags are unavailable")
-    return {
+    table_evidence = None
+    if tables_enabled(config):
+        rows = [
+            [_device_word(timestamp_values[index, 0, 0, word], f"frame {index} word {word}")
+             for word in range(2, 8)]
+            for index in range(frames_consumed)
+        ]
+        summary = [_device_word(value, "table summary word") for value in consumer_values]
+        try:
+            table_evidence = build_table_evidence(config, rows, raw_timestamps, summary)
+        except ValueError as exc:
+            raise ResidentResultUnavailable(str(exc)) from exc
+    result = {
         "timestamps": raw_timestamps,
         "producer_full_count": producer_full_count,
         "consumer_empty_count": consumer_empty_count,
@@ -548,6 +615,9 @@ def _decode_resident_result(ttnn: Any, config: ResidentConfig, tensors: dict[str
         "consumer_failure": consumer_failure,
         "failure_check": failure_check,
     }
+    if table_evidence is not None:
+        result["table_swap"] = table_evidence
+    return result
 
 
 def _deallocate_resident_tensors(ttnn: Any, tensors: dict[str, Any]) -> None:
@@ -566,7 +636,10 @@ def _run_device(
         program = _program(ttnn, config, tensors, watcher=watcher)
         program_launch_ns = time.monotonic_ns()
         program_launch_utc = datetime.datetime.now(datetime.UTC).isoformat()
-        ttnn.generic_op(list(tensors.values()), program)
+        table_keys = {"table_metadata", "profile_tables"}
+        io_tensors = [tensor for name, tensor in tensors.items() if name in table_keys]
+        io_tensors.extend(tensor for name, tensor in tensors.items() if name not in table_keys)
+        ttnn.generic_op(io_tensors, program)
         ttnn.synchronize_device(device, cq_id=0)
         program_completion_ns = time.monotonic_ns()
         program_completion_utc = datetime.datetime.now(datetime.UTC).isoformat()
@@ -1833,6 +1906,11 @@ def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
         fixed_work_ticks_per_frame=args.fixed_work_ticks_per_frame,
         budget_aiclk_mhz=args.budget_aiclk_mhz,
         histogram_bin_ticks=args.histogram_bin_ticks,
+        profile_tables=tuple(args.profile_table),
+        switch_schedule=tuple(args.switch),
+        initial_identity=args.initial_identity,
+        table_bytes=args.table_bytes,
+        swap_strategy=args.swap_strategy,
         outer_timeout_cap_seconds=(
             800
             if args.condition == "newton_schulz" and args.outer_timeout_seconds == 800
@@ -1844,6 +1922,16 @@ def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
             else "issue12_timing_600s"
         ),
     )
+
+
+def _identity_words(value: str, count: int) -> tuple[int, ...]:
+    try:
+        words = tuple(int(word) for word in value.split(":"))
+        if len(words) != count:
+            raise ValueError
+        return words
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected {count} colon-separated integers") from exc
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -1874,6 +1962,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--calibrate", action="store_true")
     parser.add_argument("--calibration-duration-seconds", type=float, default=60.0)
     parser.add_argument("--target-seconds", type=float, default=500.0)
+    parser.add_argument("--profile-table", type=lambda value: _identity_words(value, 3),
+                        action="append", default=[], metavar="CONFIG:GENERATION:READY_FRAME")
+    parser.add_argument("--switch", type=lambda value: _identity_words(value, 3),
+                        action="append", default=[], metavar="FRAME:CONFIG:GENERATION")
+    parser.add_argument("--initial-identity", type=lambda value: _identity_words(value, 2),
+                        default=(0, 0), metavar="CONFIG:GENERATION")
+    parser.add_argument("--table-bytes", type=int, default=0)
+    parser.add_argument("--swap-strategy", choices=("copy_on_demand", "prefetch"),
+                        default="copy_on_demand")
     parser.add_argument("--watcher", action="store_true")
     return parser
 
@@ -2740,6 +2837,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         timing_evidence_reason=trace_timing_reason,
         load_record=resident_load_record,
+        table_swap=result.get("table_swap"),
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]
