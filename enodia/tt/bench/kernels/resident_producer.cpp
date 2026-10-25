@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "api/dataflow/dataflow_api.h"
+#include "resident_tables.h"
 
 namespace {
 // Keep resident CBs above the Newton-Schulz 0--19 ABI in a merged program.
@@ -52,6 +53,20 @@ void kernel_main() {
     const auto ring = TensorAccessor(ring_args, ring_address);
     const auto control = TensorAccessor(control_args, control_address);
     const auto stats = TensorAccessor(stats_args, stats_address);
+    constexpr auto metadata_args = TensorAccessorArgs<stats_args.next_compile_time_args_offset()>();
+    const std::uint32_t tables_enabled = get_arg_val<std::uint32_t>(8);
+    const auto metadata_accessor = TensorAccessor(metadata_args, get_arg_val<std::uint32_t>(9));
+    volatile tt_l1_ptr std::uint32_t* metadata = nullptr;
+    resident_tables::Identity identity{0, 0};
+    std::uint32_t segment = 0;
+    if (tables_enabled) {
+        cb_reserve_back(resident_tables::metadata_producer_cb, 1);
+        const auto address = get_write_ptr(resident_tables::metadata_producer_cb);
+        noc_async_read_page(0, metadata_accessor, address);
+        noc_async_read_barrier();
+        metadata = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(address);
+        identity = {metadata[2], metadata[3]};
+    }
 
     const std::uint64_t consumer_noc = control.get_noc_addr(0);
     const std::uint64_t noc_coord_mask = ~((std::uint64_t(1) << NOC_ADDR_COORD_SHIFT) - 1);
@@ -140,6 +155,13 @@ void kernel_main() {
         if (error_flag != 0) {
             break;
         }
+        if (tables_enabled) {
+            const std::uint32_t offset = resident_tables::schedule_offset(metadata);
+            while (segment < metadata[1] && attempted >= metadata[offset + 3 * segment]) {
+                identity = {metadata[offset + 3 * segment + 1], metadata[offset + 3 * segment + 2]};
+                segment += 1;
+            }
+        }
         if (slot_full) {
             // Drop-new policy: cadence advances without waiting or overwriting.
             producer_full_count += 1;
@@ -154,6 +176,12 @@ void kernel_main() {
             const std::uint16_t i = static_cast<std::uint16_t>((attempted + word) & 0x07FFu);
             const std::uint16_t q = static_cast<std::uint16_t>((3 * attempted + 5 * word) & 0x07FFu);
             source[word] = static_cast<std::uint32_t>(i) | (static_cast<std::uint32_t>(q) << 16);
+        }
+        if (tables_enabled) {
+            source[0] = identity.config;
+            source[1] = identity.generation;
+            source[2] = attempted;
+            source[3] = segment;
         }
         cb_push_back(cb_scratch, 1);
         cb_wait_front(cb_scratch, 1);

@@ -65,6 +65,12 @@ from enodia.tt.bench.resident_record import (
     validate_pair_analysis,
     validate_resident_record,
 )
+from enodia.tt.bench.resident_tables import (
+    TABLE_CONFIG_FIELDS,
+    enabled,
+    validate_table_evidence,
+    validate_tables,
+)
 from enodia.tt.bench.run_binding import validate_run_id
 from enodia.tt.bench.sampler_contract import (
     EXPLICIT_FINAL_SAMPLE,
@@ -142,8 +148,17 @@ class ResidentConfig:
     outer_timeout_cap_seconds: int = MAX_TIMING_TIMEOUT_SECONDS
     outer_timeout_cap_source: str = "issue12_timing_600s"
 
+    profile_tables: tuple[tuple[int, int, int], ...] = ()
+    switch_schedule: tuple[tuple[int, int, int], ...] = ()
+    initial_identity: tuple[int, int] = (0, 0)
+    table_bytes: int = 0
+    swap_strategy: str = "copy_on_demand"
+
     def as_record(self) -> dict[str, Any]:
         values = asdict(self)
+        if not enabled(self):
+            for name in TABLE_CONFIG_FIELDS:
+                values.pop(name)
         for name in ("producer_core", "consumer_core", "designated_timestamp_core"):
             values[name] = list(values[name])
         return values
@@ -296,7 +311,10 @@ def _uint32_positive_int(value: Any, name: str) -> int:
     return value
 
 
-def resident_l1_allocation_table(*, ring_pages: int, watcher: bool = False) -> list[dict[str, Any]]:
+def resident_l1_allocation_table(
+    *, ring_pages: int, watcher: bool = False, table_bytes: int = 0,
+    swap_strategy: str = "copy_on_demand",
+) -> list[dict[str, Any]]:
     """Return the authoritative resident L1 allocation ledger.
 
     Per-core rows: producer has one producer-anchor page, one producer CB page,
@@ -304,7 +322,9 @@ def resident_l1_allocation_table(*, ring_pages: int, watcher: bool = False) -> l
     one control page, one consumer CB page, and two semaphore words. Shared
     timestamp and producer/consumer stats tensors are DRAM allocations (zero
     L1 bytes). Watcher adds no resident tensor/CB/semaphore allocation.
-    Total bytes are the row sum: ``(ring_pages + 4) * PAGE_BYTES + 4 * 4``.
+    Legacy total: ``(ring_pages + 4) * PAGE_BYTES + 4 * 4``. With table
+    inputs, add two metadata pages, one switch-stats page, and one complete
+    table copy (two with prefetch).
     """
     rows = [
         {
@@ -378,14 +398,33 @@ def resident_l1_allocation_table(*, ring_pages: int, watcher: bool = False) -> l
             "placement": "none",
         },
     ]
+    if table_bytes:
+        copies = 2 if swap_strategy == "prefetch" else 1
+        rows.extend([
+            {"scope": "consumer_core", "component": "profile_table_copies",
+             "pages": table_bytes // PAGE_BYTES * copies, "bytes": table_bytes * copies,
+             "placement": CONSUMER_L1_PLACEMENT},
+            {"scope": "producer_core", "component": "table_metadata",
+             "pages": 1, "bytes": PAGE_BYTES, "placement": PRODUCER_L1_PLACEMENT},
+            {"scope": "consumer_core", "component": "table_metadata",
+             "pages": 1, "bytes": PAGE_BYTES, "placement": CONSUMER_L1_PLACEMENT},
+            {"scope": "consumer_core", "component": "switch_stats",
+             "pages": 1, "bytes": PAGE_BYTES, "placement": CONSUMER_L1_PLACEMENT},
+        ])
     if watcher:
-        rows[-1]["note"] = "Watcher instrumentation adds no host-accounted resident L1 allocation."
+        rows[9]["note"] = "Watcher instrumentation adds no host-accounted resident L1 allocation."
     return rows
 
 
-def resident_l1_allocation_bytes(*, ring_pages: int, watcher: bool = False) -> int:
+def resident_l1_allocation_bytes(
+    *, ring_pages: int, watcher: bool = False, table_bytes: int = 0,
+    swap_strategy: str = "copy_on_demand",
+) -> int:
     """Return the sum of :func:`resident_l1_allocation_table` bytes."""
-    return sum(row["bytes"] for row in resident_l1_allocation_table(ring_pages=ring_pages, watcher=watcher))
+    return sum(row["bytes"] for row in resident_l1_allocation_table(
+        ring_pages=ring_pages, watcher=watcher, table_bytes=table_bytes,
+        swap_strategy=swap_strategy,
+    ))
 
 
 def _validate_timestamp_limits(interval: int, budget: int, work: int) -> None:
@@ -440,8 +479,13 @@ def _validate_core_configuration(
     return producer, consumer, designated
 
 
-def _validate_l1_capacity(ring_pages: int, watcher: bool) -> None:
-    l1_bytes = resident_l1_allocation_bytes(ring_pages=ring_pages, watcher=watcher)
+def _validate_l1_capacity(config: ResidentConfig, watcher: bool) -> None:
+    ring_pages = config.ring_pages
+    l1_bytes = resident_l1_allocation_bytes(
+        ring_pages=ring_pages, watcher=watcher,
+        table_bytes=config.table_bytes if enabled(config) else 0,
+        swap_strategy=config.swap_strategy,
+    )
     if l1_bytes > MAX_RING_L1_BYTES:
         raise ResidentPreflightError(
             f"ring_pages={ring_pages} exceeds the L1 preflight budget "
@@ -521,7 +565,11 @@ def validate_configuration(
         config, interval, fixed_work_ticks
     )
     _validate_load_core_partition(producer, consumer, load_condition)
-    _validate_l1_capacity(ring_pages, watcher)
+    try:
+        validate_tables(config)
+    except (ValueError, TypeError) as exc:
+        raise ResidentPreflightError(str(exc)) from exc
+    _validate_l1_capacity(config, watcher)
     return ResidentConfig(
         frame_count=frame_count,
         frame_interval_ticks=interval,
@@ -537,6 +585,7 @@ def validate_configuration(
         budget_aiclk_mhz=budget_aiclk_mhz,
         outer_timeout_cap_seconds=timeout_cap,
         outer_timeout_cap_source=cap_source,
+        **{name: getattr(config, name) for name in TABLE_CONFIG_FIELDS},
     )
 
 
@@ -1404,6 +1453,7 @@ def build_measurement_record(
     num_command_queues: int = 2,
     load_record: Mapping[str, Any] | None = None,
     load_metadata: Mapping[str, Any] | None = None,
+    table_swap: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build and validate the committed-schema record without raw timestamps.
 
@@ -1427,7 +1477,10 @@ def build_measurement_record(
     once per consumed timestamp, so ``consumed_frame_count`` is its value at
     final download. A normal run satisfies
     ``attempted = produced + dropped``, ``aborted_attempts = 0``, and
-    ``consumed = produced``. An error run may stop during one started cadence
+    ``consumed = produced``. With Issue #119 tables, free counts retirement:
+    ``retired = consumed + identity_discards``; only consumed frames emit
+    timestamps, and occupancy becomes ``produced - retired``. An error run may
+    stop during one started cadence
     attempt and satisfies ``attempted = produced + dropped + aborted_attempts``
     with ``aborted_attempts`` constrained to 0 or 1; it still requires
     ``consumed <= produced`` and final ring occupancy ``produced - consumed``
@@ -1655,8 +1708,15 @@ def build_measurement_record(
     else:
         outlier_analysis = dict(outlier_analysis)
     outlier_analysis.setdefault("aiclk_source", aiclk_source)
+    discarded = 0
+    if enabled(config):
+        validate_table_evidence(config, table_swap, len(timestamp_values))
+        discarded = table_swap["discard_count"]
+    elif table_swap is not None:
+        raise ValueError("table swap evidence requires configured profiles or schedule")
+    retired = len(timestamp_values) + discarded
     attempted = config.frame_count if attempted_frame_count is None else attempted_frame_count
-    produced = len(timestamp_values) if produced_frame_count is None else produced_frame_count
+    produced = retired if produced_frame_count is None else produced_frame_count
     dropped = attempted - produced if dropped_frame_count is None else dropped_frame_count
     if any(
         isinstance(value, bool) or not isinstance(value, int) or value < 0
@@ -1675,7 +1735,7 @@ def build_measurement_record(
     ]
     frame_count_reached = attempted == config.frame_count and produced == attempted - dropped
     reason = termination_reason(
-        frame_count_reached=frame_count_reached and produced == len(timestamp_values),
+        frame_count_reached=frame_count_reached and produced == retired,
         failure_check=selected_failure,
         outer_timeout=False,
     )
@@ -1687,9 +1747,10 @@ def build_measurement_record(
         not failure_hint
         and frame_count_reached
         and aborted_attempts == 0
-        and produced == len(timestamp_values)
+        and produced == retired
+        and (table_swap is None or table_swap["checksum"]["passed"])
     )
-    if completed and dropped:
+    if completed and (dropped or discarded):
         status = "ok_with_drops"
     elif completed:
         status = "ok"
@@ -1977,6 +2038,14 @@ def build_measurement_record(
         "timing_evidence_reason": final_timing_reason,
         "outlier_analysis": dict(outlier_analysis),
     }
+    if table_swap is not None:
+        record["table_swap"] = dict(table_swap)
+        record["ring"]["discard_count"] = discarded
+        record["ring"]["retired_frame_count"] = retired
+        record["parameters"]["l1_allocation"] = resident_l1_allocation_table(
+            ring_pages=config.ring_pages, watcher=watcher, table_bytes=config.table_bytes,
+            swap_strategy=config.swap_strategy,
+        )
     if trace_metadata is not None and trace_metadata.get("interval_extrema_policy") is not None:
         record["power_trace_interval_extrema_policy"] = trace_metadata[
             "interval_extrema_policy"
@@ -2052,6 +2121,11 @@ def build_rejection_record(
         "dropped_frame_count": 0,
         "aborted_attempts": 0,
     }
+    if enabled(config) and type(config.table_bytes) is int and type(config.ring_pages) is int:
+        parameters["l1_allocation"] = resident_l1_allocation_table(
+            ring_pages=config.ring_pages, table_bytes=config.table_bytes,
+            swap_strategy=config.swap_strategy,
+        )
     result: dict[str, Any] = {
         "resident_record_schema": RESIDENT_RECORD_SCHEMA_MARKER,
         "schema": RESIDENT_RECORD_SCHEMA,

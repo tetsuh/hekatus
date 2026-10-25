@@ -85,7 +85,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Any, Self
 
 from enodia.tt.bench.clock_source_audit import (
@@ -3650,6 +3650,32 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
     return mismatches
 
 
+def _table_retired(record: Mapping[str, Any], consumed: int) -> int:
+    """Validate optional Issue #119 evidence; legacy records keep consumed semantics."""
+    from enodia.tt.bench.resident_tables import TABLE_CONFIG_FIELDS, validate_table_evidence
+
+    params = record.get("parameters", {})
+    if record.get("status") == "rejected":
+        return consumed
+    active = bool(params.get("profile_tables") or params.get("switch_schedule") or params.get("table_bytes"))
+    evidence = record.get("table_swap")
+    if not active:
+        if evidence is not None:
+            raise ValueError("table swap evidence has no configured profiles or schedule")
+        return consumed
+    config = SimpleNamespace(**{name: params.get(name) for name in TABLE_CONFIG_FIELDS},
+                             frame_count=params.get("frame_count"))
+    validate_table_evidence(config, evidence, consumed)
+    ring = record["ring"]
+    if not _is_int(ring.get("discard_count"), nonnegative=True) or ring.get("discard_count") != evidence["discard_count"]:
+        raise ValueError("ring discard count differs from table evidence")
+    if not _is_int(ring.get("retired_frame_count"), nonnegative=True) or ring.get("retired_frame_count") != evidence["retired_frame_count"]:
+        raise ValueError("ring retirement count differs from table evidence")
+    if evidence["checksum"]["passed"] is False and record.get("status") != "error":
+        raise ValueError("checksum failure must mark the record as error")
+    return evidence["retired_frame_count"]
+
+
 def _check_ring(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
     invariant = "ring.counts"
     ring = _mapping(record, "ring")
@@ -3686,11 +3712,17 @@ def _check_ring(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[
     expected_consumed = len(ctx.timestamps) if ctx.timestamps is not None else _value(record, "raw_timestamps.count")
     if _is_int(consumed, nonnegative=True) and _is_int(expected_consumed, nonnegative=True) and consumed != expected_consumed:
         mismatches.append(_mismatch(invariant, ("ring.consumed_frame_count", "raw_timestamps.count"), "ring consumed_frame_count must equal raw timestamp count"))
+    retired = consumed
+    if _is_int(consumed, nonnegative=True):
+        try:
+            retired = _table_retired(record, consumed)
+        except (ValueError, TypeError, AttributeError, KeyError) as exc:
+            mismatches.append(_mismatch(invariant, ("table_swap", "ring"), str(exc)))
     if _is_int(consumed, nonnegative=True) and _is_int(produced, nonnegative=True):
-        if consumed > produced:
+        if retired > produced:
             mismatches.append(_mismatch(invariant, ("ring.consumed_frame_count", "ring.produced_frame_count"), "consumed_frame_count cannot exceed produced_frame_count"))
         ring_pages = params.get("ring_pages")
-        if _is_int(ring_pages, nonnegative=True) and produced - consumed > ring_pages:
+        if _is_int(ring_pages, nonnegative=True) and produced - retired > ring_pages:
             mismatches.append(_mismatch(invariant, ("ring.produced_frame_count", "ring.consumed_frame_count", "parameters.ring_pages"), "ring occupancy produced-consumed exceeds ring_pages"))
     if "frames_consumed" in record and record.get("frames_consumed") != consumed:
         mismatches.append(_mismatch(invariant, ("frames_consumed", "ring.consumed_frame_count"), "top-level frames_consumed must equal ring consumed_frame_count"))

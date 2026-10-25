@@ -53,6 +53,17 @@ data plane a second source of truth (design.md §4, ADR-0008).
 - Losing a few frames while tables are rebuilt (a depth or focus change) is
   expected behaviour, not a fault
 
+The Issue #119 resident instrument exercises this existing rule with synthetic
+profile tables and a preloaded card-side switch schedule. Its cumulative free
+semaphore counts **retired** pages (processed plus identity-discarded), while
+its timestamp stream contains processed pages only. Identity discard counts
+remain separate from producer-full drop-new overflow. The optional
+`resident-table-swap-v1` record extension reports these counts, the first
+processed-frame completion interval in each schedule segment, and host
+verification of every processed frame's identity-specific checksum. The
+legacy instrument configuration emits no extension. See
+[the instrument wire format and board-free limits](resident-table-swap.md).
+
 ## Policy 1: stream (processing path, lossless)
 
 Use: enodia → each diaplous data-driven processing system
