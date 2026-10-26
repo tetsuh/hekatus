@@ -2495,6 +2495,15 @@ def main(argv: list[str] | None = None) -> int:
     if raw_timestamps_path is not None:
         _write_raw_timestamps(raw_timestamps_path, result["timestamps"])
 
+    # Table controls have resident work but no separate load kernel. Bind their
+    # clock weighting to the same captured host program span as loaded runs.
+    table_program_clock = condition == "unloaded" and tables_enabled(config)
+    use_program_interval = condition != "unloaded" or table_program_clock
+    power_trace_interval = {
+        "load_interval_start": result.get("program_launch_utc") if use_program_interval else None,
+        "load_interval_end": result.get("program_completion_utc") if use_program_interval else None,
+        "load_interval_source": "issue118_program_host_interval" if use_program_interval else None,
+    }
     runner_output_dir = _runner_output_dir()
     live_power_trace_path: Path | None = None
     run_id: str | None = None
@@ -2530,7 +2539,7 @@ def main(argv: list[str] | None = None) -> int:
                         "power trace artifact exists without a wrapper run identity"
                     )
                 raise FileNotFoundError("wrapper run identity is absent")
-            if condition in {"newton_schulz", "dram"}:
+            if condition in {"newton_schulz", "dram"} or table_program_clock:
                 _wait_for_power_trace_sample(
                     live_power_trace_path,
                     result["program_completion_utc"],
@@ -2555,26 +2564,17 @@ def main(argv: list[str] | None = None) -> int:
                     source_path=live_power_trace_path,
                     sampler_interval_seconds=sampler_interval,
                     coverage_definition=ONE_INTERVAL_BOUND,
-                    load_interval_start=(
-                        result.get("program_launch_utc")
-                        if condition != "unloaded"
-                        else None
-                    ),
-                    load_interval_end=(
-                        result.get("program_completion_utc")
-                        if condition != "unloaded"
-                        else None
-                    ),
-                    load_interval_source=(
-                        "issue118_program_host_interval"
-                        if condition != "unloaded"
-                        else None
-                    ),
+                    **power_trace_interval,
                     include_issue118_metadata=True,
                     require_all_rows_valid=True,
                     error_factory=lambda kind, error: kind,
                 ),
             )
+            if (
+                table_program_clock
+                and trace_metadata.get("aiclk_mhz_load_interval_weighted") is None
+            ):
+                raise RunBindingError("resident program AICLK interval is not bounded by the trace")
             power_trace_path = snapshot_path
             power_trace = snapshot_path.name
         except RunBindingError as exc:
@@ -2815,15 +2815,7 @@ def main(argv: list[str] | None = None) -> int:
         outlier_analysis=outlier_analysis,
         run_start=run_start.isoformat(),
         run_end=run_end.isoformat(),
-        load_interval_start=(
-            result.get("program_launch_utc") if condition != "unloaded" else None
-        ),
-        load_interval_end=(
-            result.get("program_completion_utc") if condition != "unloaded" else None
-        ),
-        load_interval_source=(
-            "issue118_program_host_interval" if condition != "unloaded" else None
-        ),
+        **power_trace_interval,
         program_launch_ns=result.get("program_launch_ns"),
         program_completion_ns=result.get("program_completion_ns"),
         watcher=watcher,

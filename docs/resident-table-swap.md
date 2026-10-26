@@ -95,6 +95,18 @@ records; no kernel timestamp row or summary word is added for this observation.
 The parameters retain the complete schedule, table configuration, and L1 ledger.
 Legacy records need no new fields.
 
+For newly collected table-enabled unloaded runs (including no-switch controls),
+AICLK weighting uses the captured host program launch-to-completion UTC span,
+paired with the existing monotonic program interval and card tick interval.
+The host waits for the existing sampler's completion-bracketing row before
+freezing the snapshot, using the same bounded wait as loaded runs. The record
+reuses the existing `issue118_program_host_interval` provenance and UTC/monotonic
+binding check; `clock.aiclk_mhz` remains the in-run maximum, not the weighted
+value. Missing bracketing evidence is rejected rather than extrapolated. This
+host-only path changes neither the kernels nor the container wrapper, leaves
+legacy no-table behavior intact, and does not reinterpret existing records.
+Watcher runs remain diagnostic-only even with a complete weighted-clock span.
+
 ## Board-free demonstration
 
 ```sh
