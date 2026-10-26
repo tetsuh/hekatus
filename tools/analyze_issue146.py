@@ -2184,6 +2184,25 @@ def _exploratory_clock_row(
     return arb["aiclk_arb_max_frequency_mhz"], {}
 
 
+def _observed_capture_cadence(
+    loaded_timestamps: Sequence[int], *, last_group_end: int | None
+) -> dict[str, Any]:
+    if len(loaded_timestamps) >= 2:
+        return {
+            "observed_capture_interval_seconds": statistics.median(
+                later - earlier for earlier, later in pairwise(loaded_timestamps)
+            ) / 1_000_000_000.0,
+        }
+    return {
+        "observed_capture_interval_seconds": None,
+        "observed_capture_interval_reason": (
+            "final group end is unavailable"
+            if last_group_end is None
+            else "fewer than two loaded rows"
+        ),
+    }
+
+
 def _exploratory_onsets(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -2209,7 +2228,6 @@ def _exploratory_onsets(
             "within the loaded interval, before telemetry exclusions), not the planned interval"
         ),
         "planned_capture_interval_seconds": spec.trace_interval_seconds,
-        "observed_capture_interval_seconds": None,
         "skipped_rows": [],
     }
     if last_group_end is None:
@@ -2236,17 +2254,7 @@ def _exploratory_onsets(
                 onset_clock = (timestamp - first) / 1_000_000_000.0
         if "reasons" in skipped:
             selection["skipped_rows"].append(skipped)
-    if len(loaded_timestamps) >= 2:
-        selection["observed_capture_interval_seconds"] = statistics.median(
-            later - earlier
-            for earlier, later in pairwise(loaded_timestamps)
-        ) / 1_000_000_000.0
-    else:
-        selection["observed_capture_interval_reason"] = (
-            "final group end is unavailable"
-            if last_group_end is None
-            else "fewer than two loaded rows"
-        )
+    selection.update(_observed_capture_cadence(loaded_timestamps, last_group_end=last_group_end))
     # Preserve the historical full-trace power scan, including pre/post-load rows.
     onset_power = next(
         (
