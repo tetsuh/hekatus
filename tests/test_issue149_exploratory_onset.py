@@ -27,6 +27,59 @@ def test_clock_onset_uses_full_loaded_trace(dip_seconds, expected) -> None:
     assert onset["first_board_power_within_5_w_of_limit_seconds"] is None
 
 
+@pytest.mark.parametrize("interval_seconds", [2.0, 1.0])
+def test_clock_cadence_distinguishes_observed_smoke_interval_from_plan(interval_seconds) -> None:
+    record = _record("C018", 1)
+    record["run"].update(
+        mode="smoke", observed_duration_seconds=40.0, workload_end_monotonic_ns=40_000_000_000
+    )
+    record["groups"]["groups"] = [{"start_monotonic_ns": 0, "end_monotonic_ns": 40_000_000_000}]
+    record["trace"]["run_end_monotonic_ns"] = 40_000_000_000
+    record["trace"]["samples"] = [
+        _trace_row(offset, configuration_id="C018")
+        for offset in range(0, 41, int(interval_seconds))
+    ]
+    record["trace"]["sampling_interval_seconds"] = interval_seconds
+    record["trace_cadence"].update(
+        host_sampler_interval_seconds=interval_seconds,
+        test_override=interval_seconds != 1.0,
+    )
+    _rehash(record)
+    result = analyzer.analyze_smoke([record], plan=_plan())
+    assert all(gate["pass"] is True for gate in result["gates"])
+    report = result["runs"][0]["run"]
+    assert report["status"] == "ok"
+    selection = report["exploratory"]["onset"]["clock_selection"]
+    assert selection["observed_capture_interval_seconds"] == interval_seconds
+    assert selection["planned_capture_interval_seconds"] == 1.0
+    assert "sample_capture_interval_seconds" not in selection
+
+
+def test_clock_cadence_uses_loaded_timestamp_median_before_telemetry_exclusions() -> None:
+    rows = [
+        _trace_row(-100, configuration_id="C018"),
+        _trace_row(0, configuration_id="C018"),
+        _trace_row(2, configuration_id="C018", aiclk_arb_max_raw="malformed"),
+        _trace_row(6, configuration_id="C018", board_power_w=0.0),
+        _trace_row(14, configuration_id="C018"),
+        _trace_row(190, configuration_id="C018"),
+        _trace_row(1000, configuration_id="C018"),
+    ]
+    selection = _exploratory_onset(rows)["clock_selection"]
+    assert selection["observed_capture_interval_seconds"] == 4.0
+    assert selection["planned_capture_interval_seconds"] == 1.0
+
+
+@pytest.mark.parametrize("offsets", [[], [-1, 190], [10]])
+def test_clock_cadence_is_unavailable_with_fewer_than_two_loaded_rows(offsets) -> None:
+    selection = _exploratory_onset(
+        [_trace_row(offset, configuration_id="C018") for offset in offsets]
+    )["clock_selection"]
+    assert selection["observed_capture_interval_seconds"] is None
+    assert selection["observed_capture_interval_reason"] == "fewer than two loaded rows"
+    assert selection["planned_capture_interval_seconds"] == 1.0
+
+
 def _exploratory_onset(rows, *, last_group_end=190_000_000_000, configuration_id="C018"):
     # Keep the registered plateau reference separate from the raw onset candidates.
     plateau = [_trace_row(60, configuration_id=configuration_id)]
@@ -143,3 +196,8 @@ def test_clock_missing_load_end_is_explicit_and_does_not_change_power() -> None:
     assert onset["first_board_power_within_5_w_of_limit_seconds"] == 10.0
     assert onset["clock_selection"]["status"] == "not_evaluable"
     assert onset["clock_selection"]["reason"] == "final group end is unavailable"
+    assert onset["clock_selection"]["observed_capture_interval_seconds"] is None
+    assert (
+        onset["clock_selection"]["observed_capture_interval_reason"]
+        == "final group end is unavailable"
+    )

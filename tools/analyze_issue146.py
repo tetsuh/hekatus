@@ -2205,13 +2205,16 @@ def _exploratory_onsets(
         ),
         "cadence_note": (
             "first captured observation, not exact transition time; limited to "
-            "the observed telemetry cadence"
+            "the observed telemetry cadence (median consecutive timestamp spacing "
+            "within the loaded interval, before telemetry exclusions), not the planned interval"
         ),
-        "sample_capture_interval_seconds": spec.trace_interval_seconds,
+        "planned_capture_interval_seconds": spec.trace_interval_seconds,
+        "observed_capture_interval_seconds": None,
         "skipped_rows": [],
     }
     if last_group_end is None:
         selection["reason"] = "final group end is unavailable"
+    loaded_timestamps: list[int] = []
     power_reference = _glitch_power_reference(plateau_rows)
     onset_clock = None
     for index, row in enumerate(rows):
@@ -2224,6 +2227,7 @@ def _exploratory_onsets(
         elif timestamp >= last_group_end:
             skipped["reasons"] = ["post_load"]
         else:
+            loaded_timestamps.append(timestamp)
             frequency, exclusion = _exploratory_clock_row(
                 row, power_reference=power_reference, glitch_mode=glitch_mode, spec=spec
             )
@@ -2232,6 +2236,17 @@ def _exploratory_onsets(
                 onset_clock = (timestamp - first) / 1_000_000_000.0
         if "reasons" in skipped:
             selection["skipped_rows"].append(skipped)
+    if len(loaded_timestamps) >= 2:
+        selection["observed_capture_interval_seconds"] = statistics.median(
+            later - earlier
+            for earlier, later in pairwise(loaded_timestamps)
+        ) / 1_000_000_000.0
+    else:
+        selection["observed_capture_interval_reason"] = (
+            "final group end is unavailable"
+            if last_group_end is None
+            else "fewer than two loaded rows"
+        )
     # Preserve the historical full-trace power scan, including pre/post-load rows.
     onset_power = next(
         (
