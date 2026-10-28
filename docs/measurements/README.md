@@ -374,6 +374,76 @@ DRAM predictions exceed the required 40-second margin and are below the
 800-second cap and a <=760-second prediction gate; its predicted whole-run time
 is 728.391 seconds. The three runs may proceed only on this pushed commit.
 
+## Issue #119 resident table swap (2026-10-28)
+
+All five records use published harness
+`11fa346e2de9ddb4e310bc751a33719542eea21d`, p150a device 0 serial
+`000004033191411c`, PCI `0000:06:00.0`, firmware 19.6.0.0, KMD 2.11.0,
+and the digest-pinned tt-metal 0.75.0 image recorded in each JSON. They use
+500,000 attempted frames, a 1,350,000-tick period, no Watcher, a two-second
+power sampler, three 262,144-byte tables, and a 600-second runner/container
+cap. The ten switching indices are 25,000 + 50,000k (k=0..9), with identities
+cycling `(1,1),(2,1),(0,1)` from `(0,1)`. Control has no switches but uses
+all three ready tables and the same resident program.
+
+| Record | Status | Checksums / discards / overflow |
+|---|---|---|
+| [2026-10-28-p150a-issue119-control-500000-adr0005.json](2026-10-28-p150a-issue119-control-500000-adr0005.json) | accepted timing evidence | 500,000 matched; discard 0; overflow 0 |
+| [2026-10-28-p150a-issue119-demand-500000-adr0005.json](2026-10-28-p150a-issue119-demand-500000-adr0005.json) | accepted timing evidence | 500,000 matched; each switch discard 0; overflow 0 |
+| [2026-10-28-p150a-issue119-prefetch-500000-adr0005.json](2026-10-28-p150a-issue119-prefetch-500000-adr0005.json) | accepted timing evidence; additional authorized prefetch run | 500,000 matched; each switch discard 0; overflow 0 |
+| [2026-10-28-p150a-issue119-prefetch-attempt1-coverage-incomplete-500000-adr0005.json](2026-10-28-p150a-issue119-prefetch-attempt1-coverage-incomplete-500000-adr0005.json) | not timing evidence (coverage incomplete, discard counts valid) | 500,000 matched; each switch discard 0; overflow 0 |
+| [2026-10-28-p150a-issue119-readiness-delay5-demand-500000-adr0005.json](2026-10-28-p150a-issue119-readiness-delay5-demand-500000-adr0005.json) | not timing evidence (coverage incomplete, discard counts valid); optional positive-control purpose satisfied | 499,995 matched; first switching segment discard 5, remaining nine 0; overflow 0 |
+
+Every JSON has a same-stem `-power.csv` companion containing the exact frozen
+snapshot bytes, not the later live sampler contents. The original snapshot
+basename is also retained because the current positive-duration policy's
+strict validator requires its run-ID-bound path. The JSON's `power_trace`
+points to that original basename, and
+`issue119_measurement.published_power_companion` binds the same-stem copy by
+SHA-256 and byte count. The snapshot-to-record mapping is:
+
+| Record row | Original run-bound snapshot (also published) |
+|---|---|
+| Control | `resident-power-snapshot-20261028T132805304038486582532023Z-1.csv` |
+| Demand | `resident-power-snapshot-20261028T13371985971463379501395Z-1.csv` |
+| Accepted prefetch | `resident-power-snapshot-20261028T1524135870396262926424814Z-1.csv` |
+| Original prefetch attempt | `resident-power-snapshot-20261028T1346518590621411004614604Z-1.csv` |
+| Readiness-delay positive control | `resident-power-snapshot-20261028T1508429201193922536622923Z-1.csv` |
+
+Every original runner field is preserved. The added `issue119_measurement`
+block records publication disposition, original artifact hashes, per-switch
+steady-median differences, same-session control differences, power aggregation,
+idle telemetry, and cleanup facts. Original records and uint64 timestamp
+artifacts remain hash-bound external raw artifacts. The unchanged production
+harness verifies every downloaded checksum row; board-free revalidation also
+recomputes the complete expected checksum digest. Raw summary words and raw
+checksum rows are not separately retained by that harness; decoded
+summary words 18/19 are reported as discard/retired counts, not as raw dumps.
+
+After placement, strict `validate_resident_record(..., strict_trace=True)`
+passes for control, demand, and accepted prefetch. For the original prefetch
+and readiness-delay records it reports exactly
+`power trace coverage_complete is not true`; those failures and the original
+`timing_evidence=false` flags are retained, not reclassified as validator
+passes. `validate_table_evidence` passes for all five. The optional delay
+row's counter purpose does not require timing eligibility: table `(1,1)`
+becomes ready at attempted frame 25,005, after exactly five counted discards
+in the segment beginning at 25,000.
+
+The two coverage gaps exceed the existing two-second bound by 10.867 ms
+(original prefetch) and 1.685 ms (delay). Later live rows are not added to
+either snapshot. [Issue #157](https://github.com/tetsuh/hekatus/issues/157)
+tracks the capture-order race in a separate PR. The accepted prefetch is a
+new run identity, not an alteration of the original attempt. No reset was
+performed; all five runs had empty pre/post/chown container inventories.
+
+The accepted rows' interval distributions, weighted program-span AICLK,
+ASIC power, prediction comparison, and scope limits are summarized in
+[design §12](../design.md#issue-119-resident-table-swap-result-2026-10-28).
+Stage 1 Watcher diagnostics are not timing evidence. There is one accepted
+timing observation per condition; no significance claim or product wall-time
+claim is made (ADR-0015).
+
 ## Issue #118 measured results (2026-10-11)
 
 The accepted three-run sequence used the same harness commit
