@@ -1736,12 +1736,20 @@ def _row_nominal(
     return omit_gddr or _nominal_gddr(decoded, spec)
 
 
+def _glitch_power_reference(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Use all registered plateau samples, including glitch candidates."""
+    board_values = [finite(row.get("board_power_w"), field="board_power_w") for row in rows]
+    return {
+        "board_values": board_values,
+        "board_median": statistics.median(board_values) if board_values else 0.0,
+        "board_sample_sd": statistics.stdev(board_values) if len(board_values) >= 2 else 0.0,
+    }
+
+
 def _decoded_glitch_rows(
     rows: Sequence[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    board_values = [finite(row.get("board_power_w"), field="board_power_w") for row in rows]
-    median = statistics.median(board_values) if board_values else 0.0
-    sample_sd = statistics.stdev(board_values) if len(board_values) >= 2 else 0.0
+    power_reference = _glitch_power_reference(rows)
     decoded_rows: list[dict[str, Any]] = []
     errors: list[str] = []
     for index, row in enumerate(rows):
@@ -1752,9 +1760,7 @@ def _decoded_glitch_rows(
                     "row_index": index,
                     "arb": decode_arbiter_row(row),
                     "gddr": _all_gddr_values(row),
-                    "board_values": board_values,
-                    "board_median": median,
-                    "board_sample_sd": sample_sd,
+                    **power_reference,
                 }
             )
         except Issue146AnalysisError as exc:
@@ -2159,24 +2165,97 @@ def _exploratory_residuals_and_indices(
     return residuals, signed_deltas, indices
 
 
+def _exploratory_clock_row(
+    row: Mapping[str, Any],
+    *,
+    power_reference: Mapping[str, Any],
+    glitch_mode: str,
+    spec: _PlanSpec,
+) -> tuple[int | None, dict[str, Any]]:
+    """Decode this raw row, never the plateau-only decoded_by_id map."""
+    try:
+        arb = decode_arbiter_row(row)
+        decoded = {"row": row, "arb": arb, "gddr": _all_gddr_values(row), **power_reference}
+        reasons, whole_sample, _r6_only = _glitch_reasons(decoded, mode=glitch_mode, spec=spec)
+    except Issue146AnalysisError as exc:
+        return None, {"reasons": ["telemetry_decode_error"], "error": str(exc)}
+    if whole_sample:
+        return None, {"reasons": reasons}
+    return arb["aiclk_arb_max_frequency_mhz"], {}
+
+
+def _observed_capture_cadence(
+    loaded_timestamps: Sequence[int], *, last_group_end: int | None
+) -> dict[str, Any]:
+    if len(loaded_timestamps) >= 2:
+        return {
+            "observed_capture_interval_seconds": statistics.median(
+                later - earlier for earlier, later in pairwise(loaded_timestamps)
+            ) / 1_000_000_000.0,
+        }
+    return {
+        "observed_capture_interval_seconds": None,
+        "observed_capture_interval_reason": (
+            "final group end is unavailable"
+            if last_group_end is None
+            else "fewer than two loaded rows"
+        ),
+    }
+
+
 def _exploratory_onsets(
     rows: Sequence[Mapping[str, Any]],
-    decoded_by_id: Mapping[int, Mapping[str, Any]],
     *,
     first: int,
+    last_group_end: int | None,
+    plateau_rows: Sequence[Mapping[str, Any]],
+    glitch_mode: str,
     spec: _PlanSpec,
-) -> tuple[float | None, float | None]:
-    onset_clock = next(
-        (
-            (int(row["timestamp_monotonic_ns"]) - first) / 1_000_000_000.0
-            for row in rows
-            if decoded_by_id.get(id(row), {})
-            .get("arb", {})
-            .get("aiclk_arb_max_frequency_mhz", spec.asic_fmax)
-            < spec.asic_fmax
+) -> tuple[float | None, float | None, dict[str, Any]]:
+    """Report capture-grid onset, without feeding exclusions back into criteria."""
+    selection: dict[str, Any] = {
+        "status": "reported" if last_group_end is not None else "not_evaluable",
+        "first_launch_start_monotonic_ns": first,
+        "last_group_end_monotonic_ns": last_group_end,
+        "interval": "first launch <= timestamp < final group end (including group gaps)",
+        "glitch_policy": (
+            "existing whole-sample predicates; all-plateau power reference; "
+            "R6-only exclusions do not exclude clock samples"
         ),
-        None,
-    )
+        "cadence_note": (
+            "first captured observation, not exact transition time; limited to "
+            "the observed telemetry cadence (median consecutive timestamp spacing "
+            "within the loaded interval, before telemetry exclusions), not the planned interval"
+        ),
+        "planned_capture_interval_seconds": spec.trace_interval_seconds,
+        "skipped_rows": [],
+    }
+    if last_group_end is None:
+        selection["reason"] = "final group end is unavailable"
+    loaded_timestamps: list[int] = []
+    power_reference = _glitch_power_reference(plateau_rows)
+    onset_clock = None
+    for index, row in enumerate(rows):
+        timestamp = int(row["timestamp_monotonic_ns"])
+        skipped: dict[str, Any] = {"row_index": index, "timestamp_monotonic_ns": timestamp}
+        if timestamp < first:
+            skipped["reasons"] = ["pre_load"]
+        elif last_group_end is None:
+            skipped["reasons"] = ["load_end_unavailable"]
+        elif timestamp >= last_group_end:
+            skipped["reasons"] = ["post_load"]
+        else:
+            loaded_timestamps.append(timestamp)
+            frequency, exclusion = _exploratory_clock_row(
+                row, power_reference=power_reference, glitch_mode=glitch_mode, spec=spec
+            )
+            skipped.update(exclusion)
+            if onset_clock is None and frequency is not None and frequency < spec.asic_fmax:
+                onset_clock = (timestamp - first) / 1_000_000_000.0
+        if "reasons" in skipped:
+            selection["skipped_rows"].append(skipped)
+    selection.update(_observed_capture_cadence(loaded_timestamps, last_group_end=last_group_end))
+    # Preserve the historical full-trace power scan, including pre/post-load rows.
     onset_power = next(
         (
             (int(row["timestamp_monotonic_ns"]) - first) / 1_000_000_000.0
@@ -2186,7 +2265,7 @@ def _exploratory_onsets(
         ),
         None,
     )
-    return onset_clock, onset_power
+    return onset_clock, onset_power, selection
 
 
 def _exploratory_drift(
@@ -2376,11 +2455,21 @@ def _exploratory(
     residuals, signed_deltas, indices = _exploratory_residuals_and_indices(
         retained, decoded_by_id
     )
-    onset_clock, onset_power = _exploratory_onsets(rows, decoded_by_id, first=first, spec=spec)
     dip_start, dip_end = (
         (spec.smoke_start_seconds, spec.smoke_end_seconds)
         if mode == "smoke"
         else (spec.plateau_start_seconds, spec.plateau_end_seconds)
+    )
+    onset_clock, onset_power, clock_selection = _exploratory_onsets(
+        rows,
+        first=first,
+        last_group_end=last_group_end,
+        plateau_rows=select_plateau_rows(
+            rows, first_launch_start_monotonic_ns=first,
+            start_seconds=dip_start, end_seconds=dip_end,
+        ),
+        glitch_mode=_glitch_mode_for_run(configuration_id, mode),
+        spec=spec,
     )
     if configuration_id in {"C081", "C108"}:
         try:
@@ -2453,6 +2542,7 @@ def _exploratory(
         "onset": {
             "first_aiclk_arb_max_below_fmax_seconds": onset_clock,
             "first_board_power_within_5_w_of_limit_seconds": onset_power,
+            "clock_selection": clock_selection,
         },
         "current_dips": current_dips,
         "control_dips": control_dips,
