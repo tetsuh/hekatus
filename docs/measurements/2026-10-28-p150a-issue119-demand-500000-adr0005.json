@@ -1,0 +1,6954 @@
+{
+  "resident_record_schema": 1,
+  "schema": "issue-12-stage-1-resident-v1",
+  "issue": 12,
+  "stage": 1,
+  "status": "ok",
+  "num_command_queues": 2,
+  "outer_timeout_cap_seconds": 600,
+  "outer_timeout_cap_source": "issue12_timing_600s",
+  "outer_timeout_cap_aiclk_source": "configured_budget",
+  "device_open": {
+    "num_command_queues": 2,
+    "resident_command_queue": 0,
+    "transfer_command_queue": 1
+  },
+  "load": {
+    "schema": "issue-118-load-v1",
+    "issue": 118,
+    "condition": "unloaded",
+    "status": "valid",
+    "valid_evidence": true,
+    "device_open": {
+      "num_command_queues": 2,
+      "resident_command_queue": 0,
+      "transfer_command_queue": 1
+    },
+    "num_command_queues": 2,
+    "command_queue_roles": {
+      "cq0": "resident_program",
+      "cq1": "transfer_only_for_host_condition"
+    },
+    "core_partition": {
+      "grid": [
+        11,
+        10
+      ],
+      "resident_cores": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "worker_cores": [
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          7,
+          0
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          9,
+          0
+        ],
+        [
+          10,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          1
+        ],
+        [
+          7,
+          1
+        ],
+        [
+          8,
+          1
+        ],
+        [
+          9,
+          1
+        ],
+        [
+          10,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          6,
+          2
+        ],
+        [
+          7,
+          2
+        ],
+        [
+          8,
+          2
+        ],
+        [
+          9,
+          2
+        ],
+        [
+          10,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          6,
+          3
+        ],
+        [
+          7,
+          3
+        ],
+        [
+          8,
+          3
+        ],
+        [
+          9,
+          3
+        ],
+        [
+          10,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          6,
+          4
+        ],
+        [
+          7,
+          4
+        ],
+        [
+          8,
+          4
+        ],
+        [
+          9,
+          4
+        ],
+        [
+          10,
+          4
+        ],
+        [
+          0,
+          5
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          6,
+          5
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          8,
+          5
+        ],
+        [
+          9,
+          5
+        ],
+        [
+          10,
+          5
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          1,
+          6
+        ],
+        [
+          2,
+          6
+        ],
+        [
+          3,
+          6
+        ],
+        [
+          4,
+          6
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          6,
+          6
+        ],
+        [
+          7,
+          6
+        ],
+        [
+          8,
+          6
+        ],
+        [
+          9,
+          6
+        ],
+        [
+          10,
+          6
+        ],
+        [
+          0,
+          7
+        ],
+        [
+          1,
+          7
+        ],
+        [
+          2,
+          7
+        ],
+        [
+          3,
+          7
+        ],
+        [
+          4,
+          7
+        ],
+        [
+          5,
+          7
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          7,
+          7
+        ],
+        [
+          8,
+          7
+        ],
+        [
+          9,
+          7
+        ],
+        [
+          10,
+          7
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          1,
+          8
+        ],
+        [
+          2,
+          8
+        ],
+        [
+          3,
+          8
+        ],
+        [
+          4,
+          8
+        ],
+        [
+          5,
+          8
+        ],
+        [
+          6,
+          8
+        ],
+        [
+          7,
+          8
+        ],
+        [
+          8,
+          8
+        ],
+        [
+          9,
+          8
+        ],
+        [
+          10,
+          8
+        ],
+        [
+          0,
+          9
+        ],
+        [
+          1,
+          9
+        ],
+        [
+          2,
+          9
+        ],
+        [
+          3,
+          9
+        ],
+        [
+          4,
+          9
+        ],
+        [
+          5,
+          9
+        ],
+        [
+          6,
+          9
+        ],
+        [
+          7,
+          9
+        ],
+        [
+          8,
+          9
+        ],
+        [
+          9,
+          9
+        ],
+        [
+          10,
+          9
+        ]
+      ],
+      "worker_count": 108,
+      "non_overlap": true
+    },
+    "repeat_count": 0,
+    "selected_repeat_count": 0,
+    "load": {
+      "condition": "unloaded",
+      "repeat_count": 0,
+      "outer_repetitions": null,
+      "fixed_work": false,
+      "data_dependent_exit": false
+    },
+    "coverage": {
+      "verdict": "not_applicable",
+      "valid": true,
+      "covered": true
+    },
+    "card_load_interval": null,
+    "card_load_worker_intervals": null,
+    "card_load_interval_statistics": null,
+    "throughput_interval": null,
+    "host_load_interval": null,
+    "resident_frame_interval": {
+      "first_ticks": 2458040564,
+      "last_ticks": 677456655174,
+      "clock": "card_riscv_wall_clock"
+    }
+  },
+  "termination_reason": "frame_count",
+  "parameters": {
+    "frame_count": 500000,
+    "frame_interval_ticks": 1350000,
+    "producer_core": [
+      0,
+      0
+    ],
+    "consumer_core": [
+      1,
+      0
+    ],
+    "ring_pages": 4,
+    "work_per_frame": 64,
+    "designated_timestamp_core": [
+      1,
+      0
+    ],
+    "cycle_budget": 10000000,
+    "outer_timeout_seconds": 600,
+    "histogram_bin_ticks": 1,
+    "fixed_work_ticks_per_frame": 100000,
+    "budget_aiclk_mhz": 1350,
+    "outer_timeout_cap_seconds": 600,
+    "outer_timeout_cap_source": "issue12_timing_600s",
+    "profile_tables": [
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        1,
+        1,
+        0
+      ],
+      [
+        2,
+        1,
+        0
+      ]
+    ],
+    "switch_schedule": [
+      [
+        25000,
+        1,
+        1
+      ],
+      [
+        75000,
+        2,
+        1
+      ],
+      [
+        125000,
+        0,
+        1
+      ],
+      [
+        175000,
+        1,
+        1
+      ],
+      [
+        225000,
+        2,
+        1
+      ],
+      [
+        275000,
+        0,
+        1
+      ],
+      [
+        325000,
+        1,
+        1
+      ],
+      [
+        375000,
+        2,
+        1
+      ],
+      [
+        425000,
+        0,
+        1
+      ],
+      [
+        475000,
+        1,
+        1
+      ]
+    ],
+    "initial_identity": [
+      0,
+      1
+    ],
+    "table_bytes": 262144,
+    "swap_strategy": "copy_on_demand",
+    "outer_timeout_cap_aiclk_source": "configured_budget",
+    "run_budget": {
+      "frame_count": 500000,
+      "frame_interval_ticks": 1350000,
+      "pacing_ticks": 675000000000,
+      "per_frame_work_budget_ticks": 100000,
+      "cycle_budget_ticks_per_frame": 10000000,
+      "fixed_work_ticks": 50000000000,
+      "critical_path_ticks": 675000000000,
+      "schedule_ticks": 675135000000,
+      "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
+      "startup_allowance_ms": 100,
+      "budget_aiclk_mhz": 1350,
+      "startup_allowance_ticks": 135000000,
+      "safety_margin_percent": 10,
+      "watcher_overhead_margin_percent": 0,
+      "total_margin_percent": 10,
+      "safety_margin_ticks": 67513500000,
+      "run_budget_ticks": 742648500000,
+      "budget_aiclk_source": "configured_budget"
+    },
+    "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
+    "attempted_frame_count": 500000,
+    "produced_frame_count": 500000,
+    "dropped_frame_count": 0,
+    "aborted_attempts": 0,
+    "frame_interval_is_not_acquisition_rate_claim": true,
+    "frame_interval_note": "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate.",
+    "l1_allocation": [
+      {
+        "scope": "consumer_core",
+        "component": "ring_storage",
+        "pages": 4,
+        "bytes": 16384,
+        "placement": "consumer L1"
+      },
+      {
+        "scope": "consumer_core",
+        "component": "control_page",
+        "pages": 1,
+        "bytes": 4096,
+        "placement": "consumer L1"
+      },
+      {
+        "scope": "consumer_core",
+        "component": "consumer_cb_page",
+        "pages": 1,
+        "bytes": 4096,
+        "placement": "consumer L1"
+      },
+      {
+        "scope": "consumer_core",
+        "component": "ready_done_semaphores",
+        "pages": 0,
+        "bytes": 8,
+        "placement": "consumer L1"
+      },
+      {
+        "scope": "producer_core",
+        "component": "producer_anchor_page",
+        "pages": 1,
+        "bytes": 4096,
+        "placement": "producer L1"
+      },
+      {
+        "scope": "producer_core",
+        "component": "producer_cb_page",
+        "pages": 1,
+        "bytes": 4096,
+        "placement": "producer L1"
+      },
+      {
+        "scope": "producer_core",
+        "component": "free_error_semaphores",
+        "pages": 0,
+        "bytes": 8,
+        "placement": "producer L1"
+      },
+      {
+        "scope": "shared",
+        "component": "timestamps_DRAM",
+        "pages": 0,
+        "bytes": 0,
+        "placement": "DRAM"
+      },
+      {
+        "scope": "shared",
+        "component": "producer_consumer_stats_DRAM",
+        "pages": 0,
+        "bytes": 0,
+        "placement": "DRAM"
+      },
+      {
+        "scope": "shared",
+        "component": "watcher_extra_resident_allocation",
+        "pages": 0,
+        "bytes": 0,
+        "placement": "none"
+      },
+      {
+        "scope": "consumer_core",
+        "component": "profile_table_copies",
+        "pages": 64,
+        "bytes": 262144,
+        "placement": "consumer L1"
+      },
+      {
+        "scope": "producer_core",
+        "component": "table_metadata",
+        "pages": 1,
+        "bytes": 4096,
+        "placement": "producer L1"
+      },
+      {
+        "scope": "consumer_core",
+        "component": "table_metadata",
+        "pages": 1,
+        "bytes": 4096,
+        "placement": "consumer L1"
+      },
+      {
+        "scope": "consumer_core",
+        "component": "switch_stats",
+        "pages": 1,
+        "bytes": 4096,
+        "placement": "consumer L1"
+      }
+    ]
+  },
+  "clock": {
+    "name": "RISCV_DEBUG_REG_WALL_CLOCK_L",
+    "timestamp_api": "get_timestamp_32b",
+    "timestamp_semantics": "32-bit low word, software-extended (wrap-tracked)",
+    "width_bits": 64,
+    "interval_unit": "device_clock_ticks",
+    "frequency_source": "AICLK",
+    "aiclk_mhz": 1350,
+    "aiclk_source": "run_trace_samples",
+    "aiclk_observation_phase": "post_run",
+    "aiclk_selection": "in_run_maximum",
+    "aiclk_mhz_in_run_min": 800.0,
+    "aiclk_mhz_in_run_max": 1350.0,
+    "aiclk_mhz_load_interval_weighted": 1349.7440279956625,
+    "aiclk_mhz_load_interval_weighted_source": "load_interval_trace_samples",
+    "aiclk_mhz_for_elapsed_seconds": 1350.0,
+    "aiclk_source_for_elapsed_seconds": "run_trace_samples",
+    "aiclk_selection_for_elapsed_seconds": "in_run_maximum",
+    "aiclk_observation": "valid in-run power trace samples",
+    "designated_core": [
+      1,
+      0
+    ],
+    "cross_core_correlation": "out_of_scope"
+  },
+  "timestamp_attribution": {
+    "status": "open",
+    "consumer_completion": {
+      "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK",
+      "core": [
+        1,
+        0
+      ]
+    },
+    "producer_write": {
+      "available": false,
+      "clock": "producer-local RISCV_DEBUG_REG_WALL_CLOCK",
+      "core": [
+        0,
+        0
+      ],
+      "reason": "The producer and consumer call get_timestamp_32b() on different cores. The source has no same-designated-core producer stamp without changing the pacing kernel, so producer-versus-consumer attribution remains open."
+    }
+  },
+  "clock_source_evidence": {
+    "toolchain": "tt-metal v0.75.0",
+    "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:254-255",
+    "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
+    "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
+    "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
+    "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
+    "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
+    "cross_core_note": "intervals use only the designated consumer core; cross-core correlation is out of scope",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "audit_status": "audited"
+  },
+  "work_ticks": {
+    "minimum": 2569,
+    "maximum": 38109,
+    "valid": true,
+    "unit": "device_clock_ticks"
+  },
+  "startup": {
+    "configured_allowance_ms": 100,
+    "configured_allowance_ticks": 135000000,
+    "budget_aiclk_mhz": 1350,
+    "budget_aiclk_source": "configured_budget",
+    "observed_ticks": 49600,
+    "observed_valid": true,
+    "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK_L; 32-bit low word, software-extended (wrap-tracked)"
+  },
+  "histogram": {
+    "N": 499999,
+    "min_ticks": 1314466,
+    "max_ticks": 1385560,
+    "percentiles": {
+      "p50": {
+        "status": "ok",
+        "minimum_samples": 40,
+        "value_ticks": 1349999.0
+      },
+      "p99": {
+        "status": "ok",
+        "minimum_samples": 2000,
+        "value_ticks": 1350040.0
+      },
+      "p99_9": {
+        "status": "ok",
+        "minimum_samples": 20000,
+        "value_ticks": 1350047.0
+      },
+      "p99_99": {
+        "status": "ok",
+        "minimum_samples": 200000,
+        "value_ticks": 1350073.0
+      }
+    },
+    "histogram": {
+      "bin_width_ticks": 1,
+      "bins": [
+        {
+          "start_ticks": 1314466,
+          "end_ticks": 1314467,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314495,
+          "end_ticks": 1314496,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314509,
+          "end_ticks": 1314510,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314535,
+          "end_ticks": 1314536,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314543,
+          "end_ticks": 1314544,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314571,
+          "end_ticks": 1314572,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314622,
+          "end_ticks": 1314623,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314660,
+          "end_ticks": 1314661,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314899,
+          "end_ticks": 1314900,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314940,
+          "end_ticks": 1314941,
+          "count": 1
+        },
+        {
+          "start_ticks": 1314969,
+          "end_ticks": 1314970,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349919,
+          "end_ticks": 1349920,
+          "count": 11
+        },
+        {
+          "start_ticks": 1349920,
+          "end_ticks": 1349921,
+          "count": 8
+        },
+        {
+          "start_ticks": 1349922,
+          "end_ticks": 1349923,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349923,
+          "end_ticks": 1349924,
+          "count": 21
+        },
+        {
+          "start_ticks": 1349924,
+          "end_ticks": 1349925,
+          "count": 54
+        },
+        {
+          "start_ticks": 1349925,
+          "end_ticks": 1349926,
+          "count": 13
+        },
+        {
+          "start_ticks": 1349926,
+          "end_ticks": 1349927,
+          "count": 18
+        },
+        {
+          "start_ticks": 1349927,
+          "end_ticks": 1349928,
+          "count": 22
+        },
+        {
+          "start_ticks": 1349928,
+          "end_ticks": 1349929,
+          "count": 152
+        },
+        {
+          "start_ticks": 1349929,
+          "end_ticks": 1349930,
+          "count": 30
+        },
+        {
+          "start_ticks": 1349930,
+          "end_ticks": 1349931,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349931,
+          "end_ticks": 1349932,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349932,
+          "end_ticks": 1349933,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349933,
+          "end_ticks": 1349934,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349934,
+          "end_ticks": 1349935,
+          "count": 32
+        },
+        {
+          "start_ticks": 1349935,
+          "end_ticks": 1349936,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349936,
+          "end_ticks": 1349937,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349947,
+          "end_ticks": 1349948,
+          "count": 17
+        },
+        {
+          "start_ticks": 1349948,
+          "end_ticks": 1349949,
+          "count": 57
+        },
+        {
+          "start_ticks": 1349949,
+          "end_ticks": 1349950,
+          "count": 431
+        },
+        {
+          "start_ticks": 1349950,
+          "end_ticks": 1349951,
+          "count": 59
+        },
+        {
+          "start_ticks": 1349951,
+          "end_ticks": 1349952,
+          "count": 397
+        },
+        {
+          "start_ticks": 1349952,
+          "end_ticks": 1349953,
+          "count": 386
+        },
+        {
+          "start_ticks": 1349953,
+          "end_ticks": 1349954,
+          "count": 130
+        },
+        {
+          "start_ticks": 1349954,
+          "end_ticks": 1349955,
+          "count": 2013
+        },
+        {
+          "start_ticks": 1349955,
+          "end_ticks": 1349956,
+          "count": 2223
+        },
+        {
+          "start_ticks": 1349956,
+          "end_ticks": 1349957,
+          "count": 3273
+        },
+        {
+          "start_ticks": 1349957,
+          "end_ticks": 1349958,
+          "count": 1200
+        },
+        {
+          "start_ticks": 1349958,
+          "end_ticks": 1349959,
+          "count": 1664
+        },
+        {
+          "start_ticks": 1349959,
+          "end_ticks": 1349960,
+          "count": 2570
+        },
+        {
+          "start_ticks": 1349960,
+          "end_ticks": 1349961,
+          "count": 1284
+        },
+        {
+          "start_ticks": 1349961,
+          "end_ticks": 1349962,
+          "count": 1620
+        },
+        {
+          "start_ticks": 1349962,
+          "end_ticks": 1349963,
+          "count": 1366
+        },
+        {
+          "start_ticks": 1349963,
+          "end_ticks": 1349964,
+          "count": 1297
+        },
+        {
+          "start_ticks": 1349964,
+          "end_ticks": 1349965,
+          "count": 3169
+        },
+        {
+          "start_ticks": 1349965,
+          "end_ticks": 1349966,
+          "count": 1880
+        },
+        {
+          "start_ticks": 1349966,
+          "end_ticks": 1349967,
+          "count": 1251
+        },
+        {
+          "start_ticks": 1349967,
+          "end_ticks": 1349968,
+          "count": 2180
+        },
+        {
+          "start_ticks": 1349968,
+          "end_ticks": 1349969,
+          "count": 894
+        },
+        {
+          "start_ticks": 1349969,
+          "end_ticks": 1349970,
+          "count": 1158
+        },
+        {
+          "start_ticks": 1349970,
+          "end_ticks": 1349971,
+          "count": 398
+        },
+        {
+          "start_ticks": 1349971,
+          "end_ticks": 1349972,
+          "count": 712
+        },
+        {
+          "start_ticks": 1349972,
+          "end_ticks": 1349973,
+          "count": 191
+        },
+        {
+          "start_ticks": 1349973,
+          "end_ticks": 1349974,
+          "count": 379
+        },
+        {
+          "start_ticks": 1349974,
+          "end_ticks": 1349975,
+          "count": 232
+        },
+        {
+          "start_ticks": 1349975,
+          "end_ticks": 1349976,
+          "count": 4
+        },
+        {
+          "start_ticks": 1349976,
+          "end_ticks": 1349977,
+          "count": 320
+        },
+        {
+          "start_ticks": 1349977,
+          "end_ticks": 1349978,
+          "count": 498
+        },
+        {
+          "start_ticks": 1349978,
+          "end_ticks": 1349979,
+          "count": 10
+        },
+        {
+          "start_ticks": 1349979,
+          "end_ticks": 1349980,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349980,
+          "end_ticks": 1349981,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349981,
+          "end_ticks": 1349982,
+          "count": 4
+        },
+        {
+          "start_ticks": 1349982,
+          "end_ticks": 1349983,
+          "count": 6
+        },
+        {
+          "start_ticks": 1349983,
+          "end_ticks": 1349984,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349984,
+          "end_ticks": 1349985,
+          "count": 36
+        },
+        {
+          "start_ticks": 1349985,
+          "end_ticks": 1349986,
+          "count": 149
+        },
+        {
+          "start_ticks": 1349986,
+          "end_ticks": 1349987,
+          "count": 214
+        },
+        {
+          "start_ticks": 1349987,
+          "end_ticks": 1349988,
+          "count": 480
+        },
+        {
+          "start_ticks": 1349988,
+          "end_ticks": 1349989,
+          "count": 3681
+        },
+        {
+          "start_ticks": 1349989,
+          "end_ticks": 1349990,
+          "count": 5123
+        },
+        {
+          "start_ticks": 1349990,
+          "end_ticks": 1349991,
+          "count": 11220
+        },
+        {
+          "start_ticks": 1349991,
+          "end_ticks": 1349992,
+          "count": 7803
+        },
+        {
+          "start_ticks": 1349992,
+          "end_ticks": 1349993,
+          "count": 7287
+        },
+        {
+          "start_ticks": 1349993,
+          "end_ticks": 1349994,
+          "count": 18805
+        },
+        {
+          "start_ticks": 1349994,
+          "end_ticks": 1349995,
+          "count": 44240
+        },
+        {
+          "start_ticks": 1349995,
+          "end_ticks": 1349996,
+          "count": 24657
+        },
+        {
+          "start_ticks": 1349996,
+          "end_ticks": 1349997,
+          "count": 19479
+        },
+        {
+          "start_ticks": 1349997,
+          "end_ticks": 1349998,
+          "count": 24463
+        },
+        {
+          "start_ticks": 1349998,
+          "end_ticks": 1349999,
+          "count": 28288
+        },
+        {
+          "start_ticks": 1349999,
+          "end_ticks": 1350000,
+          "count": 40267
+        },
+        {
+          "start_ticks": 1350000,
+          "end_ticks": 1350001,
+          "count": 35768
+        },
+        {
+          "start_ticks": 1350001,
+          "end_ticks": 1350002,
+          "count": 25403
+        },
+        {
+          "start_ticks": 1350002,
+          "end_ticks": 1350003,
+          "count": 15021
+        },
+        {
+          "start_ticks": 1350003,
+          "end_ticks": 1350004,
+          "count": 31322
+        },
+        {
+          "start_ticks": 1350004,
+          "end_ticks": 1350005,
+          "count": 19082
+        },
+        {
+          "start_ticks": 1350005,
+          "end_ticks": 1350006,
+          "count": 24426
+        },
+        {
+          "start_ticks": 1350006,
+          "end_ticks": 1350007,
+          "count": 6571
+        },
+        {
+          "start_ticks": 1350007,
+          "end_ticks": 1350008,
+          "count": 7455
+        },
+        {
+          "start_ticks": 1350008,
+          "end_ticks": 1350009,
+          "count": 2786
+        },
+        {
+          "start_ticks": 1350009,
+          "end_ticks": 1350010,
+          "count": 1237
+        },
+        {
+          "start_ticks": 1350010,
+          "end_ticks": 1350011,
+          "count": 2363
+        },
+        {
+          "start_ticks": 1350011,
+          "end_ticks": 1350012,
+          "count": 406
+        },
+        {
+          "start_ticks": 1350012,
+          "end_ticks": 1350013,
+          "count": 269
+        },
+        {
+          "start_ticks": 1350013,
+          "end_ticks": 1350014,
+          "count": 520
+        },
+        {
+          "start_ticks": 1350014,
+          "end_ticks": 1350015,
+          "count": 4
+        },
+        {
+          "start_ticks": 1350015,
+          "end_ticks": 1350016,
+          "count": 223
+        },
+        {
+          "start_ticks": 1350016,
+          "end_ticks": 1350017,
+          "count": 318
+        },
+        {
+          "start_ticks": 1350017,
+          "end_ticks": 1350018,
+          "count": 128
+        },
+        {
+          "start_ticks": 1350018,
+          "end_ticks": 1350019,
+          "count": 3
+        },
+        {
+          "start_ticks": 1350019,
+          "end_ticks": 1350020,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350020,
+          "end_ticks": 1350021,
+          "count": 2
+        },
+        {
+          "start_ticks": 1350022,
+          "end_ticks": 1350023,
+          "count": 4
+        },
+        {
+          "start_ticks": 1350023,
+          "end_ticks": 1350024,
+          "count": 6
+        },
+        {
+          "start_ticks": 1350024,
+          "end_ticks": 1350025,
+          "count": 53
+        },
+        {
+          "start_ticks": 1350025,
+          "end_ticks": 1350026,
+          "count": 637
+        },
+        {
+          "start_ticks": 1350026,
+          "end_ticks": 1350027,
+          "count": 217
+        },
+        {
+          "start_ticks": 1350027,
+          "end_ticks": 1350028,
+          "count": 955
+        },
+        {
+          "start_ticks": 1350028,
+          "end_ticks": 1350029,
+          "count": 1232
+        },
+        {
+          "start_ticks": 1350029,
+          "end_ticks": 1350030,
+          "count": 2811
+        },
+        {
+          "start_ticks": 1350030,
+          "end_ticks": 1350031,
+          "count": 3768
+        },
+        {
+          "start_ticks": 1350031,
+          "end_ticks": 1350032,
+          "count": 13809
+        },
+        {
+          "start_ticks": 1350032,
+          "end_ticks": 1350033,
+          "count": 6475
+        },
+        {
+          "start_ticks": 1350033,
+          "end_ticks": 1350034,
+          "count": 4722
+        },
+        {
+          "start_ticks": 1350034,
+          "end_ticks": 1350035,
+          "count": 2685
+        },
+        {
+          "start_ticks": 1350035,
+          "end_ticks": 1350036,
+          "count": 2783
+        },
+        {
+          "start_ticks": 1350036,
+          "end_ticks": 1350037,
+          "count": 7400
+        },
+        {
+          "start_ticks": 1350037,
+          "end_ticks": 1350038,
+          "count": 1493
+        },
+        {
+          "start_ticks": 1350038,
+          "end_ticks": 1350039,
+          "count": 1618
+        },
+        {
+          "start_ticks": 1350039,
+          "end_ticks": 1350040,
+          "count": 954
+        },
+        {
+          "start_ticks": 1350040,
+          "end_ticks": 1350041,
+          "count": 739
+        },
+        {
+          "start_ticks": 1350041,
+          "end_ticks": 1350042,
+          "count": 707
+        },
+        {
+          "start_ticks": 1350042,
+          "end_ticks": 1350043,
+          "count": 610
+        },
+        {
+          "start_ticks": 1350043,
+          "end_ticks": 1350044,
+          "count": 555
+        },
+        {
+          "start_ticks": 1350044,
+          "end_ticks": 1350045,
+          "count": 495
+        },
+        {
+          "start_ticks": 1350045,
+          "end_ticks": 1350046,
+          "count": 520
+        },
+        {
+          "start_ticks": 1350046,
+          "end_ticks": 1350047,
+          "count": 960
+        },
+        {
+          "start_ticks": 1350047,
+          "end_ticks": 1350048,
+          "count": 163
+        },
+        {
+          "start_ticks": 1350048,
+          "end_ticks": 1350049,
+          "count": 123
+        },
+        {
+          "start_ticks": 1350049,
+          "end_ticks": 1350050,
+          "count": 12
+        },
+        {
+          "start_ticks": 1350050,
+          "end_ticks": 1350051,
+          "count": 43
+        },
+        {
+          "start_ticks": 1350051,
+          "end_ticks": 1350052,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350058,
+          "end_ticks": 1350059,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350059,
+          "end_ticks": 1350060,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350060,
+          "end_ticks": 1350061,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350061,
+          "end_ticks": 1350062,
+          "count": 2
+        },
+        {
+          "start_ticks": 1350063,
+          "end_ticks": 1350064,
+          "count": 3
+        },
+        {
+          "start_ticks": 1350064,
+          "end_ticks": 1350065,
+          "count": 4
+        },
+        {
+          "start_ticks": 1350065,
+          "end_ticks": 1350066,
+          "count": 3
+        },
+        {
+          "start_ticks": 1350066,
+          "end_ticks": 1350067,
+          "count": 9
+        },
+        {
+          "start_ticks": 1350067,
+          "end_ticks": 1350068,
+          "count": 4
+        },
+        {
+          "start_ticks": 1350068,
+          "end_ticks": 1350069,
+          "count": 2
+        },
+        {
+          "start_ticks": 1350069,
+          "end_ticks": 1350070,
+          "count": 9
+        },
+        {
+          "start_ticks": 1350070,
+          "end_ticks": 1350071,
+          "count": 99
+        },
+        {
+          "start_ticks": 1350071,
+          "end_ticks": 1350072,
+          "count": 16
+        },
+        {
+          "start_ticks": 1350072,
+          "end_ticks": 1350073,
+          "count": 62
+        },
+        {
+          "start_ticks": 1350073,
+          "end_ticks": 1350074,
+          "count": 22
+        },
+        {
+          "start_ticks": 1350075,
+          "end_ticks": 1350076,
+          "count": 3
+        },
+        {
+          "start_ticks": 1350076,
+          "end_ticks": 1350077,
+          "count": 29
+        },
+        {
+          "start_ticks": 1350081,
+          "end_ticks": 1350082,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350097,
+          "end_ticks": 1350098,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385043,
+          "end_ticks": 1385044,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385048,
+          "end_ticks": 1385049,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385064,
+          "end_ticks": 1385065,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385374,
+          "end_ticks": 1385375,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385444,
+          "end_ticks": 1385445,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385447,
+          "end_ticks": 1385448,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385453,
+          "end_ticks": 1385454,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385510,
+          "end_ticks": 1385511,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385537,
+          "end_ticks": 1385538,
+          "count": 1
+        },
+        {
+          "start_ticks": 1385560,
+          "end_ticks": 1385561,
+          "count": 1
+        }
+      ]
+    },
+    "sample_definition": "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded."
+  },
+  "ring": {
+    "producer_full_count": 0,
+    "consumer_empty_count": 500000,
+    "attempted_frame_count": 500000,
+    "produced_frame_count": 500000,
+    "consumed_frame_count": 500000,
+    "dropped_frame_count": 0,
+    "aborted_attempts": 0,
+    "overflow_count": 0,
+    "synchronization": "ring pointers and control metadata only",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
+    "discard_count": 0,
+    "retired_frame_count": 500000
+  },
+  "failure_check": {
+    "code": 0,
+    "name": "none",
+    "source": "none"
+  },
+  "cycle_budget": {
+    "budget_ticks": 10000000,
+    "unit": "device_clock_ticks",
+    "scope": "per_frame_fixed_work",
+    "run_budget_ticks": 742648500000,
+    "exceeded": false,
+    "error_flag": 0
+  },
+  "raw_timestamps": {
+    "count": 500000,
+    "sha256": "46e4e32d8ff2b067fd1fe3ec815f347aa1bf4ef67fc9f1bc9ec314a5eab6ecae"
+  },
+  "resident_tick_interval": {
+    "clock": "card_riscv_wall_clock",
+    "start_ticks": 2458040564,
+    "end_ticks": 677456655174,
+    "elapsed_ticks": 674998614610,
+    "timestamp_semantics": "wrap-tracked_extended"
+  },
+  "power_trace": "resident-power-snapshot-20261028T13371985971463379501395Z-1.csv",
+  "power_trace_sample_count": 230,
+  "power_trace_csv_row_count": 230,
+  "power_trace_valid_row_count": 230,
+  "power_trace_in_run_valid_row_count": 229,
+  "power_trace_sha256": "8d6ad4d62beddad8c45306f57504672cdb6b4e12f5b6569dceb48ac3f4766291",
+  "aiclk_mhz_in_run_min": 800.0,
+  "aiclk_mhz_in_run_max": 1350.0,
+  "aiclk_mhz_load_interval_weighted": 1349.7440279956625,
+  "aiclk_mhz_load_interval_weighted_source": "load_interval_trace_samples",
+  "power_trace_in_run_samples": [
+    {
+      "timestamp_utc": "2026-10-28T13:37:22.809554+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "60.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:25.042017+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "61.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:27.280261+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "61.3"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:29.516009+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "61.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:31.757839+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "61.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:33.996837+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "62.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:36.234412+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "62.7"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:38.474962+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "63.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:40.713873+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "63.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:42.954420+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "63.7"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:45.193512+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "64.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:47.434729+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "64.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:49.669454+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "64.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:51.910266+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "64.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:54.149097+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "64.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:56.387344+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:37:58.622050+00:00",
+      "power_w": "77.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:00.855773+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:03.090174+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:05.330921+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:07.572762+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:09.813141+00:00",
+      "power_w": "77.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:12.070002+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.3"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:14.316713+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.7"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:16.557544+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:18.797310+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:21.038329+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:23.285273+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:25.521893+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:27.761836+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:30.001694+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.3"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:32.239341+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:34.477794+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.7"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:36.716292+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:38.957270+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.7"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:41.197472+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.7"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:43.438814+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:45.677506+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:47.917014+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:50.156434+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.7"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:52.393792+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:54.633764+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:56.873966+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:38:59.112885+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:01.354974+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:03.591012+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:05.831666+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:08.070810+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:10.310992+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:12.545836+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:14.784711+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:17.021486+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:19.258072+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:21.495976+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:23.739869+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:25.980463+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:28.219976+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:30.452292+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:32.686910+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:34.922990+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:37.160383+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:39.399370+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:41.638756+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:43.877302+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:46.117862+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:48.357089+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:50.595181+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:52.835186+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:55.074002+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:57.313945+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:39:59.555310+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:01.800006+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:04.037335+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:06.275326+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:08.517926+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:10.759428+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:13.000387+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:15.232039+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:17.466264+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:19.703691+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:21.941987+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:24.181520+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:26.420668+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:28.660218+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:30.896580+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:33.137002+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:35.376523+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:37.616137+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:39.855789+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:42.094396+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:44.327089+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:46.564352+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:48.805097+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:51.045711+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:53.286180+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:55.527079+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:40:57.767705+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:00.002327+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:02.241701+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:04.481401+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:06.722012+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:08.961482+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:11.199457+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.3"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:13.433974+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:15.666339+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:17.905750+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:20.144017+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:22.381073+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:24.613797+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:26.851293+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:29.083229+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:31.317273+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:33.553415+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:35.787701+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:38.021692+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:40.260867+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:42.499109+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:44.746921+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:46.986068+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:49.224641+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:51.463658+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:53.700707+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:55.936367+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:41:58.172762+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:00.404828+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:02.640505+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:04.874371+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:07.114478+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:09.352956+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:11.592846+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:13.833328+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:16.072174+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:18.312562+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:20.551581+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:22.791728+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:25.031600+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:27.270529+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:29.518315+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:31.762845+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:34.008279+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:36.243193+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:38.477541+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:40.715198+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:42.954509+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:45.190366+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:47.423933+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:49.664834+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:51.904772+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:54.144391+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:56.382778+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:42:58.620806+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:00.856779+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:03.093571+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:05.333693+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:07.570869+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:09.804457+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:12.042706+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:14.282731+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:16.516132+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:18.749460+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:20.983777+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:23.222264+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:25.461949+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:27.700334+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:29.933079+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:32.166819+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:34.405081+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:36.644125+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:38.885316+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:41.126519+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:43.367636+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:45.599462+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:47.835349+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:50.070597+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:52.309542+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:54.548189+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:56.779586+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:43:59.011457+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:01.246348+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:03.480619+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:05.715348+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:07.955543+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:10.195669+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:12.431196+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:14.662641+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:16.901475+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:19.142047+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:21.380232+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:23.618089+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:25.853106+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:28.092018+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:30.333133+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:32.572280+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:34.803410+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:37.044380+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:39.288674+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:41.527932+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:43.766876+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:46.006081+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:48.245363+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:50.480104+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:52.718310+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:54.957662+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:57.196220+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:44:59.436152+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:01.670435+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:03.910519+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:06.145733+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:08.378105+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:10.612524+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:12.846439+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:15.080785+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:17.321362+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:19.555611+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:21.795098+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:24.033309+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:26.271875+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:28.509913+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:30.749668+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:32.989250+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:35.228754+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:37.468393+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:39.707409+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:41.948252+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:44.190952+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:46.428357+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:48.665950+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:50.900502+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-28T13:45:53.134760+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    }
+  ],
+  "power_trace_absent_reason": null,
+  "power_trace_coverage": {
+    "coverage": {
+      "definition": "one_interval_bound",
+      "nonempty": true,
+      "timestamps_parse": true,
+      "timestamps_ordered": true,
+      "first_at_or_before_run_start": true,
+      "last_at_or_after_run_end": false,
+      "last_within_interval_bound": true,
+      "readable": true,
+      "complete": true,
+      "usable_row_count": 230,
+      "invalid_row_count": 0
+    },
+    "coverage_complete": true,
+    "coverage_definition": "one_interval_bound",
+    "first_timestamp": "2026-10-28T13:37:20.565956+00:00",
+    "last_timestamp": "2026-10-28T13:45:53.134760+00:00",
+    "run_start": "2026-10-28T13:37:20.739718+00:00",
+    "run_end": "2026-10-28T13:45:55.087276+00:00",
+    "valid_row_count": 230,
+    "in_run_valid_row_count": 229
+  },
+  "power_clock_provenance": {
+    "trace": "resident-power-snapshot-20261028T13371985971463379501395Z-1.csv",
+    "file": "resident-power-snapshot-20261028T13371985971463379501395Z-1.csv",
+    "columns": [
+      "timestamp_utc",
+      "power_w",
+      "aiclk_mhz",
+      "asic_temp_c"
+    ],
+    "sha256": "8d6ad4d62beddad8c45306f57504672cdb6b4e12f5b6569dceb48ac3f4766291",
+    "readable": true,
+    "nonempty": true,
+    "csv_row_count": 230,
+    "sample_count": 230,
+    "valid_row_count": 230,
+    "in_run_valid_row_count": 229,
+    "timestamps_parse": true,
+    "timestamps_ordered": true,
+    "first_timestamp": "2026-10-28T13:37:20.565956+00:00",
+    "last_timestamp": "2026-10-28T13:45:53.134760+00:00",
+    "run_start": "2026-10-28T13:37:20.739718+00:00",
+    "run_end": "2026-10-28T13:45:55.087276+00:00",
+    "covers_run_start": true,
+    "covers_run_end": false,
+    "coverage_complete": true,
+    "coverage_definition": "one_interval_bound",
+    "sampler_interval_seconds": 2.0,
+    "coverage": {
+      "definition": "one_interval_bound",
+      "nonempty": true,
+      "timestamps_parse": true,
+      "timestamps_ordered": true,
+      "first_at_or_before_run_start": true,
+      "last_at_or_after_run_end": false,
+      "last_within_interval_bound": true,
+      "readable": true,
+      "complete": true,
+      "usable_row_count": 230,
+      "invalid_row_count": 0
+    },
+    "source_file": "power-20261028T13371985971463379501395Z.csv",
+    "immutable_snapshot": true,
+    "byte_count": 11083,
+    "sha256_definition": "SHA-256 of the complete immutable per-run power CSV snapshot bytes",
+    "aiclk_source": "run_trace_samples",
+    "aiclk_mhz": 1350.0,
+    "aiclk_mhz_in_run": [
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0
+    ],
+    "aiclk_mhz_in_run_min": 800.0,
+    "aiclk_mhz_in_run_max": 1350.0,
+    "aiclk_mhz_load_interval_weighted": 1349.7440279956625,
+    "aiclk_mhz_load_interval_weighted_source": "load_interval_trace_samples",
+    "aiclk_mhz_load_interval_weighted_seconds": 500.4215219999999,
+    "load_interval_start": "2026-10-28T13:37:22.576656+00:00",
+    "load_interval_end": "2026-10-28T13:45:42.998178+00:00",
+    "load_interval_source": "issue118_program_host_interval",
+    "in_run_samples": [
+      {
+        "timestamp_utc": "2026-10-28T13:37:22.809554+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "60.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:25.042017+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:27.280261+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.3"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:29.516009+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:31.757839+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:33.996837+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "62.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:36.234412+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "62.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:38.474962+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:40.713873+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:42.954420+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:45.193512+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:47.434729+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:49.669454+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:51.910266+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:54.149097+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:56.387344+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:58.622050+00:00",
+        "power_w": "77.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:00.855773+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:03.090174+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:05.330921+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:07.572762+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:09.813141+00:00",
+        "power_w": "77.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:12.070002+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.3"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:14.316713+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:16.557544+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:18.797310+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:21.038329+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:23.285273+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:25.521893+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:27.761836+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:30.001694+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.3"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:32.239341+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:34.477794+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:36.716292+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:38.957270+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:41.197472+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:43.438814+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:45.677506+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:47.917014+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:50.156434+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:52.393792+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:54.633764+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:56.873966+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:59.112885+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:01.354974+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:03.591012+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:05.831666+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:08.070810+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:10.310992+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:12.545836+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:14.784711+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:17.021486+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:19.258072+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:21.495976+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:23.739869+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:25.980463+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:28.219976+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:30.452292+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:32.686910+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:34.922990+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:37.160383+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:39.399370+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:41.638756+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:43.877302+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:46.117862+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:48.357089+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:50.595181+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:52.835186+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:55.074002+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:57.313945+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:59.555310+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:01.800006+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:04.037335+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:06.275326+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:08.517926+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:10.759428+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:13.000387+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:15.232039+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:17.466264+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:19.703691+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:21.941987+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:24.181520+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:26.420668+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:28.660218+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:30.896580+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:33.137002+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:35.376523+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:37.616137+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:39.855789+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:42.094396+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:44.327089+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:46.564352+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:48.805097+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:51.045711+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:53.286180+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:55.527079+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:57.767705+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:00.002327+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:02.241701+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:04.481401+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:06.722012+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:08.961482+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:11.199457+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.3"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:13.433974+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:15.666339+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:17.905750+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:20.144017+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:22.381073+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:24.613797+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:26.851293+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:29.083229+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:31.317273+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:33.553415+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:35.787701+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:38.021692+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:40.260867+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:42.499109+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:44.746921+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:46.986068+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:49.224641+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:51.463658+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:53.700707+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:55.936367+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:58.172762+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:00.404828+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:02.640505+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:04.874371+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:07.114478+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:09.352956+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:11.592846+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:13.833328+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:16.072174+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:18.312562+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:20.551581+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:22.791728+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:25.031600+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:27.270529+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:29.518315+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:31.762845+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:34.008279+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:36.243193+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:38.477541+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:40.715198+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:42.954509+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:45.190366+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:47.423933+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:49.664834+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:51.904772+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:54.144391+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:56.382778+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:58.620806+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:00.856779+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:03.093571+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:05.333693+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:07.570869+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:09.804457+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:12.042706+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:14.282731+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:16.516132+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:18.749460+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:20.983777+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:23.222264+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:25.461949+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:27.700334+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:29.933079+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:32.166819+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:34.405081+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:36.644125+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:38.885316+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:41.126519+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:43.367636+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:45.599462+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:47.835349+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:50.070597+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:52.309542+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:54.548189+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:56.779586+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:59.011457+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:01.246348+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:03.480619+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:05.715348+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:07.955543+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:10.195669+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:12.431196+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:14.662641+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:16.901475+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:19.142047+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:21.380232+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:23.618089+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:25.853106+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:28.092018+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:30.333133+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:32.572280+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:34.803410+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:37.044380+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:39.288674+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:41.527932+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:43.766876+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:46.006081+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:48.245363+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:50.480104+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:52.718310+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:54.957662+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:57.196220+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:59.436152+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:01.670435+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:03.910519+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:06.145733+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:08.378105+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:10.612524+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:12.846439+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:15.080785+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:17.321362+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:19.555611+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:21.795098+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:24.033309+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:26.271875+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:28.509913+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:30.749668+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:32.989250+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:35.228754+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:37.468393+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:39.707409+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:41.948252+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:44.190952+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:46.428357+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:48.665950+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:50.900502+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:53.134760+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      }
+    ],
+    "aiclk_trace_in_run": [
+      {
+        "timestamp_utc": "2026-10-28T13:37:22.809554+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "60.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:25.042017+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:27.280261+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.3"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:29.516009+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:31.757839+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:33.996837+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "62.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:36.234412+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "62.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:38.474962+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:40.713873+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:42.954420+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:45.193512+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:47.434729+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:49.669454+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:51.910266+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:54.149097+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:56.387344+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:37:58.622050+00:00",
+        "power_w": "77.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:00.855773+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:03.090174+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:05.330921+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:07.572762+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:09.813141+00:00",
+        "power_w": "77.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:12.070002+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.3"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:14.316713+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:16.557544+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:18.797310+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:21.038329+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:23.285273+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:25.521893+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:27.761836+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:30.001694+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.3"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:32.239341+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:34.477794+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:36.716292+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:38.957270+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:41.197472+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:43.438814+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:45.677506+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:47.917014+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:50.156434+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.7"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:52.393792+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:54.633764+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:56.873966+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:38:59.112885+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:01.354974+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:03.591012+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:05.831666+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:08.070810+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:10.310992+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:12.545836+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:14.784711+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:17.021486+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:19.258072+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:21.495976+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:23.739869+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:25.980463+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:28.219976+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:30.452292+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:32.686910+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:34.922990+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:37.160383+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:39.399370+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:41.638756+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:43.877302+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:46.117862+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:48.357089+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:50.595181+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:52.835186+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:55.074002+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:57.313945+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:39:59.555310+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:01.800006+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:04.037335+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:06.275326+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:08.517926+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:10.759428+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:13.000387+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:15.232039+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:17.466264+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:19.703691+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:21.941987+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:24.181520+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:26.420668+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:28.660218+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:30.896580+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:33.137002+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:35.376523+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:37.616137+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:39.855789+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:42.094396+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:44.327089+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:46.564352+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:48.805097+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:51.045711+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:53.286180+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:55.527079+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:40:57.767705+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:00.002327+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:02.241701+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:04.481401+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:06.722012+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:08.961482+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:11.199457+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.3"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:13.433974+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:15.666339+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:17.905750+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:20.144017+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:22.381073+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:24.613797+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:26.851293+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:29.083229+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:31.317273+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:33.553415+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:35.787701+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:38.021692+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:40.260867+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:42.499109+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:44.746921+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:46.986068+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:49.224641+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:51.463658+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:53.700707+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:55.936367+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:41:58.172762+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:00.404828+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:02.640505+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:04.874371+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:07.114478+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:09.352956+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:11.592846+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:13.833328+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:16.072174+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:18.312562+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:20.551581+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:22.791728+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:25.031600+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:27.270529+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:29.518315+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:31.762845+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:34.008279+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:36.243193+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:38.477541+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:40.715198+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:42.954509+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:45.190366+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:47.423933+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:49.664834+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:51.904772+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:54.144391+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:56.382778+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:42:58.620806+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:00.856779+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:03.093571+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:05.333693+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:07.570869+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:09.804457+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:12.042706+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:14.282731+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:16.516132+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:18.749460+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:20.983777+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:23.222264+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:25.461949+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:27.700334+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:29.933079+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:32.166819+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:34.405081+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:36.644125+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:38.885316+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:41.126519+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:43.367636+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:45.599462+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:47.835349+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:50.070597+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:52.309542+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:54.548189+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:56.779586+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:43:59.011457+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:01.246348+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:03.480619+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:05.715348+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:07.955543+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:10.195669+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:12.431196+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:14.662641+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:16.901475+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:19.142047+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:21.380232+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:23.618089+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:25.853106+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:28.092018+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:30.333133+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:32.572280+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:34.803410+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:37.044380+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:39.288674+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:41.527932+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:43.766876+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:46.006081+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:48.245363+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:50.480104+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:52.718310+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:54.957662+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:57.196220+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:44:59.436152+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:01.670435+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:03.910519+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:06.145733+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:08.378105+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:10.612524+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:12.846439+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:15.080785+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:17.321362+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:19.555611+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:21.795098+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:24.033309+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:26.271875+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:28.509913+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:30.749668+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:32.989250+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:35.228754+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:37.468393+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:39.707409+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:41.948252+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:44.190952+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:46.428357+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:48.665950+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:50.900502+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-28T13:45:53.134760+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      }
+    ],
+    "errors": [],
+    "interval_extrema_policy": "positive_duration_left_held",
+    "timing_evidence": true,
+    "timing_evidence_reason": "power_trace_run_samples"
+  },
+  "run_start": "2026-10-28T13:37:20.739718+00:00",
+  "run_end": "2026-10-28T13:45:55.087276+00:00",
+  "telemetry_sampler": {
+    "mode": "default",
+    "interval_seconds": 2.0,
+    "power_trace": "required",
+    "timing_evidence": "available"
+  },
+  "environment": {
+    "captured_at": "2026-10-28T13:37:19.893770+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "telemetry_sampler": {
+      "mode": "default",
+      "interval_seconds": 2.0,
+      "power_trace": "required",
+      "timing_evidence": "available"
+    },
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "11fa346e2de9ddb4e310bc751a33719542eea21d",
+    "harness_dirty": false,
+    "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
+    "harness_pushed": true,
+    "harness_publication_source": "remote_tracking_ref",
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16",
+      "serial": "000004033191411c"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "device_node": "/dev/tenstorrent/0",
+    "host_sw_vers": {
+      "tt_smi": "6.2.1",
+      "pyluwen": "0.9.0",
+      "tt_umd": "0.9.8"
+    },
+    "smbus_telem": {
+      "BOARD_ID_HIGH": "0x403",
+      "BOARD_ID_LOW": "0x3191411c",
+      "ASIC_ID": null,
+      "HARVESTING_STATE": "0x0",
+      "UPDATE_TELEM_SPEED": "0x64",
+      "VCORE": "0x2e1",
+      "TDP": "0x2c",
+      "TDC": "0x3c",
+      "VDD_LIMITS": "0x38402bc",
+      "THM_LIMIT_SHUTDOWN": "0x6e",
+      "ASIC_TEMPERATURE": "0x3932ea",
+      "VREG_TEMPERATURE": "0x0",
+      "BOARD_TEMPERATURE": "0x0",
+      "AICLK": "0x320",
+      "AXICLK": "0x3c0",
+      "ARCCLK": "0x320",
+      "L2CPUCLK0": "0x0",
+      "L2CPUCLK1": "0x0",
+      "L2CPUCLK2": "0x0",
+      "L2CPUCLK3": "0x0",
+      "ETH_LIVE_STATUS": "0x0",
+      "DDR_STATUS": "0x5555",
+      "DDR_SPEED": "0x3e80",
+      "ETH_FW_VERSION": "0x0",
+      "GDDR_FW_VERSION": "0x2000c",
+      "DM_APP_FW_VERSION": "0x160000",
+      "DM_BL_FW_VERSION": "0x0",
+      "FLASH_BUNDLE_VERSION": "0x13060000",
+      "CM_FW_VERSION": "0x1c0000",
+      "L2CPU_FW_VERSION": "0x0",
+      "FAN_SPEED": "0x35",
+      "TIMER_HEARTBEAT": "0x32a8",
+      "TELEMETRY_ENUM_COUNT": "0x46",
+      "ENABLED_TENSIX_COL": "0xfff",
+      "ENABLED_ETH": "0x3edf",
+      "ENABLED_GDDR": "0xff",
+      "ENABLED_L2CPU": "0xf",
+      "PCIE_USAGE": "0x1",
+      "NOC_TRANSLATION": "0x1",
+      "FAN_RPM": "0x9eb",
+      "GDDR_0_1_TEMP": "0x3c3e383a",
+      "GDDR_2_3_TEMP": "0x34363a3c",
+      "GDDR_4_5_TEMP": "0x3a3e3c40",
+      "GDDR_6_7_TEMP": "0x383c383e",
+      "GDDR_0_1_CORR_ERRS": "0x0",
+      "GDDR_2_3_CORR_ERRS": "0x0",
+      "GDDR_4_5_CORR_ERRS": "0x0",
+      "GDDR_6_7_CORR_ERRS": "0x0",
+      "GDDR_UNCORR_ERRS": "0x0",
+      "MAX_GDDR_TEMP": "0x40",
+      "ASIC_LOCATION": "0x0",
+      "BOARD_POWER_LIMIT": "0x12c",
+      "TDC_LIMIT_MAX": "0xc8",
+      "THM_LIMIT_THROTTLE": "0x5a",
+      "TT_FLASH_VERSION": null,
+      "THERM_TRIP_COUNT": "0x0",
+      "ASIC_ID_HIGH": "0x1cc3c05a",
+      "ASIC_ID_LOW": "0xb1056073",
+      "AICLK_LIMIT_MAX": "0x546",
+      "TDP_LIMIT_MAX": "0x96",
+      "AICLK_ARB_MIN": "0x10320",
+      "AICLK_ARB_MAX": "0x80546",
+      "ENABLED_MIN_ARB": "0x3",
+      "ENABLED_MAX_ARB": "0x1d1",
+      "NUMBER_OF_TAGS": null,
+      "INPUT_POWER": "0x71"
+    },
+    "smbus_telem_limits": {
+      "VDD_LIMITS": "0x38402bc",
+      "BOARD_POWER_LIMIT": "0x12c",
+      "TDC_LIMIT_MAX": "0xc8",
+      "THM_LIMIT_THROTTLE": "0x5a",
+      "THM_LIMIT_SHUTDOWN": "0x6e",
+      "AICLK_LIMIT_MAX": "0x546",
+      "TDP_LIMIT_MAX": "0x96",
+      "AICLK_ARB_MIN": "0x10320",
+      "AICLK_ARB_MAX": "0x80546",
+      "ENABLED_MIN_ARB": "0x3",
+      "ENABLED_MAX_ARB": "0x1d1"
+    },
+    "aiclk_mhz_observed": [
+      800
+    ],
+    "run_id": "20261028T13371985971463379501395Z"
+  },
+  "harness_commit": "11fa346e2de9ddb4e310bc751a33719542eea21d",
+  "watcher": false,
+  "timing_evidence": true,
+  "timing_evidence_reason": "power_trace_run_samples",
+  "outlier_analysis": {
+    "method": "short < 1250000 ticks, long > 1450000 ticks, adjacent pair sum within 1000 ticks of 2700000",
+    "pair_count": 0,
+    "pair_sum_target_ticks": 2700000,
+    "pair_sums": [],
+    "pair_sum_min_ticks": null,
+    "pair_sum_max_ticks": null,
+    "pair_sum_mean_ticks": null,
+    "sum_delta_min_ticks": null,
+    "sum_delta_max_ticks": null,
+    "pair_order_counts": {
+      "short-first": 0,
+      "long-first": 0,
+      "other": 0
+    },
+    "frame_start_indices": [],
+    "event_frame_positions": [],
+    "event_elapsed_seconds": [],
+    "event_elapsed_ticks": [],
+    "event_elapsed_ticks_mod_period": [],
+    "pair_start_elapsed_seconds": [],
+    "frame_gaps": [],
+    "gap_counts": {},
+    "gap_histogram": [],
+    "gcd_frame_gap": null,
+    "pairs": [],
+    "elapsed_time_unit": "seconds",
+    "device_tick_unit": "device_clock_ticks",
+    "aiclk_mhz_for_elapsed_seconds": 1350,
+    "aiclk_source": "run_trace_samples",
+    "aiclk_source_for_elapsed_seconds": "run_trace_samples",
+    "aiclk_selection_for_elapsed_seconds": "in_run_maximum",
+    "run_elapsed_ticks": 674998614610,
+    "run_elapsed_seconds": 499.99897378518517,
+    "interval_count": 499999,
+    "sampler_interval_comparison": {
+      "mode": "default",
+      "interval_seconds": 2.0,
+      "sampler_interval_seconds": 2.0,
+      "pair_count": 0,
+      "timestamp_count": 500000,
+      "adjacent_gaps": []
+    }
+  },
+  "table_swap": {
+    "schema": "resident-table-swap-v1",
+    "discard_count": 0,
+    "retired_frame_count": 500000,
+    "initial_discard_count": 0,
+    "switches": [
+      {
+        "frame_index": 25000,
+        "identity": [
+          1,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385064,
+        "pre_switch_interval": 1350004
+      },
+      {
+        "frame_index": 75000,
+        "identity": [
+          2,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385510,
+        "pre_switch_interval": 1349962
+      },
+      {
+        "frame_index": 125000,
+        "identity": [
+          0,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385048,
+        "pre_switch_interval": 1349988
+      },
+      {
+        "frame_index": 175000,
+        "identity": [
+          1,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385560,
+        "pre_switch_interval": 1350007
+      },
+      {
+        "frame_index": 225000,
+        "identity": [
+          2,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385043,
+        "pre_switch_interval": 1349997
+      },
+      {
+        "frame_index": 275000,
+        "identity": [
+          0,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385537,
+        "pre_switch_interval": 1349988
+      },
+      {
+        "frame_index": 325000,
+        "identity": [
+          1,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385447,
+        "pre_switch_interval": 1350003
+      },
+      {
+        "frame_index": 375000,
+        "identity": [
+          2,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385453,
+        "pre_switch_interval": 1350031
+      },
+      {
+        "frame_index": 425000,
+        "identity": [
+          0,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385444,
+        "pre_switch_interval": 1349993
+      },
+      {
+        "frame_index": 475000,
+        "identity": [
+          1,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385374,
+        "pre_switch_interval": 1349999
+      }
+    ],
+    "switch_interval_definition": "previous completion to first consumed frame in schedule segment",
+    "pre_switch_interval_definition": "previous completion to last processed frame before scheduled switch",
+    "checksum": {
+      "checked_frames": 500000,
+      "mismatch_count": 0,
+      "passed": true,
+      "sha256": "703a1dbe5e655c17b121ee6d2e3c457081bea4b275a3403380985ed6e5da3b08"
+    }
+  },
+  "power_trace_interval_extrema_policy": "positive_duration_left_held",
+  "program_host_interval": {
+    "clock": "host_monotonic_ns",
+    "start_ns": 1274540455347,
+    "end_ns": 1774961974881,
+    "launch_ns": 1274540455347,
+    "completion_ns": 1774961974881,
+    "elapsed_ns": 500421519534
+  },
+  "host_program_interval": {
+    "clock": "host_monotonic_ns",
+    "start_ns": 1274540455347,
+    "end_ns": 1774961974881,
+    "launch_ns": 1274540455347,
+    "completion_ns": 1774961974881,
+    "elapsed_ns": 500421519534
+  },
+  "program_launch_ns": 1274540455347,
+  "program_completion_ns": 1774961974881,
+  "program_launch_monotonic_ns": 1274540455347,
+  "program_completion_monotonic_ns": 1774961974881,
+  "card_load_interval": null,
+  "card_load_worker_intervals": null,
+  "card_load_interval_statistics": null,
+  "host_load_interval": null,
+  "load_coverage": {
+    "verdict": "not_applicable",
+    "valid": true,
+    "covered": true
+  },
+  "load_repeat_count": 0,
+  "calibration": null,
+  "validation_warnings": [
+    "clock.aiclk_observation_phase",
+    "environment.board.bus_id",
+    "environment.board.coords",
+    "environment.board.dram_speed",
+    "environment.board.dram_status",
+    "environment.board.pcie_speed",
+    "environment.board.pcie_width",
+    "environment.board_info",
+    "environment.board_info.board_id",
+    "environment.board_info.board_type",
+    "environment.board_info.bus_id",
+    "environment.board_info.coords",
+    "environment.board_info.dram_speed",
+    "environment.board_info.dram_status",
+    "environment.board_info.pcie_speed",
+    "environment.board_info.pcie_width",
+    "environment.captured_at",
+    "environment.device_node",
+    "environment.firmware.cm_fw",
+    "environment.firmware.cm_fw_date",
+    "environment.firmware.dm_app_fw",
+    "environment.firmware.dm_bl_fw",
+    "environment.firmware.eth_fw",
+    "environment.firmware.gddr_fw",
+    "environment.firmware.tt_flash_version",
+    "environment.firmwares",
+    "environment.firmwares.cm_fw",
+    "environment.firmwares.cm_fw_date",
+    "environment.firmwares.dm_app_fw",
+    "environment.firmwares.dm_bl_fw",
+    "environment.firmwares.eth_fw",
+    "environment.firmwares.fw_bundle_version",
+    "environment.firmwares.gddr_fw",
+    "environment.firmwares.tt_flash_version",
+    "environment.harness_dirty",
+    "environment.harness_identity_source",
+    "environment.harness_publication_source",
+    "environment.harness_pushed",
+    "environment.host_sw_vers",
+    "environment.host_sw_vers.pyluwen",
+    "environment.host_sw_vers.tt_smi",
+    "environment.host_sw_vers.tt_umd",
+    "environment.kernel",
+    "environment.limits",
+    "environment.limits.asic_fmax",
+    "environment.limits.board_power_limit",
+    "environment.limits.bus_peak_limit",
+    "environment.limits.fan_rpm_limit",
+    "environment.limits.tdc_limit",
+    "environment.limits.tdp_limit",
+    "environment.limits.therm_trip_l1_limit",
+    "environment.limits.thm_limit",
+    "environment.limits.vdd_max",
+    "environment.limits.vdd_min",
+    "environment.run_id",
+    "environment.smbus_telem",
+    "environment.smbus_telem.AICLK",
+    "environment.smbus_telem.AICLK_ARB_MAX",
+    "environment.smbus_telem.AICLK_ARB_MIN",
+    "environment.smbus_telem.AICLK_LIMIT_MAX",
+    "environment.smbus_telem.ARCCLK",
+    "environment.smbus_telem.ASIC_ID",
+    "environment.smbus_telem.ASIC_ID_HIGH",
+    "environment.smbus_telem.ASIC_ID_LOW",
+    "environment.smbus_telem.ASIC_LOCATION",
+    "environment.smbus_telem.ASIC_TEMPERATURE",
+    "environment.smbus_telem.AXICLK",
+    "environment.smbus_telem.BOARD_ID_HIGH",
+    "environment.smbus_telem.BOARD_ID_LOW",
+    "environment.smbus_telem.BOARD_POWER_LIMIT",
+    "environment.smbus_telem.BOARD_TEMPERATURE",
+    "environment.smbus_telem.CM_FW_VERSION",
+    "environment.smbus_telem.DDR_SPEED",
+    "environment.smbus_telem.DDR_STATUS",
+    "environment.smbus_telem.DM_APP_FW_VERSION",
+    "environment.smbus_telem.DM_BL_FW_VERSION",
+    "environment.smbus_telem.ENABLED_ETH",
+    "environment.smbus_telem.ENABLED_GDDR",
+    "environment.smbus_telem.ENABLED_L2CPU",
+    "environment.smbus_telem.ENABLED_MAX_ARB",
+    "environment.smbus_telem.ENABLED_MIN_ARB",
+    "environment.smbus_telem.ENABLED_TENSIX_COL",
+    "environment.smbus_telem.ETH_FW_VERSION",
+    "environment.smbus_telem.ETH_LIVE_STATUS",
+    "environment.smbus_telem.FAN_RPM",
+    "environment.smbus_telem.FAN_SPEED",
+    "environment.smbus_telem.FLASH_BUNDLE_VERSION",
+    "environment.smbus_telem.GDDR_0_1_CORR_ERRS",
+    "environment.smbus_telem.GDDR_0_1_TEMP",
+    "environment.smbus_telem.GDDR_2_3_CORR_ERRS",
+    "environment.smbus_telem.GDDR_2_3_TEMP",
+    "environment.smbus_telem.GDDR_4_5_CORR_ERRS",
+    "environment.smbus_telem.GDDR_4_5_TEMP",
+    "environment.smbus_telem.GDDR_6_7_CORR_ERRS",
+    "environment.smbus_telem.GDDR_6_7_TEMP",
+    "environment.smbus_telem.GDDR_FW_VERSION",
+    "environment.smbus_telem.GDDR_UNCORR_ERRS",
+    "environment.smbus_telem.HARVESTING_STATE",
+    "environment.smbus_telem.INPUT_POWER",
+    "environment.smbus_telem.L2CPUCLK0",
+    "environment.smbus_telem.L2CPUCLK1",
+    "environment.smbus_telem.L2CPUCLK2",
+    "environment.smbus_telem.L2CPUCLK3",
+    "environment.smbus_telem.L2CPU_FW_VERSION",
+    "environment.smbus_telem.MAX_GDDR_TEMP",
+    "environment.smbus_telem.NOC_TRANSLATION",
+    "environment.smbus_telem.NUMBER_OF_TAGS",
+    "environment.smbus_telem.PCIE_USAGE",
+    "environment.smbus_telem.TDC",
+    "environment.smbus_telem.TDC_LIMIT_MAX",
+    "environment.smbus_telem.TDP",
+    "environment.smbus_telem.TDP_LIMIT_MAX",
+    "environment.smbus_telem.TELEMETRY_ENUM_COUNT",
+    "environment.smbus_telem.THERM_TRIP_COUNT",
+    "environment.smbus_telem.THM_LIMIT_SHUTDOWN",
+    "environment.smbus_telem.THM_LIMIT_THROTTLE",
+    "environment.smbus_telem.TIMER_HEARTBEAT",
+    "environment.smbus_telem.TT_FLASH_VERSION",
+    "environment.smbus_telem.UPDATE_TELEM_SPEED",
+    "environment.smbus_telem.VCORE",
+    "environment.smbus_telem.VDD_LIMITS",
+    "environment.smbus_telem.VREG_TEMPERATURE",
+    "environment.smbus_telem_limits",
+    "environment.smbus_telem_limits.AICLK_ARB_MAX",
+    "environment.smbus_telem_limits.AICLK_ARB_MIN",
+    "environment.smbus_telem_limits.AICLK_LIMIT_MAX",
+    "environment.smbus_telem_limits.BOARD_POWER_LIMIT",
+    "environment.smbus_telem_limits.ENABLED_MAX_ARB",
+    "environment.smbus_telem_limits.ENABLED_MIN_ARB",
+    "environment.smbus_telem_limits.TDC_LIMIT_MAX",
+    "environment.smbus_telem_limits.TDP_LIMIT_MAX",
+    "environment.smbus_telem_limits.THM_LIMIT_SHUTDOWN",
+    "environment.smbus_telem_limits.THM_LIMIT_THROTTLE",
+    "environment.smbus_telem_limits.VDD_LIMITS",
+    "frames_consumed",
+    "frames_produced",
+    "parameters.initial_identity",
+    "parameters.l1_allocation",
+    "parameters.l1_allocation[].bytes",
+    "parameters.l1_allocation[].component",
+    "parameters.l1_allocation[].pages",
+    "parameters.l1_allocation[].placement",
+    "parameters.l1_allocation[].scope",
+    "parameters.profile_tables",
+    "parameters.swap_strategy",
+    "parameters.switch_schedule",
+    "parameters.table_bytes",
+    "power_clock_provenance.coverage.invalid_row_count",
+    "power_clock_provenance.coverage.usable_row_count",
+    "power_trace_coverage.coverage.invalid_row_count",
+    "power_trace_coverage.coverage.usable_row_count",
+    "ring.discard_count",
+    "ring.retired_frame_count",
+    "table_swap",
+    "table_swap.checksum",
+    "table_swap.checksum.checked_frames",
+    "table_swap.checksum.mismatch_count",
+    "table_swap.checksum.passed",
+    "table_swap.checksum.sha256",
+    "table_swap.discard_count",
+    "table_swap.initial_discard_count",
+    "table_swap.pre_switch_interval_definition",
+    "table_swap.retired_frame_count",
+    "table_swap.schema",
+    "table_swap.switch_interval_definition",
+    "table_swap.switches",
+    "table_swap.switches[].discard_count",
+    "table_swap.switches[].frame_index",
+    "table_swap.switches[].identity",
+    "table_swap.switches[].pre_switch_interval",
+    "table_swap.switches[].switch_frame_interval_ticks"
+  ],
+  "frames_produced": 500000,
+  "frames_consumed": 500000,
+  "issue119_measurement": {
+    "schema": "issue119-stage2-measurement-v1",
+    "session": "issue119-stage2-2026-10-28",
+    "source_row": "demand",
+    "run_order": 2,
+    "status": "accepted timing evidence",
+    "positive_control_purpose_satisfied": false,
+    "owner_approval": "Four original rows and one additional prefetch measurement; no further board run.",
+    "production_wrapper_unmodified": true,
+    "hooks": false,
+    "docker_shim": false,
+    "plan_sha256": "7ae3f9ada51987c25cb5bed37d0915862127bf0052503f195e588bd9937ad383",
+    "wrapper_start_utc": "2026-10-28T13:37:19.845225+00:00",
+    "wrapper_end_utc": "2026-10-28T13:45:57.193756+00:00",
+    "runner_exit_status": 0,
+    "runner_and_container_cap_seconds": 600,
+    "docker_container_count_before": 0,
+    "docker_container_count_after": 0,
+    "docker_container_count_after_chown": 0,
+    "reset_count": 0,
+    "chown_performed": true,
+    "pre_run_idle_telemetry": {
+      "captured_at_utc": "2026-10-28T13:37:19.844935+00:00",
+      "kmd": "TT-KMD 2.11.0",
+      "boards": [
+        {
+          "board": {
+            "bus_id": "0000:06:00.0",
+            "board_type": "p150a",
+            "board_id": "000004033191411c",
+            "coords": "N/A",
+            "dram_status": true,
+            "dram_speed": "16G",
+            "pcie_speed": 4,
+            "pcie_width": "16"
+          },
+          "firmware": "19.6.0.0",
+          "telemetry": {
+            "voltage": "0.74",
+            "current": " 57.0",
+            "power": " 42.0",
+            "board_power": "114.0",
+            "aiclk": " 800",
+            "asic_temperature": "57.2",
+            "fan_speed": "2539",
+            "heartbeat": "2160"
+          }
+        },
+        {
+          "board": {
+            "bus_id": "0000:09:00.0",
+            "board_type": "p150a",
+            "board_id": "0000040331914124",
+            "coords": "N/A",
+            "dram_status": true,
+            "dram_speed": "16G",
+            "pcie_speed": 4,
+            "pcie_width": "16"
+          },
+          "firmware": "19.6.0.0",
+          "telemetry": {
+            "voltage": "0.74",
+            "current": " 60.0",
+            "power": " 44.0",
+            "board_power": "116.0",
+            "aiclk": " 800",
+            "asic_temperature": "55.9",
+            "fan_speed": "1882",
+            "heartbeat": "2160"
+          }
+        }
+      ]
+    },
+    "raw_runner_record": {
+      "file": "runner-result.json",
+      "sha256": "d56bbbfa2b48fac6152930dd11f98daf43ed15073b51a28c97d32c7de14f59a7",
+      "byte_count": 169061,
+      "retained_outside_repository": true,
+      "publication_changes": "Only this derived issue119_measurement block is added. Every original runner field and original run-bound snapshot reference is retained."
+    },
+    "published_power_companion": {
+      "file": "2026-10-28-p150a-issue119-demand-500000-adr0005-power.csv",
+      "sha256": "8d6ad4d62beddad8c45306f57504672cdb6b4e12f5b6569dceb48ac3f4766291",
+      "byte_count": 11083,
+      "byte_identical_to_run_bound_snapshot": true
+    },
+    "snapshot_naming_note": "Original run-bound snapshot basename retained for strict positive-duration validation; same-stem power companion duplicates its frozen bytes.",
+    "raw_timestamp_artifact": {
+      "file": "timestamps.bin",
+      "retained_outside_repository": true,
+      "count": 500000,
+      "sha256": "46e4e32d8ff2b067fd1fe3ec815f347aa1bf4ef67fc9f1bc9ec314a5eab6ecae"
+    },
+    "validation": {
+      "validate_table_evidence": "PASS",
+      "strict_record_valid": true,
+      "strict_record_expected_failures": [],
+      "expected_checksum_digest_independently_recomputed": true,
+      "checksum_note": "Production harness verified every downloaded checksum row before recording. Board-free revalidation compares its persisted digest with every expected frame/identity/checksum; raw checksum rows and raw summary words are not separately retained by this unmodified production runner.",
+      "raw_summary_words_retained": false,
+      "summary_word_18_decoded_discard_count": 0,
+      "summary_word_19_decoded_retired_count": 500000
+    },
+    "steady_interval": {
+      "steady_definition": "Completion intervals excluding endpoints from switch-1 through first-ready-frame+1, inclusive; no exclusion in control.",
+      "steady_interval_count": 499969,
+      "steady_median_ticks": 1349999,
+      "steady_min_ticks": 1314571,
+      "steady_max_ticks": 1350097
+    },
+    "switches_vs_steady_median": [
+      {
+        "frame_index": 25000,
+        "identity": [
+          1,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385064,
+        "pre_switch_interval": 1350004,
+        "switch_minus_steady_median_ticks": 35065,
+        "pre_minus_steady_median_ticks": 5
+      },
+      {
+        "frame_index": 75000,
+        "identity": [
+          2,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385510,
+        "pre_switch_interval": 1349962,
+        "switch_minus_steady_median_ticks": 35511,
+        "pre_minus_steady_median_ticks": -37
+      },
+      {
+        "frame_index": 125000,
+        "identity": [
+          0,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385048,
+        "pre_switch_interval": 1349988,
+        "switch_minus_steady_median_ticks": 35049,
+        "pre_minus_steady_median_ticks": -11
+      },
+      {
+        "frame_index": 175000,
+        "identity": [
+          1,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385560,
+        "pre_switch_interval": 1350007,
+        "switch_minus_steady_median_ticks": 35561,
+        "pre_minus_steady_median_ticks": 8
+      },
+      {
+        "frame_index": 225000,
+        "identity": [
+          2,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385043,
+        "pre_switch_interval": 1349997,
+        "switch_minus_steady_median_ticks": 35044,
+        "pre_minus_steady_median_ticks": -2
+      },
+      {
+        "frame_index": 275000,
+        "identity": [
+          0,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385537,
+        "pre_switch_interval": 1349988,
+        "switch_minus_steady_median_ticks": 35538,
+        "pre_minus_steady_median_ticks": -11
+      },
+      {
+        "frame_index": 325000,
+        "identity": [
+          1,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385447,
+        "pre_switch_interval": 1350003,
+        "switch_minus_steady_median_ticks": 35448,
+        "pre_minus_steady_median_ticks": 4
+      },
+      {
+        "frame_index": 375000,
+        "identity": [
+          2,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385453,
+        "pre_switch_interval": 1350031,
+        "switch_minus_steady_median_ticks": 35454,
+        "pre_minus_steady_median_ticks": 32
+      },
+      {
+        "frame_index": 425000,
+        "identity": [
+          0,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385444,
+        "pre_switch_interval": 1349993,
+        "switch_minus_steady_median_ticks": 35445,
+        "pre_minus_steady_median_ticks": -6
+      },
+      {
+        "frame_index": 475000,
+        "identity": [
+          1,
+          1
+        ],
+        "discard_count": 0,
+        "switch_frame_interval_ticks": 1385374,
+        "pre_switch_interval": 1349999,
+        "switch_minus_steady_median_ticks": 35375,
+        "pre_minus_steady_median_ticks": 0
+      }
+    ],
+    "comparison_to_same_session_control": {
+      "definition": "This row minus same-session control; one accepted observation per condition, no significance claim. Non-timing rows are descriptive only.",
+      "control_record": "2026-10-28-p150a-issue119-control-500000-adr0005.json",
+      "percentile_delta_ticks": {
+        "p50": -1.0,
+        "p99": -5.0,
+        "p99_9": -4.0,
+        "p99_99": 22.0
+      },
+      "minimum_interval_delta_ticks": -338,
+      "maximum_interval_delta_ticks": 35498,
+      "steady_median_delta_ticks": -1,
+      "discard_count_delta": 0,
+      "overflow_count_delta": 0,
+      "paired_outlier_count_delta": 0,
+      "weighted_aiclk_delta_mhz": -0.25597200433821854,
+      "host_program_elapsed_delta_seconds": -0.004642829999966125,
+      "program_span_duration_weighted_asic_power_delta_w": 0.6482486681979367
+    },
+    "program_span_duration_weighted_asic_power_w": 78.30220603868649,
+    "power_semantics": "Left-held ASIC power_w samples over captured host program UTC interval; not board power or whole-host power.",
+    "artifact_sha256": {
+      "docker-after-chown.txt": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+      "execution.json": "6e55d9da28256a1de31c5cc70497cc3a0556f6aa74edf40b93d27b6ecbd0d681",
+      "console.log": "3aee51672001769a10fa4d94aa1b4329f570287d527729a67442ce2164d1418c",
+      "chown-performed.json": "a17fcf0a2f50e2d495e4f90ce263410edc183add6c62699a2facbccf60410f74",
+      "docker-before.txt": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+      "chown.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit-status.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "runner-result.json": "d56bbbfa2b48fac6152930dd11f98daf43ed15073b51a28c97d32c7de14f59a7",
+      "timestamps.bin": "46e4e32d8ff2b067fd1fe3ec815f347aa1bf4ef67fc9f1bc9ec314a5eab6ecae",
+      "power-20261028T13371985971463379501395Z.csv.complete": "87e7470b7f3cf312c36e6d6ff8f6268451364ca67cc2cf264b914dc6343dde01",
+      "invocation.json": "ec18fc70d7067380711371674b1630878e3530a3bd6ddd250a9c1ef2cf5166c7",
+      "resident-power-snapshot-20261028T13371985971463379501395Z-1.csv": "8d6ad4d62beddad8c45306f57504672cdb6b4e12f5b6569dceb48ac3f4766291",
+      "docker-after.txt": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+      "env-20261028T13371985971463379501395Z.json": "e27bf3f5a94ea43cb3ac75630a7a169a0d9ccdfe3bf7dde514498826a2c14394",
+      "power-20261028T13371985971463379501395Z.csv": "2cf71ba055498cc0c5627a4eb022c25c2c685f2ce65db8d657171aa524905d2e",
+      "idle-telemetry.json": "269004cb48ca9ab3722ce0c976d6a251b148c13b125b215f14a51abc4c9630cd"
+    },
+    "coverage_follow_up": "Issue #157; separate PR, original evidence unchanged."
+  }
+}
