@@ -95,6 +95,24 @@ records; no kernel timestamp row or summary word is added for this observation.
 The parameters retain the complete schedule, table configuration, and L1 ledger.
 Legacy records need no new fields.
 
+## Power-trace capture order
+
+For non-Watcher runs, the shared loaded-run capture block waits for
+program-completion coverage,
+then captures a fresh run-end candidate, waits for a sample at or after that
+candidate, captures final `run_end`, and freezes the trace. Completion may
+already be bracketed after result decoding; using it alone can leave the frozen
+tail older than the nominal sampler interval because telemetry acquisition adds
+overhead. The second wait reduces that tail to polling (0.1 s), write and host
+scheduling latency without changing the one-interval coverage predicate or the
+UTC/monotonic program span used for weighted AICLK. Each wait retains the
+`interval * 1.5 + 1.0` deadline; exhaustion of the additional candidate wait still
+freezes the available bytes and records incomplete coverage rather than rejecting
+the run for that timeout. The initial completion-bracketing requirement remains
+unchanged. Watcher, sampler-off and legacy unloaded capture paths are unchanged.
+The supervisory cap is unchanged. PR #156 routes table-enabled controls through
+this same block, so that capture order also applies to them after integration.
+
 ## Board-free demonstration
 
 ```sh

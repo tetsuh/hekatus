@@ -1782,6 +1782,10 @@ def _sampler_wait_interval(value: float | None) -> float:
     return interval if math.isfinite(interval) and interval > 0.0 else 2.0
 
 
+class PowerTraceSampleTimeout(RunBindingError):
+    """The requested live-trace UTC edge was not observed before the deadline."""
+
+
 def _wait_for_power_trace_sample(
     path: Path,
     edge_iso: str,
@@ -1812,7 +1816,7 @@ def _wait_for_power_trace_sample(
         if _trace_has_sample_at_edge(resolved_path, edge):
             return
         time.sleep(0.1)
-    raise RunBindingError(
+    raise PowerTraceSampleTimeout(
         "power trace has no usable sample at or after program completion UTC"
     )
 
@@ -2536,7 +2540,22 @@ def main(argv: list[str] | None = None) -> int:
                     result["program_completion_utc"],
                     sampler_interval_seconds=sampler_interval,
                 )
-                # Include the observer row in the run-bound coverage interval.
+                # Decode can leave completion bracketed by an already stale row.
+                # Wait from a fresh candidate, then include the observer row in
+                # run_end. Normally this costs at most one sampler cadence; the
+                # interval * 1.5 + 1.0 deadline stays inside the unchanged 600 s
+                # supervisory cap for the approximately 518 s table-run example.
+                if not watcher:
+                    candidate = datetime.datetime.now(datetime.UTC)
+                    try:
+                        _wait_for_power_trace_sample(
+                            live_power_trace_path,
+                            candidate.isoformat(),
+                            sampler_interval_seconds=sampler_interval,
+                        )
+                    except PowerTraceSampleTimeout:
+                        # Keep the snapshot and let coverage mark incomplete evidence.
+                        pass
                 run_end = datetime.datetime.now(datetime.UTC)
             snapshot_path = atomic_power_trace_snapshot(
                 live_power_trace_path,
