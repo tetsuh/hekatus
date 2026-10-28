@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import datetime
 import json
 import sys
 from dataclasses import replace
@@ -1809,6 +1810,171 @@ def test_wait_for_power_trace_sample_accepts_completion_edge(tmp_path):
         "2026-01-01T00:00:02+00:00",
         sampler_interval_seconds=2.0,
     )
+
+
+def _run_tail_gap_case(
+    tmp_path, monkeypatch, *, condition="newton_schulz", stalled=None, watcher=False
+):
+    """Exercise main with a decoded result and deterministic live telemetry."""
+    epoch = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    clock = SimpleNamespace(seconds=0.0, sleeps=[])
+    real_datetime = datetime.datetime
+
+    class UtcClock(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return epoch + datetime.timedelta(seconds=clock.seconds)
+
+    trace = tmp_path / "power-tail-gap.csv"
+    trace.write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2026-01-01T00:00:00Z,75,1350,60\n"
+        "2026-01-01T00:00:01Z,75,1200,60\n"
+        "2026-01-01T00:00:02Z,75,1100,60\n"
+        + ("2026-01-01T00:00:08.100000Z,75,900,60\n" if stalled != "completion" else "")
+    )
+    if stalled == "completion":
+        # Preserve usable program-span weighting but leave completion unbracketed.
+        trace.write_text(trace.read_text().replace("00:00:02Z", "00:00:01.900000Z"))
+    environment_path = tmp_path / "environment.json"
+    environment = _resident_preflight_environment()
+    environment["image"] = AUDITED_CLOCK_SOURCE_IMAGE
+    environment_path.write_text(json.dumps(environment))
+    output_path = tmp_path / "result.json"
+    events = []
+
+    def run_fake_device(*_args, **_kwargs):
+        # Decode ends long after completion; the existing completion wait is immediate.
+        clock.seconds = 10.11
+        return {
+            "timestamps": [1000, 2000, 3000],
+            "producer_full_count": 0,
+            "consumer_empty_count": 0,
+            "kernel_error_flag": 0,
+            "frames_attempted": 3,
+            "frames_produced": 3,
+            "frames_dropped": 0,
+            "frames_aborted": 0,
+            "frames_consumed": 3,
+            "startup_ticks": 0,
+            "startup_ticks_valid": False,
+            "work_min_ticks": None,
+            "work_max_ticks": None,
+            "work_ticks_valid": False,
+            "failure_check": {"code": 0, "name": "none", "source": "none"},
+            "program_launch_utc": (epoch + datetime.timedelta(seconds=1)).isoformat(),
+            "program_completion_utc": (epoch + datetime.timedelta(seconds=2)).isoformat(),
+            "program_launch_ns": 1_000_000_000,
+            "program_completion_ns": 2_000_000_000,
+            "card_load_interval": CardLoadInterval(900, 3100),
+            "card_load_worker_intervals": (
+                _dram_worker_intervals(start_ticks=900, end_ticks=3100)
+                if condition == "dram" else None
+            ),
+        }
+
+    def sleep(seconds):
+        clock.sleeps.append(seconds)
+        clock.seconds = round(clock.seconds + seconds, 9)
+        if stalled is None and clock.seconds >= 10.3 and "sample" not in events:
+            with trace.open("a") as stream:
+                stream.write("2026-01-01T00:00:10.300000Z,75,800,60\n")
+            events.append("sample")
+
+    original_snapshot = resident_runner.atomic_power_trace_snapshot
+
+    def snapshot(*args, **kwargs):
+        events.append("snapshot")
+        return original_snapshot(*args, **kwargs)
+
+    monkeypatch.setattr(
+        resident_runner, "datetime", SimpleNamespace(datetime=UtcClock, UTC=datetime.UTC)
+    )
+    monkeypatch.setattr(resident_runner.time, "monotonic", lambda: clock.seconds)
+    monkeypatch.setattr(resident_runner.time, "sleep", sleep)
+    monkeypatch.setattr(resident_runner, "_runner_output_dir", lambda: tmp_path)
+    monkeypatch.setattr(resident_runner, "_run_loaded_device", run_fake_device)
+    monkeypatch.setattr(resident_runner, "_run_device", run_fake_device)
+    monkeypatch.setattr(
+        resident_runner, "_load_execution_selection", lambda _args: (condition, 1, None)
+    )
+    monkeypatch.setattr(resident_runner, "atomic_power_trace_snapshot", snapshot)
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "tail-gap")
+    if watcher:
+        monkeypatch.setenv("TT_METAL_WATCHER", "1")
+    else:
+        monkeypatch.delenv("TT_METAL_WATCHER", raising=False)
+    monkeypatch.setitem(
+        sys.modules, "ttnn",
+        SimpleNamespace(open_device=lambda **_: object(), close_device=lambda _: None),
+    )
+    status = resident_runner.main([
+        "--out", str(output_path), "--env-json", str(environment_path),
+        "--power-trace", trace.name, "--condition", condition, "--frame-count", "3",
+        *(["--watcher", "--outer-timeout-seconds", "60"] if watcher else []),
+    ])
+    return status, json.loads(output_path.read_text()), clock, events
+
+
+@pytest.mark.parametrize("condition", ["newton_schulz", "dram"])
+def test_run_end_waits_for_fresh_sample_after_decode(tmp_path, monkeypatch, condition):
+    status, record, clock, events = _run_tail_gap_case(
+        tmp_path, monkeypatch, condition=condition
+    )
+    assert status == 0
+    trace = record["power_clock_provenance"]
+    run_end = datetime.datetime.fromisoformat(record["run_end"])
+    last = datetime.datetime.fromisoformat(trace["last_timestamp"])
+    assert 0 <= (run_end - last).total_seconds() <= 0.1
+    assert trace["coverage_complete"] is True
+    assert record["timing_evidence"] is True
+    assert record["program_host_interval"]["elapsed_ns"] == 1_000_000_000
+    assert record["outer_timeout_cap_seconds"] == 600
+    assert events == ["sample", "snapshot"]
+    assert sum(clock.sleeps) <= 2.0 * 1.5 + 1.0
+    assert record["power_clock_provenance"]["load_interval_start"].endswith("00:00:01+00:00")
+    assert record["power_clock_provenance"]["load_interval_end"].endswith("00:00:02+00:00")
+    assert trace["aiclk_mhz_load_interval_weighted"] == 1200
+
+
+def test_trace_wait_deadline_keeps_incomplete_measurement(tmp_path, monkeypatch):
+    status, record, clock, events = _run_tail_gap_case(tmp_path, monkeypatch, stalled="tail")
+    assert status == 0
+    assert record["status"] != "rejected"
+    assert record["timing_evidence"] is False
+    assert record["timing_evidence_reason"] == "power_trace_coverage_incomplete"
+    assert record["power_trace_coverage"]["coverage_complete"] is False
+    assert events == ["snapshot"]
+    # The additional helper deadline is four seconds; allow the final poll boundary.
+    assert 4.0 <= sum(clock.sleeps) <= 4.1
+    assert record["outer_timeout_cap_seconds"] == 600
+
+
+def test_watcher_capture_does_not_add_a_trace_wait(tmp_path, monkeypatch):
+    status, record, clock, events = _run_tail_gap_case(tmp_path, monkeypatch, watcher=True)
+    assert status == 0
+    assert record["timing_evidence"] is False
+    assert record["outer_timeout_cap_seconds"] == 60
+    assert clock.sleeps == []
+    assert events == ["snapshot"]
+
+
+def test_completion_wait_still_requires_program_bracketing(tmp_path, monkeypatch):
+    status, record, _clock, events = _run_tail_gap_case(
+        tmp_path, monkeypatch, stalled="completion"
+    )
+    assert status == 2
+    assert "program completion UTC" in record["rejection_reason"]
+    assert events == []
+
+
+def test_unloaded_capture_does_not_add_a_trace_wait(tmp_path, monkeypatch):
+    status, _record, clock, events = _run_tail_gap_case(
+        tmp_path, monkeypatch, condition="unloaded"
+    )
+    assert status == 0
+    assert clock.sleeps == []
+    assert events == ["snapshot"]
 
 
 def test_delayed_worker_uses_slowest_worker_interval_not_aggregate_span():
