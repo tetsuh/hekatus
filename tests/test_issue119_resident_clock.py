@@ -92,16 +92,23 @@ def test_table_runner_weights_aiclk_over_host_program_span(
     def final_sample(path, edge, *, sampler_interval_seconds):
         waits.append((path, edge, sampler_interval_seconds))
         assert path == trace
-        assert edge == completion
-        if coverage == "missing_final":
-            raise RunBindingError("power trace has no usable sample at or after program completion UTC")
-        # Stand in for the existing sampler publishing the bracketing row.
+        if len(waits) == 1:
+            assert edge == completion
+            if coverage == "missing_final":
+                raise RunBindingError(
+                    "power trace has no usable sample at or after program completion UTC"
+                )
+        else:
+            assert len(waits) == 2
+            assert not watcher
+            assert edge == "2026-01-01T00:00:04+00:00"
+        # Publish the row for completion or the fresh run-end candidate.
         with path.open("a") as handle:
-            handle.write("2026-01-01T00:00:03+00:00,75,1350,60\n")
+            handle.write(f"{edge},75,1350,60\n")
 
     monkeypatch.setattr(run_resident, "_wait_for_power_trace_sample", final_sample)
     real_datetime = datetime.datetime
-    times = iter((0, 4, 4))
+    times = iter((0, 4, 4, 4))
 
     class FixedDatetime(real_datetime):
         @classmethod
@@ -118,7 +125,10 @@ def test_table_runner_weights_aiclk_over_host_program_span(
         args.append("--watcher")
     assert run_resident.main(args) == (0 if coverage == "complete" else 2)
     record = json.loads(output.read_text())
-    assert waits == [(trace, completion, 2.0)]
+    expected_waits = [(trace, completion, 2.0)]
+    if not watcher and coverage != "missing_final":
+        expected_waits.append((trace, "2026-01-01T00:00:04+00:00", 2.0))
+    assert waits == expected_waits
     if coverage != "complete":
         assert record["status"] == "rejected"
         assert record["timing_evidence"] is False
