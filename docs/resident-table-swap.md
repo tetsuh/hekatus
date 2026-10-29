@@ -106,6 +106,8 @@ value. Missing bracketing evidence is rejected rather than extrapolated. This
 host-only path changes neither the kernels nor the container wrapper, leaves
 legacy no-table behavior intact, and does not reinterpret existing records.
 Watcher runs remain diagnostic-only even with a complete weighted-clock span.
+This table-enabled scope extension is recorded in
+[ADR-0017](adr/0017-issue119-table-control-program-interval.md).
 
 ## Board-free demonstration
 

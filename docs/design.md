@@ -1983,6 +1983,9 @@ DRAM, device 0, no Watcher, the default two-second power sampler, and a
 indices 25,000 + 50,000k (k=0..9), cycling `(1,1),(2,1),(0,1)` from initial
 `(0,1)`. Control has no scheduled switch but uses the same table-enabled
 resident program. All runs use the unchanged production wrapper and harness.
+Under [ADR-0017](adr/0017-issue119-table-control-program-interval.md),
+table-enabled unloaded controls use the same program-interval binding and trust
+bound as loaded runs; only legacy no-table `run_bounds` controls remain excluded.
 
 The prediction in PR #156 preceded the runs: ready preloaded transitions
 should discard no frames, demand should add the DRAM-to-L1 copy cost to the
@@ -2084,7 +2087,9 @@ The capture-order and trust-bound decision is recorded in
 Loaded records also bind the UTC program interval used by the power trace to
 its host `CLOCK_MONOTONIC` interval. This comparison applies only when
 `load_interval_source` is exactly `issue118_program_host_interval`; the
-unloaded control's `run_bounds` interval is deliberately not compared. The
+legacy no-table unloaded control's `run_bounds` interval is deliberately not
+compared, while table-enabled unloaded runs use the same binding under
+[ADR-0017](adr/0017-issue119-table-control-program-interval.md). The
 runner reads each endpoint from `CLOCK_MONOTONIC` first and UTC second. UTC
 serialization has microsecond resolution, so quantization contributes at most
 1 us per endpoint (2 us across the interval), while the monotonic values retain
