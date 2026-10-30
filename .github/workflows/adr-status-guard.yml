@@ -1,0 +1,23 @@
+name: adr-status-guard
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Read-only checkout and scan; no secrets or dependency installation needed.
+permissions:
+  contents: read
+
+jobs:
+  adr-status-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Inspect the PR head only, not the synthetic merge or earlier commits.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Reject unsettled ADR statuses
+        run: python3 tools/adr_status_guard.py
