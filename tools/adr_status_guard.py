@@ -6,9 +6,10 @@ from datetime import date
 from pathlib import Path
 
 STATUS_DECLARATION = re.compile(r"^\s*-\s*Status\s*:")
-STATUS_LINE = re.compile(r"- Status: \*\*(.+)\*\* — ([0-9]{4}-[0-9]{2}-[0-9]{2})")
+# ASCII keeps dates and ADR numbers restricted to the documented digit spelling.
+STATUS_LINE = re.compile(r"- Status: \*\*(.+)\*\* — (\d{4}-\d{2}-\d{2})", re.ASCII)
 SETTLED_STATES = {"Accepted", "Rejected", "Deprecated"}
-SUPERSEDED = re.compile(r"Superseded by ADR-[0-9]{4}")
+SUPERSEDED = re.compile(r"Superseded by ADR-\d{4}", re.ASCII)
 
 
 def status_error(text: str) -> str | None:
