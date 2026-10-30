@@ -95,6 +95,20 @@ records; no kernel timestamp row or summary word is added for this observation.
 The parameters retain the complete schedule, table configuration, and L1 ledger.
 Legacy records need no new fields.
 
+For newly collected table-enabled unloaded runs (including no-switch controls),
+AICLK weighting uses the captured host program launch-to-completion UTC span,
+paired with the existing monotonic program interval and card tick interval.
+The host waits for the existing sampler's completion-bracketing row before
+freezing the snapshot, using the same bounded wait as loaded runs. The record
+reuses the existing `issue118_program_host_interval` provenance and UTC/monotonic
+binding check; `clock.aiclk_mhz` remains the in-run maximum, not the weighted
+value. Missing bracketing evidence is rejected rather than extrapolated. This
+host-only path changes neither the kernels nor the container wrapper, leaves
+legacy no-table behavior intact, and does not reinterpret existing records.
+Watcher runs remain diagnostic-only even with a complete weighted-clock span.
+This table-enabled scope extension is recorded in
+[ADR-0017](adr/0017-issue119-table-control-program-interval.md).
+
 ## Power-trace capture order
 
 For non-Watcher runs, the shared loaded-run capture block waits for
@@ -110,8 +124,8 @@ UTC/monotonic program span used for weighted AICLK. Each wait retains the
 freezes the available bytes and records incomplete coverage rather than rejecting
 the run for that timeout. The initial completion-bracketing requirement remains
 unchanged. Watcher, sampler-off and legacy unloaded capture paths are unchanged.
-The supervisory cap is unchanged. PR #156 routes table-enabled controls through
-this same block, so that capture order also applies to them after integration.
+The supervisory cap is unchanged. The Issue #157 fix also applies to
+table-enabled controls, which use this same capture block.
 
 ## Board-free demonstration
 

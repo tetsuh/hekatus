@@ -1972,6 +1972,95 @@ card (host-side timestamps would mix in host jitter).
 **Build the timestamp mechanism in from the start. Retrofitting it is
 painful.**
 
+### Issue #119 resident table-swap result (2026-10-28)
+
+The [control][issue119-control], [demand][issue119-demand], and
+[prefetch][issue119-prefetch] records are accepted timing evidence at harness
+`11fa346e2de9ddb4e310bc751a33719542eea21d`. Each uses 500,000 attempted
+frames, a 1,350,000-tick period, three 262,144-byte profiles preloaded into
+DRAM, device 0, no Watcher, the default two-second power sampler, and a
+600-second runner/container cap. The producer changes identity at zero-based
+indices 25,000 + 50,000k (k=0..9), cycling `(1,1),(2,1),(0,1)` from initial
+`(0,1)`. Control has no scheduled switch but uses the same table-enabled
+resident program. All runs use the unchanged production wrapper and harness.
+Under [ADR-0017](adr/0017-issue119-table-control-program-interval.md),
+table-enabled unloaded controls use the same program-interval binding and trust
+bound as loaded runs; only legacy no-table `run_bounds` controls remain excluded.
+
+The prediction in PR #156 preceded the runs: ready preloaded transitions
+should discard no frames, demand should add the DRAM-to-L1 copy cost to the
+switch frame's completion interval, and prefetch should move that cost to
+`pre_switch_interval`. The observations agree within this synthetic resident
+instrument:
+
+- Control, demand, and accepted prefetch each verified all 500,000 frame
+  checksums, with zero identity discards, overflow, aborted attempts, or
+  kernel failures. All ten ready transitions in each switching row discarded
+  zero frames.
+- Demand's steady median is 1,349,999 ticks. Its switch intervals exceed that
+  median by **35,044–35,561 ticks**; pre-switch differences are −37..+32 ticks.
+- Prefetch's steady median is 1,349,995 ticks. Its pre-switch differences are
+  **+35,639..+36,035 ticks**; switch intervals are **35,592–35,992 ticks shorter**
+  than steady state. The cost is visible on the preceding completion, not
+  eliminated. Steady statistics exclude intervals ending from switch−1
+  through first-ready-frame+1, inclusive; control excludes none.
+- The optional [readiness-delay positive control][issue119-delay] processed
+  499,995 frames with matching checksums, discarded exactly five frames in
+  the first switching segment (25,000..25,004), and discarded zero in all
+  other segments. Its decoded discard/retired summary is 5/500,000, with
+  zero overflow. This satisfies the optional discard-count purpose, but the
+  record remains **not timing evidence** because of incomplete power-trace
+  coverage. Its first processed-frame interval spans frame 24,999 to 25,005;
+  it must not be interpreted as a single-period copy measurement.
+
+| Accepted row | P50 | P99 | P99.9 | P99.99 | Maximum | Weighted AICLK MHz | ASIC power W |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Control | 1,350,000 | 1,350,045 | 1,350,051 | 1,350,051 | 1,350,062 | 1350.000000 | 77.653957 |
+| Demand | 1,349,999 | 1,350,040 | 1,350,047 | 1,350,073 | 1,385,560 | 1349.744028 | 78.302206 |
+| Prefetch (additional authorized attempt) | 1,349,995 | 1,350,041 | 1,350,062 | 1,350,075 | 1,386,030 | 1349.801623 | 78.245043 |
+
+Intervals are device ticks. Demand minus control for
+P50/P99/P99.9/P99.99/maximum is **−1/−5/−4/+22/+35,498 ticks**; prefetch minus
+control is **−5/−4/+11/+24/+35,968 ticks**. The #104 paired-outlier count is
+zero in all three rows; this thresholded classification does not imply the
+absence of copy cost. Host monotonic program spans are respectively
+500.426162364, 500.421519534, and 500.428084772 seconds.
+
+AICLK and ASIC power are duration-weighted, left-held sample observations over
+the captured host program UTC span; the published maximum AICLK remains
+1350 MHz and is not substituted for the weighted value. Power is not board or
+whole-host power. Demand/prefetch power differences from control are
++0.648249/+0.591086 W, descriptive single-run observations only.
+
+The [original prefetch attempt][issue119-prefetch-attempt1] and the optional
+delay row retain `timing_evidence=false`: their frozen snapshot tails miss
+the existing run-end coverage bound by 10.867 ms and 1.685 ms respectively.
+Their weighted program-span AICLK values are available, but this does not
+satisfy the separate whole-run coverage predicate. Strict record validation
+passes for the three accepted records and reports the existing coverage
+failure for both non-timing records; dedicated table-evidence checks pass
+for all five. The original evidence is retained unchanged, and the
+capture-order race is tracked separately in [Issue #157](https://github.com/tetsuh/hekatus/issues/157).
+The accepted prefetch record comes from a separately authorized additional
+run with a new identity, not from appending live samples to the first
+attempt's snapshot. Each JSON retains its original run-bound snapshot
+reference; a same-stem power companion has identical frozen bytes.
+
+Stage 1's short Watcher diagnostics are **not timing evidence**. There is one
+accepted timing observation per condition; no statistical significance or
+advance timing threshold is claimed. Under [ADR-0015](adr/0015-issue121-card-timing-basis.md),
+these are cycle-domain observations, not a product wall-time guarantee. The
+result does not establish host-triggered switching, derivative generation,
+or the real front end. Full records, per-switch intervals, provenance,
+control differences, and dispositions are indexed in
+[the measurement archive](measurements/README.md#issue-119-resident-table-swap-2026-10-28).
+
+[issue119-control]: measurements/2026-10-28-p150a-issue119-control-500000-adr0005.json
+[issue119-demand]: measurements/2026-10-28-p150a-issue119-demand-500000-adr0005.json
+[issue119-prefetch]: measurements/2026-10-28-p150a-issue119-prefetch-500000-adr0005.json
+[issue119-prefetch-attempt1]: measurements/2026-10-28-p150a-issue119-prefetch-attempt1-coverage-incomplete-500000-adr0005.json
+[issue119-delay]: measurements/2026-10-28-p150a-issue119-readiness-delay5-demand-500000-adr0005.json
+
 ### Issue #118 load-interval record contract
 
 The Issue #118 runner keeps the existing public `clock.aiclk_mhz` meaning: it
@@ -1998,7 +2087,9 @@ The capture-order and trust-bound decision is recorded in
 Loaded records also bind the UTC program interval used by the power trace to
 its host `CLOCK_MONOTONIC` interval. This comparison applies only when
 `load_interval_source` is exactly `issue118_program_host_interval`; the
-unloaded control's `run_bounds` interval is deliberately not compared. The
+legacy no-table unloaded control's `run_bounds` interval is deliberately not
+compared, while table-enabled unloaded runs use the same binding under
+[ADR-0017](adr/0017-issue119-table-control-program-interval.md). The
 runner reads each endpoint from `CLOCK_MONOTONIC` first and UTC second. UTC
 serialization has microsecond resolution, so quantization contributes at most
 1 us per endpoint (2 us across the interval), while the monotonic values retain
