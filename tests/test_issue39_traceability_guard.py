@@ -72,14 +72,17 @@ def test_header_width_boundary(width):
     errors = violations([record(header)])
     assert bool(errors) == (width == 101)
     if errors:
-        assert "condition 1" in errors[0] and "100" in errors[0]
+        assert "condition 1" in errors[0]
+        assert "100" in errors[0]
 
 
 def test_issue_prose_is_not_a_commit_reference():
     commit = record("fix(bench): redact Issue #146 diagnostics by allowlist (#150)")
     assert violations([commit], "Closes #150") == []
     errors = violations([commit], "Closes #150\nCloses #146")
-    assert len(errors) == 1 and "condition 3" in errors[0] and "#146" in errors[0]
+    assert len(errors) == 1
+    assert "condition 3" in errors[0]
+    assert "#146" in errors[0]
 
 
 @pytest.mark.parametrize(
@@ -96,7 +99,9 @@ def test_closing_keyword_variants_have_both_directions(keyword, uppercase):
     keyword = keyword.upper() if uppercase else keyword
     assert violations([record()], f"{keyword} #39") == []
     errors = violations([record()], f"Refs #39\n{keyword} #40")
-    assert len(errors) == 1 and "condition 3" in errors[0] and "#40" in errors[0]
+    assert len(errors) == 1
+    assert "condition 3" in errors[0]
+    assert "#40" in errors[0]
 
 
 @pytest.mark.parametrize("body", ["", "Refs #40", "Closes #390", "Issue #39", "encloses #39"])
@@ -110,8 +115,10 @@ def test_all_authored_issues_need_references_and_all_failures_are_reported():
     commits = [record(), record("test(traceability): cover another issue (#40)", sha="c" * 40)]
     errors = violations(commits, "")
     assert len(errors) == 2
-    assert "aaaaaaaa" in errors[0] and "condition 2" in errors[0]
-    assert "cccccccc" in errors[1] and "condition 2" in errors[1]
+    assert "aaaaaaaa" in errors[0]
+    assert "condition 2" in errors[0]
+    assert "cccccccc" in errors[1]
+    assert "condition 2" in errors[1]
     assert violations(commits, "Closes #39\nRefs #40") == []
 
 
@@ -120,8 +127,10 @@ def test_condition3_is_distinct_closing_issues_only_with_head_context():
     errors = violations([record()], "Refs #39\nCloses #40\nCLOSED #40\nCloses #41", head=head)
     assert len(errors) == 2
     for error, issue in zip(errors, (40, 41), strict=True):
-        assert "condition 3" in error and f"#{issue}" in error
-        assert "dddddddd" in error and repr(head.header) in error
+        assert "condition 3" in error
+        assert f"#{issue}" in error
+        assert "dddddddd" in error
+        assert repr(head.header) in error
         assert "PR head context" in error
     assert violations([], "Refs #39", head=head) == []
     assert "condition 3" in violations([], "Closes #39", head=head)[0]
@@ -144,12 +153,23 @@ def test_merge_and_bot_commits_are_exempt_from_all_conditions(header, author, pa
     # An otherwise valid exempt header is still not authored coverage.
     exempt = record(author=author, parents=parents)
     errors = violations([exempt], "Closes #39")
-    assert len(errors) == 1 and "condition 3" in errors[0]
+    assert len(errors) == 1
+    assert "condition 3" in errors[0]
 
 
 @pytest.mark.parametrize("author", ["bot", "person [bot] extra", "person[BOT]"])
 def test_only_the_exact_author_suffix_is_exempt(author):
     assert "condition 1" in violations([record("unscoped", author=author)], "")[0]
+
+
+@pytest.mark.parametrize("revision", ["--all", "HEAD\n--all", "HEAD; echo injected"])
+def test_cli_revision_transport_rejects_non_revision_input(monkeypatch, revision):
+    def unexpected_subprocess(*args, **kwargs):
+        pytest.fail("invalid transport input reached Git")
+
+    monkeypatch.setattr(guard.subprocess, "run", unexpected_subprocess)
+    with pytest.raises(ValueError, match="invalid Git revision"):
+        guard.git_commits(revision)
 
 
 def test_cli_temporary_repository(tmp_path):
@@ -195,21 +215,28 @@ def test_cli_temporary_repository(tmp_path):
     head = git("rev-parse", "HEAD")
     clean = run(base, head, "Closes #39\nRefs #40\nRefs #900")
     assert clean.returncode == 0, clean.stdout + clean.stderr
-    assert clean.stdout == "traceability guard: clean\n" and clean.stderr == ""
+    assert clean.stdout == "traceability guard: clean\n"
+    assert clean.stderr == ""
     red = run(base, head, "Refs #40\nCloses #99")
     assert red.returncode == 1
-    assert "condition 2" in red.stdout and first[:8] in red.stdout and repr(HEADER) in red.stdout
-    assert "condition 3" in red.stdout and head[:8] in red.stdout and "Merge side branch" in red.stdout
+    assert "condition 2" in red.stdout
+    assert first[:8] in red.stdout
+    assert repr(HEADER) in red.stdout
+    assert "condition 3" in red.stdout
+    assert head[:8] in red.stdout
+    assert "Merge side branch" in red.stdout
     assert len(red.stdout.splitlines()) == 2
     # No retroactive scan of base, including an empty range with closing-body context.
     assert run(head, head, "").returncode == 0
     empty = run(head, head, "Closes #39")
-    assert empty.returncode == 1 and "PR head context" in empty.stdout
+    assert empty.returncode == 1
+    assert "PR head context" in empty.stdout
     assert head[:8] in empty.stdout
     assert run("missing-revision", head, "").returncode == 1
     invalid = commit("ci: missing scope (#39)")
     result = run(base, invalid, "Closes #39\nRefs #40")
-    assert result.returncode == 1 and "condition 1" in result.stdout
+    assert result.returncode == 1
+    assert "condition 1" in result.stdout
     assert invalid[:8] in result.stdout
 
 
@@ -226,6 +253,7 @@ def test_workflow_contract():
         "HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
     ):
         assert required in text
-    assert "  push:" not in text and "${{ secrets." not in text
+    assert "  push:" not in text
+    assert "${{ secrets." not in text
     run_text = text.split("run: |", 1)[1]
     assert "${{" not in run_text

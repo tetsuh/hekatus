@@ -17,13 +17,13 @@ import argparse
 import re
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
 
 HEADER = re.compile(
     r"(?:feat|fix|docs|test|refactor|build|ci|chore)\([^()\s]+\): "
-    r"\S(?:.*\S)? \(#[0-9]+\)"
+    r"\S.* \(#\d+\)",
+    re.ASCII,
 )
-TRAILING_REFS = re.compile(r"(?: \(#[0-9]+\))+$")
+TRAILING_REFS = re.compile(r"(?: \(#\d+\))+$", re.ASCII)
 BODY_REF = re.compile(
     r"\b(close[sd]?|fix(?:es|ed)?|resolve[sd]?|refs)\s+#([0-9]+)\b",
     re.IGNORECASE | re.ASCII,
@@ -105,6 +105,9 @@ def violations(commits: list[Commit], body: str, *, head: Commit) -> list[str]:
 
 
 def git_commits(revision: str, *, head_only: bool = False) -> list[Commit]:
+    # CLI revisions are data, never Git options; retain local ref/range syntax.
+    if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_./~^@{}-]*", revision) is None:
+        raise ValueError("invalid Git revision characters")
     command = ["git", "log", "-z", f"--format={LOG_FORMAT}"]
     if head_only:
         command.append("-1")
@@ -114,17 +117,18 @@ def git_commits(revision: str, *, head_only: bool = False) -> list[Commit]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, exit_on_error=False)
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)
-    parser.add_argument("--body-file", type=Path, required=True)
-    args = parser.parse_args()
+    parser.add_argument("--body-file", type=argparse.FileType("r", encoding="utf-8"), required=True)
     try:
-        body = args.body_file.read_text(encoding="utf-8")
+        args = parser.parse_args()
+        with args.body_file as stream:
+            body = stream.read()
         commits = git_commits(f"{args.base}..{args.head}")
         head = git_commits(args.head, head_only=True)[0]
         errors = violations(commits, body, head=head)
-    except (OSError, UnicodeError, ValueError, IndexError, subprocess.CalledProcessError):
+    except (argparse.ArgumentError, OSError, ValueError, IndexError, subprocess.CalledProcessError):
         print("traceability guard: unable to read body or Git commit records")
         return 1
     if errors:
