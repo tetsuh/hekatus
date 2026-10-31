@@ -6,7 +6,10 @@ from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 
-STATUS_DECLARATION = re.compile(r"^\s*-\s*Status\s*:")
+# Recognize malformed candidates too; only STATUS_LINE defines accepted syntax.
+STATUS_DECLARATION = re.compile(
+    r"^\s*(?:[-+*]\s*)?(?:\*\*)?Status\b(?!\s+history\b)", re.IGNORECASE | re.ASCII
+)
 # ASCII keeps dates and ADR numbers restricted to the documented digit spelling.
 STATUS_LINE = re.compile(r"- Status: \*\*(.+)\*\* — (\d{4}-\d{2}-\d{2})", re.ASCII)
 SETTLED_STATES = {"Accepted", "Rejected", "Deprecated"}
@@ -45,15 +48,28 @@ def declaration_lines(text: str) -> Iterator[str]:
         if closing_fence is not None:
             if closing_fence.fullmatch(line):
                 closing_fence = None
+            yield ""
             continue
         opening = None if in_comment else FENCE_OPEN.fullmatch(line)
         if opening is not None:
             marker, info = opening.groups()
             if marker[0] == "~" or "`" not in info:
                 closing_fence = re.compile(r" {0,3}" + re.escape(marker[0]) + rf"{{{len(marker)},}}[ \t]*")
+                yield ""
                 continue
         line, in_comment = mask_comments(line, in_comment)
         yield line
+
+
+def starts_section(lines: list[str], index: int) -> bool:
+    """Recognize level-two ATX headings and dash underlines of paragraph text."""
+    if re.match(r"^\s*##(?:\s|$)", lines[index]):
+        return True
+    if index == 0 or re.fullmatch(r" {0,3}-+[ \t]*", lines[index]) is None:
+        return False
+    previous = lines[index - 1]
+    # An underline needs paragraph text, not a blank, heading, list, or quote.
+    return bool(previous.strip()) and not re.match(r"^\s*(?:#{1,6}(?:\s|$)|[-+*](?:\s|$)|>)", previous)
 
 
 def status_error(text: str) -> str | None:
@@ -68,7 +84,7 @@ def status_error(text: str) -> str | None:
     match = STATUS_LINE.fullmatch(line)
     if match is None:
         return "malformed status line (expected - Status: **<state>** — YYYY-MM-DD)"
-    if any(re.match(r"^\s*##\s", earlier) for earlier in lines[:index]):
+    if any(starts_section(lines, earlier) for earlier in range(index)):
         return "status line must be in header before the first section"
     state, effective_date = match.groups()
     if state == "Proposed":

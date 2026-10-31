@@ -233,6 +233,58 @@ def test_real_duplicate_after_comment_is_not_hidden(tmp_path):
     assert_failure(run_guard(tmp_path), path, "multiple status lines")
 
 
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        "- Status **Proposed** — 2026-08-12",
+        "- Status Proposed — 2026-08-12",
+        "- Status = **Proposed** — 2026-08-12",
+        "* Status: **Proposed** — 2026-08-12",
+        "+ Status: **Proposed** — 2026-08-12",
+        "- status: **Proposed** — 2026-08-12",
+        "- STATUS: **Proposed** — 2026-08-12",
+        "- **Status:** **Proposed** — 2026-08-12",
+        "- Status： **Proposed** — 2026-08-12",
+        "Status: **Proposed** — 2026-08-12",
+        "- Status Unknown — 2026-08-12",
+    ],
+)
+def test_malformed_status_candidates_cannot_hide_beside_accepted(tmp_path, candidate):
+    path = write_adr(tmp_path, "0001-fixture.md", candidate + "\n")
+    assert_failure(run_guard(tmp_path), path, "malformed status line")
+    path.write_text(f"# ADR\n{ACCEPTED}{candidate}\n")
+    assert_failure(run_guard(tmp_path), path, "multiple status lines")
+    for wrapper in ("```\n{}\n```\n", "~~~\n{}\n~~~\n", "<!--\n{}\n-->\n"):
+        path.write_text(f"# ADR\n{ACCEPTED}" + wrapper.format(candidate))
+        assert run_guard(tmp_path).returncode == 0
+
+
+@pytest.mark.parametrize("prose", ["Status history records the transition.", "- Status history: Accepted."])
+def test_status_history_prose_is_not_a_declaration(tmp_path, prose):
+    write_adr(tmp_path, "0001-fixture.md", ACCEPTED + prose + "\n")
+    assert run_guard(tmp_path).returncode == 0
+
+
+@pytest.mark.parametrize("section", ["##", "  ##", "Context\n-------", "Context\n   ------- \t", "Context\n-"])
+def test_empty_atx_and_setext_sections_end_header(tmp_path, section):
+    path = tmp_path / "0001-fixture.md"
+    path.write_text(f"# ADR\n\n{section}\n\n{ACCEPTED}")
+    assert_failure(run_guard(tmp_path), path, "status line must be in header")
+    for wrapper in ("```\n{}\n```\n", "~~~\n{}\n~~~\n", "<!--\n{}\n-->\n"):
+        path.write_text("# ADR\n\n" + wrapper.format(section) + ACCEPTED)
+        assert run_guard(tmp_path).returncode == 0
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["\n", "# ADR\n", "- Item\n", "> Quote\n", "Paragraph\n\n", "Paragraph\n<!-- hidden -->\n", "Paragraph\n```\n```\n"],
+)
+def test_thematic_break_without_adjacent_paragraph_does_not_end_header(tmp_path, prefix):
+    path = tmp_path / "0001-fixture.md"
+    path.write_text(prefix + "---\n\n" + ACCEPTED)
+    assert run_guard(tmp_path).returncode == 0
+
+
 def test_repository_adrs_pass():
     result = run_guard()
     assert result.returncode == 0, result.stdout + result.stderr
