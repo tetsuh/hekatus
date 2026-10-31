@@ -44,9 +44,20 @@ The requirement is that **traceability survives**. It is met when all three
 hold:
 
 - every authored commit header names exactly one issue (platform-generated
-  integration commits stay exempt, per §3 and ADR-0003);
-- every issue a commit names is listed with `Closes #NN` in the PR body;
-- every issue in `Closes` is named by at least one commit.
+  integration commits stay exempt, per §3 and ADR-0003; this extends to all
+  merges with more than one parent and bot-authored commits whose author name
+  ends in `[bot]`, such as Dependabot, exempt from all three conditions);
+- every issue a commit names through its trailing `(#NN)` is listed with
+  `Closes #NN` or `Refs #NN` in the PR body;
+- every issue in a closing reference is named by at least one authored commit.
+
+Use `Refs #NN` for an issue the pull request references but does not close;
+these issues do not need a corresponding commit. The repository convention
+is `Closes` / `Refs` only; the check also recognizes all GitHub closing
+keywords (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`,
+`resolves`, `resolved`) and `Refs` case-insensitively as textual references.
+The `traceability-guard` check mechanically verifies these three conditions,
+including the ADR-0003 header form and 100-character limit on authored commits.
 
 **The commit count is not constrained.** §7 governs a bundled pull request
 exactly as it governs any other: history keeps the meaningful steps, and a
