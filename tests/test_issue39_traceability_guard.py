@@ -1,6 +1,7 @@
 """Board-free coverage of the frozen Issue #39 invariants."""
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -56,6 +57,7 @@ def test_header_types_pass(kind):
         "ci(traceability): check (#39)\t (#40)",
         "ci(traceability): check (#39) \t  \t (#40)",
         "ci(traceability): check (#39)  (#40)\t (#41)",
+        "ci(traceability): check (#39) (#40) (#41)",
         "ci(traceability): check (#39) (#39)",
         "ci(traceability): check (#39) ",
         "ci(traceability): check (#39)\t",
@@ -82,6 +84,12 @@ def test_header_width_boundary(width):
     if errors:
         assert "condition 1" in errors[0]
         assert "100" in errors[0]
+
+
+def test_issue_shaped_summary_fragment_is_not_a_reference():
+    commit = record("fix(ui): render black swatch(#000) (#40)")
+    assert guard.trailing_issue(commit.header) == "40"
+    assert violations([commit], "Closes #40") == []
 
 
 def test_issue_prose_is_not_a_commit_reference():
@@ -178,6 +186,38 @@ def test_cli_revision_transport_rejects_non_revision_input(monkeypatch, revision
     monkeypatch.setattr(guard.subprocess, "run", unexpected_subprocess)
     with pytest.raises(ValueError, match="invalid Git revision"):
         guard.git_commits(revision)
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [[], ["--base", "HEAD"], ["--base", "HEAD", "--head", "HEAD"]],
+)
+@pytest.mark.parametrize(
+    "interpreter",
+    [
+        pytest.param(sys.executable, id="active-python"),
+        pytest.param(shutil.which("python3", path=os.defpath), id="system-python3"),
+    ],
+)
+def test_missing_required_cli_arguments_exit_one(tmp_path, arguments, interpreter):
+    if interpreter is None:
+        pytest.skip("system python3 is unavailable")
+    result = subprocess.run(
+        [interpreter, str(SCRIPT), *arguments], cwd=tmp_path, text=True,
+        capture_output=True, timeout=10, check=False,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "traceability guard: clean" not in result.stdout
+
+
+def test_cli_help_keeps_success_exit():
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--help"], text=True,
+        capture_output=True, timeout=10, check=False,
+    )
+    assert result.returncode == 0
+    assert "--body-file" in result.stdout
+    assert "traceability guard: clean" not in result.stdout
 
 
 def test_cli_temporary_repository(tmp_path):

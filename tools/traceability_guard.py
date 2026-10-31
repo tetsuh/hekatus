@@ -29,6 +29,12 @@ BODY_REF = re.compile(
 LOG_FORMAT = "%H%x00%P%x00%an%x00%s"
 
 
+class GuardArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        """Route usage failures through main's exit-one handler on every Python."""
+        raise argparse.ArgumentError(None, message)
+
+
 @dataclass(frozen=True)
 class Commit:
     sha: str
@@ -65,8 +71,8 @@ def trailing_issue(header: str) -> str | None:
     match = ISSUE_TOKEN.fullmatch(token)
     if not separator or match is None:
         return None
-    preceding = preceding.rstrip(" \t")
-    if ISSUE_TOKEN.fullmatch(preceding[preceding.rfind("(#"):]):
+    preceding_token = preceding.rstrip(" \t").replace("\t", " ").rpartition(" ")[2]
+    if ISSUE_TOKEN.fullmatch(preceding_token):
         return None
     return match.group(1)
 
@@ -133,7 +139,7 @@ def git_commits(revision: str, *, head_only: bool = False) -> list[Commit]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, exit_on_error=False)
+    parser = GuardArgumentParser(description=__doc__, exit_on_error=False)
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)
     parser.add_argument("--body-file", type=argparse.FileType("r", encoding="utf-8"), required=True)
