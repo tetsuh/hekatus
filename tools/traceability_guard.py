@@ -18,14 +18,12 @@ import re
 import subprocess
 from dataclasses import dataclass
 
-HEADER = re.compile(
-    r"(?:feat|fix|docs|test|refactor|build|ci|chore)\([^()\s]+\): "
-    r"\S.* \(#\d+\)",
-    re.ASCII,
+HEADER_PREFIX = re.compile(
+    r"(?:feat|fix|docs|test|refactor|build|ci|chore)\([^()\s]+\)", re.ASCII
 )
-TRAILING_REFS = re.compile(r"(?: \(#\d+\))+$", re.ASCII)
+ISSUE_TOKEN = re.compile(r"\(#(\d+)\)", re.ASCII)
 BODY_REF = re.compile(
-    r"\b(close[sd]?|fix(?:es|ed)?|resolve[sd]?|refs)\s+#([0-9]+)\b",
+    r"\b(close[sd]?|fix(?:es|ed)?|resolve[sd]?|refs)\s+#(\d+)\b",
     re.IGNORECASE | re.ASCII,
 )
 LOG_FORMAT = "%H%x00%P%x00%an%x00%s"
@@ -63,10 +61,25 @@ def parse_commits(text: str) -> list[Commit]:
 
 def trailing_issue(header: str) -> str | None:
     """Only one token in the terminal reference run identifies an issue."""
-    match = TRAILING_REFS.search(header)
-    if match is None or match.group().count("(#") != 1:
+    preceding, separator, token = header.rpartition(" ")
+    match = ISSUE_TOKEN.fullmatch(token)
+    if not separator or match is None or ISSUE_TOKEN.fullmatch(preceding.rpartition(" ")[2]):
         return None
-    return match.group()[3:-1]
+    return match.group(1)
+
+
+def valid_header(header: str, issue: str | None) -> bool:
+    """Check the prefix, nonempty summary and width without a whole-header regex."""
+    prefix, separator, summary_and_issue = header.partition(": ")
+    summary = summary_and_issue.rpartition(" ")[0]
+    return (
+        HEADER_PREFIX.fullmatch(prefix) is not None
+        and bool(separator)
+        and bool(summary.strip())
+        and not summary[0].isspace()
+        and issue is not None
+        and len(header) <= 100
+    )
 
 
 def violations(commits: list[Commit], body: str, *, head: Commit) -> list[str]:
@@ -84,7 +97,7 @@ def violations(commits: list[Commit], body: str, *, head: Commit) -> list[str]:
         if commit.exempt:
             continue
         issue = trailing_issue(commit.header)
-        if HEADER.fullmatch(commit.header) is None or issue is None or len(commit.header) > 100:
+        if not valid_header(commit.header, issue):
             errors.append(
                 f"traceability guard: {commit.label}: condition 1: expected "
                 "<type>(<scope>): <summary> (#N), exactly one trailing reference, <=100 characters"
@@ -106,7 +119,7 @@ def violations(commits: list[Commit], body: str, *, head: Commit) -> list[str]:
 
 def git_commits(revision: str, *, head_only: bool = False) -> list[Commit]:
     # CLI revisions are data, never Git options; retain local ref/range syntax.
-    if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_./~^@{}-]*", revision) is None:
+    if re.fullmatch(r"\w[\w./~^@{}-]*", revision, re.ASCII) is None:
         raise ValueError("invalid Git revision characters")
     command = ["git", "log", "-z", f"--format={LOG_FORMAT}"]
     if head_only:
