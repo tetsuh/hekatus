@@ -63,7 +63,10 @@ def trailing_issue(header: str) -> str | None:
     """Only one token in the terminal reference run identifies an issue."""
     preceding, separator, token = header.rpartition(" ")
     match = ISSUE_TOKEN.fullmatch(token)
-    if not separator or match is None or ISSUE_TOKEN.fullmatch(preceding.rpartition(" ")[2]):
+    if not separator or match is None:
+        return None
+    preceding = preceding.rstrip(" \t")
+    if ISSUE_TOKEN.fullmatch(preceding[preceding.rfind("(#"):]):
         return None
     return match.group(1)
 

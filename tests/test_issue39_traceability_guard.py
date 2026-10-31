@@ -51,14 +51,22 @@ def test_header_types_pass(kind):
         "unknown(traceability): check the conditions (#39)",
         "ci(traceability):  (#39)",
         "ci(traceability): check (#39) (#40)",
+        "ci(traceability): check (#39)  (#40)",
+        "ci(traceability): check (#39)\t(#40)",
+        "ci(traceability): check (#39)\t (#40)",
+        "ci(traceability): check (#39) \t  \t (#40)",
+        "ci(traceability): check (#39)  (#40)\t (#41)",
         "ci(traceability): check (#39) (#39)",
+        "ci(traceability): check (#39) ",
+        "ci(traceability): check (#39)\t",
+        "ci(traceability): check (#39)  (#40) \t",
         "ci(traceability): check (#３９)",
         "ci(traceability): check (#39) extra",
     ],
 )
 def test_condition1_rejects_invalid_headers(header):
     commit = record(header)
-    errors = violations([commit], "Refs #39\nRefs #40")
+    errors = violations([commit], "Refs #39\nRefs #40\nRefs #41")
     assert len(errors) == 1
     assert commit.sha[:8] in errors[0]
     assert repr(header) in errors[0]
