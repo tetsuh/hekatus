@@ -1,0 +1,28 @@
+name: traceability-guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+# Inspect branch history and the event body with read-only access and no secrets.
+permissions:
+  contents: read
+
+jobs:
+  traceability-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the three traceability conditions
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          python3 tools/traceability_guard.py --base "$BASE_SHA" --head "$HEAD_SHA" --body-file "$RUNNER_TEMP/pr-body.md"
