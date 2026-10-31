@@ -163,6 +163,8 @@ Proposed ──► Accepted ──► Superseded by ADR-NNNN
 **`Proposed` never reaches `main`.** It is the state of a record under review
 in an open pull request. A decision that needs wider discussion first is held
 in an issue. Everything on `main` is settled, so nothing there can go stale.
+The `adr-status-guard` check mechanically rejects `Proposed`, missing, malformed,
+or non-settled header statuses in the checked-out ADR tree before landing.
 
 **Every transition is written in the pull request that carries the decision**,
 never afterwards. The status line names the state and its effective date, and
