@@ -11,7 +11,7 @@ STATUS_DECLARATION = re.compile(r"^\s*-\s*Status\s*:")
 STATUS_LINE = re.compile(r"- Status: \*\*(.+)\*\* — (\d{4}-\d{2}-\d{2})", re.ASCII)
 SETTLED_STATES = {"Accepted", "Rejected", "Deprecated"}
 SUPERSEDED = re.compile(r"Superseded by ADR-\d{4}", re.ASCII)
-FENCE_OPEN = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
+FENCE_OPEN = re.compile(r" {0,3}(`{3,}+|~{3,}+)(.*)")
 
 
 def mask_comments(line: str, in_comment: bool) -> tuple[str, bool]:
