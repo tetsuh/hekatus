@@ -2,6 +2,7 @@
 
 import argparse
 import re
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 
@@ -10,11 +11,54 @@ STATUS_DECLARATION = re.compile(r"^\s*-\s*Status\s*:")
 STATUS_LINE = re.compile(r"- Status: \*\*(.+)\*\* — (\d{4}-\d{2}-\d{2})", re.ASCII)
 SETTLED_STATES = {"Accepted", "Rejected", "Deprecated"}
 SUPERSEDED = re.compile(r"Superseded by ADR-\d{4}", re.ASCII)
+FENCE_OPEN = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
+
+
+def mask_comments(line: str, in_comment: bool) -> tuple[str, bool]:
+    """Blank comment spans without joining physical fragments or shifting columns."""
+    parts = []
+    position = 0
+    while position < len(line):
+        if in_comment:
+            end = line.find("-->", position)
+            stop = len(line) if end == -1 else end + 3
+            parts.append(" " * (stop - position))
+            position = stop
+            in_comment = end == -1
+        else:
+            start = line.find("<!--", position)
+            if start == -1:
+                parts.append(line[position:])
+                break
+            parts.append(line[position:start])
+            position = start
+            in_comment = True
+    return "".join(parts), in_comment
+
+
+def declaration_lines(text: str) -> Iterator[str]:
+    """Yield physical lines outside fences, with HTML comment contents masked."""
+    closing_fence = None
+    in_comment = False
+    for line in text.splitlines():
+        # Fence contents are literal: even an unclosed comment opener is inert.
+        if closing_fence is not None:
+            if closing_fence.fullmatch(line):
+                closing_fence = None
+            continue
+        opening = None if in_comment else FENCE_OPEN.fullmatch(line)
+        if opening is not None:
+            marker, info = opening.groups()
+            if marker[0] == "~" or "`" not in info:
+                closing_fence = re.compile(r" {0,3}" + re.escape(marker[0]) + rf"{{{len(marker)},}}[ \t]*")
+                continue
+        line, in_comment = mask_comments(line, in_comment)
+        yield line
 
 
 def status_error(text: str) -> str | None:
     """Validate one declaration, anywhere in the file, then its header position."""
-    lines = text.splitlines()
+    lines = list(declaration_lines(text))
     declarations = [(index, line) for index, line in enumerate(lines) if STATUS_DECLARATION.match(line)]
     if not declarations:
         return "missing status line"

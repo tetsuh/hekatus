@@ -125,6 +125,114 @@ def test_default_root_is_relative_to_checkout(tmp_path):
     assert result.stdout == "adr status guard: clean\n"
 
 
+@pytest.mark.parametrize("marker", ["```", "~~~", "````", "~~~~"])
+@pytest.mark.parametrize("indent", range(4))
+@pytest.mark.parametrize("info", ["", "text", "<!--"])
+def test_fenced_examples_do_not_declare_status_or_start_sections(tmp_path, marker, indent, info):
+    fence = " " * indent + marker
+    example = f"{fence}{info}\n## Example\n{ACCEPTED}{fence}\n"
+    path = write_adr(tmp_path, "0001-fixture.md", example)
+    assert_failure(run_guard(tmp_path), path, "missing status line")
+    path.write_text(f"# ADR\n{example}{ACCEPTED}\n## Context\n{example}")
+    result = run_guard(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "example",
+    [
+        f"<!-- {ACCEPTED.rstrip()} -->\n",
+        f"<!--\n## Example\n{ACCEPTED}-->\n",
+        f"<!-- first --> <!--\n## Example\n{ACCEPTED}-->\n",
+        f"<!--\n```text\n## Example\n{ACCEPTED}```\n-->\n",
+        f"<!--\n~~~text\n## Example\n{ACCEPTED}~~~\n-->\n",
+    ],
+)
+def test_commented_examples_do_not_declare_status_or_start_sections(tmp_path, example):
+    path = write_adr(tmp_path, "0001-fixture.md", example)
+    assert_failure(run_guard(tmp_path), path, "missing status line")
+    path.write_text(f"# ADR\n{example}{ACCEPTED}\n## Context\n{example}")
+    result = run_guard(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("marker", ["```", "~~~"])
+def test_comment_opened_in_fence_is_ignored(tmp_path, marker):
+    path = write_adr(tmp_path, "0001-fixture.md", f"{marker}\n<!--\n{marker}\n{ACCEPTED}")
+    assert run_guard(tmp_path).returncode == 0
+    path.write_text(f"# ADR\n{marker}\n<!--\n{marker}\n## Real section\n{ACCEPTED}")
+    assert_failure(run_guard(tmp_path), path, "status line must be in header")
+
+
+@pytest.mark.parametrize("opening", ["```", "~~~", "<!--"])
+def test_unterminated_embedded_context_extends_to_eof(tmp_path, opening):
+    example = f"{opening}\n## Example\n{ACCEPTED}"
+    path = write_adr(tmp_path, "0001-fixture.md", example)
+    assert_failure(run_guard(tmp_path), path, "missing status line")
+    path.write_text(f"# ADR\n{ACCEPTED}{example}")
+    assert run_guard(tmp_path).returncode == 0
+
+
+@pytest.mark.parametrize("marker", ["```", "~~~"])
+@pytest.mark.parametrize("false_close", ["short", "other", "info", "indented"])
+def test_only_matching_sufficient_bare_fence_closes(tmp_path, marker, false_close):
+    closer = {
+        "short": marker[:2],
+        "other": "~~~" if marker == "```" else "```",
+        "info": marker + "text",
+        "indented": "    " + marker,
+    }[false_close]
+    example = f"{marker}\n{closer}\n## Example\n{ACCEPTED}  {marker}x\n"
+    # The final info-bearing line is not a closer either.
+    path = write_adr(tmp_path, "0001-fixture.md", example)
+    assert_failure(run_guard(tmp_path), path, "missing status line")
+    path.write_text(f"# ADR\n{example}{marker}\t \n{ACCEPTED}")
+    assert run_guard(tmp_path).returncode == 0
+
+
+@pytest.mark.parametrize("marker", ["```", "~~~"])
+def test_longer_closing_fence_resumes_real_declaration_checks(tmp_path, marker):
+    example = f"{marker}text\n{ACCEPTED}{marker + marker[0]}\n"
+    path = write_adr(tmp_path, "0001-fixture.md", ACCEPTED + example + ACCEPTED)
+    assert_failure(run_guard(tmp_path), path, "multiple status lines")
+    path.write_text(f"# ADR\n{example}## Real section\n{ACCEPTED}")
+    assert_failure(run_guard(tmp_path), path, "status line must be in header")
+
+
+@pytest.mark.parametrize("marker", ["```", "~~~"])
+def test_four_space_fence_does_not_open_code_block(tmp_path, marker):
+    write_adr(tmp_path, "0001-fixture.md", f"    {marker}\n{ACCEPTED}    {marker}\n")
+    assert run_guard(tmp_path).returncode == 0
+
+
+def test_four_space_indented_status_and_section_keep_existing_behavior(tmp_path):
+    path = write_adr(tmp_path, "0001-fixture.md", "    " + ACCEPTED)
+    assert_failure(run_guard(tmp_path), path, "malformed status line")
+    path.write_text("# ADR\n    ## Indented section\n" + ACCEPTED)
+    assert_failure(run_guard(tmp_path), path, "status line must be in header")
+
+
+def test_backtick_in_info_string_does_not_open_fence(tmp_path):
+    write_adr(tmp_path, "0001-fixture.md", "```bad`info\n" + ACCEPTED)
+    assert run_guard(tmp_path).returncode == 0
+
+
+def test_comments_do_not_join_physical_fragments_into_a_declaration(tmp_path):
+    path = write_adr(tmp_path, "0001-fixture.md", "- Sta<!-- hidden -->tus: **Accepted** — 2026-08-12\n")
+    assert_failure(run_guard(tmp_path), path, "missing status line")
+
+
+def test_comment_closing_line_preserves_visible_section(tmp_path):
+    path = tmp_path / "0001-fixture.md"
+    path.write_text("# ADR\n<!--\n-->## Visible section\n" + ACCEPTED)
+    assert_failure(run_guard(tmp_path), path, "status line must be in header")
+
+
+def test_real_duplicate_after_comment_is_not_hidden(tmp_path):
+    path = write_adr(tmp_path, "0001-fixture.md", ACCEPTED + "<!--\n" + ACCEPTED + "-->\n" + ACCEPTED)
+    assert_failure(run_guard(tmp_path), path, "multiple status lines")
+
+
 def test_repository_adrs_pass():
     result = run_guard()
     assert result.returncode == 0, result.stdout + result.stderr
