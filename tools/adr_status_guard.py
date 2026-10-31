@@ -8,7 +8,7 @@ from pathlib import Path
 
 # Recognize malformed candidates too; only STATUS_LINE defines accepted syntax.
 STATUS_DECLARATION = re.compile(
-    r"^\s*(?:[-+*]\s*)?(?:\*\*)?Status\b(?!\s+history\b)", re.IGNORECASE | re.ASCII
+    r"^\s*(?:[-+*]\s*)?(\*\*)?Status\b(.*)", re.IGNORECASE | re.ASCII
 )
 # ASCII keeps dates and ADR numbers restricted to the documented digit spelling.
 STATUS_LINE = re.compile(r"- Status: \*\*(.+)\*\* — (\d{4}-\d{2}-\d{2})", re.ASCII)
@@ -61,6 +61,23 @@ def declaration_lines(text: str) -> Iterator[str]:
         yield line
 
 
+def is_status_candidate(line: str) -> bool:
+    """Distinguish malformed declaration-shaped values from ordinary status prose."""
+    match = STATUS_DECLARATION.match(line)
+    if match is None:
+        return False
+    bold_label, tail = match.groups()
+    if bold_label and tail.startswith("**"):
+        tail = tail[2:]
+    value = tail.lstrip()
+    state_word = value.split(maxsplit=1)[0].casefold() if value else ""
+    return (
+        value.startswith((":", "：", "=", "**"))
+        or state_word in {"accepted", "rejected", "deprecated", "proposed", "superseded"}
+        or " — " in tail
+    )
+
+
 def starts_section(lines: list[str], index: int) -> bool:
     """Recognize level-two ATX headings and dash underlines of paragraph text."""
     if re.match(r"^\s*##(?:\s|$)", lines[index]):
@@ -69,13 +86,15 @@ def starts_section(lines: list[str], index: int) -> bool:
         return False
     previous = lines[index - 1]
     # An underline needs paragraph text, not a blank, heading, list, or quote.
-    return bool(previous.strip()) and not re.match(r"^\s*(?:#{1,6}(?:\s|$)|[-+*](?:\s|$)|>)", previous)
+    return bool(previous.strip()) and not re.match(
+        r"^\s*(?:#{1,6}(?:\s|$)|[-+*](?:\s|$)|\d{1,9}[.)](?:\s|$)|>)", previous, re.ASCII
+    )
 
 
 def status_error(text: str) -> str | None:
     """Validate one declaration, anywhere in the file, then its header position."""
     lines = list(declaration_lines(text))
-    declarations = [(index, line) for index, line in enumerate(lines) if STATUS_DECLARATION.match(line)]
+    declarations = [(index, line) for index, line in enumerate(lines) if is_status_candidate(line)]
     if not declarations:
         return "missing status line"
     if len(declarations) != 1:

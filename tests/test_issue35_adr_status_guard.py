@@ -259,7 +259,16 @@ def test_malformed_status_candidates_cannot_hide_beside_accepted(tmp_path, candi
         assert run_guard(tmp_path).returncode == 0
 
 
-@pytest.mark.parametrize("prose", ["Status history records the transition.", "- Status history: Accepted."])
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "Status history records the transition.",
+        "- Status history: Accepted.",
+        "Status updates are recorded here.",
+        "- Status updates are recorded here.",
+        "**Status** updates are recorded here.",
+    ],
+)
 def test_status_history_prose_is_not_a_declaration(tmp_path, prose):
     write_adr(tmp_path, "0001-fixture.md", ACCEPTED + prose + "\n")
     assert run_guard(tmp_path).returncode == 0
@@ -277,7 +286,7 @@ def test_empty_atx_and_setext_sections_end_header(tmp_path, section):
 
 @pytest.mark.parametrize(
     "prefix",
-    ["\n", "# ADR\n", "- Item\n", "> Quote\n", "Paragraph\n\n", "Paragraph\n<!-- hidden -->\n", "Paragraph\n```\n```\n"],
+    ["\n", "# ADR\n", "- Item\n", "1. Item\n", "123) Item\n", "> Quote\n", "Paragraph\n\n", "Paragraph\n<!-- hidden -->\n", "Paragraph\n```\n```\n"],
 )
 def test_thematic_break_without_adjacent_paragraph_does_not_end_header(tmp_path, prefix):
     path = tmp_path / "0001-fixture.md"
