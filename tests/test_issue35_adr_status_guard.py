@@ -294,6 +294,59 @@ def test_thematic_break_without_adjacent_paragraph_does_not_end_header(tmp_path,
     assert run_guard(tmp_path).returncode == 0
 
 
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "The opener is `<!--`.",
+        "The opener is ``<!--``.",
+        "The opener is `` ` <!-- ` ``.",
+        r"The opener is \<!--.",
+        '<span title="<!--">marker</span>',
+        "<span title='<!--'>marker</span>",
+        "The opener is `across\n<!-- lines`.",
+        '<span title="across\n<!-- lines">marker</span>',
+    ],
+)
+@pytest.mark.parametrize(
+    "status",
+    [
+        "- Status: **Proposed** — 2026-08-12\n",
+        "- Status: **Unknown** — 2026-08-12\n",
+        "- Status: Proposed — 2026-08-12\n",
+        ACCEPTED,
+    ],
+)
+def test_literal_comment_openers_do_not_hide_real_statuses(tmp_path, literal, status):
+    path = write_adr(tmp_path, "0001-fixture.md", ACCEPTED + literal + "\n" + status)
+    assert_failure(run_guard(tmp_path), path, "multiple status lines")
+    path.write_text(f"# ADR\n{literal}\n## Context\n-->\n{ACCEPTED}")
+    assert_failure(run_guard(tmp_path), path, "status line must be in header")
+
+
+@pytest.mark.parametrize("literal", ["`<!--`", "``<!--``", r"\<!--", '<span title="<!--">x</span>'])
+def test_real_comment_after_literal_opener_still_masks_examples(tmp_path, literal):
+    write_adr(tmp_path, "0001-fixture.md", ACCEPTED + literal + "\n<!--\n" + ACCEPTED + "-->\n")
+    assert run_guard(tmp_path).returncode == 0
+
+
+@pytest.mark.parametrize("literal", ["`", "``", '<span title="'])
+def test_literal_looking_text_inside_real_comment_does_not_hide_closer(tmp_path, literal):
+    write_adr(tmp_path, "0001-fixture.md", f"<!-- {literal} -->\n{ACCEPTED}")
+    assert run_guard(tmp_path).returncode == 0
+
+
+@pytest.mark.parametrize("prefix", ["Unmatched ` text ", "Unmatched `` text ", r"Escaped backtick \` ", r"Even slashes \\"])
+def test_unmatched_or_escaped_code_marker_does_not_hide_real_comment(tmp_path, prefix):
+    path = write_adr(tmp_path, "0001-fixture.md", prefix + "<!--\n" + ACCEPTED + "-->\n")
+    assert_failure(run_guard(tmp_path), path, "missing status line")
+
+
+def test_inline_code_lookahead_does_not_cross_fence_or_paragraph(tmp_path):
+    for boundary in ("\n\n", "\n~~~\n~~~\n"):
+        path = write_adr(tmp_path, "0001-fixture.md", "Unmatched `<!--" + boundary + "`\n" + ACCEPTED)
+        assert_failure(run_guard(tmp_path), path, "missing status line")
+
+
 def test_repository_adrs_pass():
     result = run_guard()
     assert result.returncode == 0, result.stdout + result.stderr

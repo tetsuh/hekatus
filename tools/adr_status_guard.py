@@ -17,47 +17,109 @@ SUPERSEDED = re.compile(r"Superseded by ADR-\d{4}", re.ASCII)
 FENCE_OPEN = re.compile(r" {0,3}(`{3,}+|~{3,}+)(.*)")
 
 
-def mask_comments(line: str, in_comment: bool) -> tuple[str, bool]:
-    """Blank comment spans without joining physical fragments or shifting columns."""
+def code_span_end(text: str, position: int) -> int:
+    """Find an exactly matching backtick run within this paragraph, if any."""
+    marker = re.match(r"`+", text[position:]).group()
+    start = position + len(marker)
+    line_start = text.rfind("\n", 0, position) + 1
+    if re.fullmatch(r" {4,}", text[line_start:position]):
+        # Preserve the guard's explicitly retained indented-code behavior.
+        return start
+    boundary = re.search(r"\n[ \t]*\n|\n {0,3}(?:`{3,}+|~{3,}+)", text[start:])
+    stop = len(text) if boundary is None else start + boundary.start()
+    for run in re.finditer(r"`+", text[start:stop]):
+        if len(run.group()) == len(marker):
+            return start + run.end()
+    # Consume the entire unmatched run, never reinterpret one of its suffixes.
+    return start
+
+
+def tag_end(text: str, position: int) -> int:
+    """Skip a complete tag, respecting quoted attributes across physical lines."""
+    prefix = re.match(r"</?[A-Za-z][A-Za-z\d-]*", text[position:], re.ASCII)
+    if prefix is None:
+        return position
+    quote = None
+    for index in range(position + prefix.end(), len(text)):
+        character = text[index]
+        if quote is not None:
+            if character == quote:
+                quote = None
+        elif character in "\"'":
+            quote = character
+        elif character == ">":
+            return index + 1
+        elif character == "<":
+            return position
+    return position
+
+
+def literal_end(text: str, position: int) -> int:
+    """Literal spans cannot open HTML comments; unmatched markers remain text."""
+    character = text[position]
+    if character == "\\":
+        return min(position + 2, len(text))
+    if character == "`":
+        return code_span_end(text, position)
+    if character == "<":
+        return tag_end(text, position)
+    return position
+
+
+def mask_comments(
+    text: str, start: int, stop: int, in_comment: bool, protected_until: int
+) -> tuple[str, bool, int]:
+    """Mask comments/literals while preserving columns and physical boundaries."""
     parts = []
-    position = 0
-    while position < len(line):
+    position = start
+    while position < stop:
         if in_comment:
-            end = line.find("-->", position)
-            stop = len(line) if end == -1 else end + 3
-            parts.append(" " * (stop - position))
-            position = stop
+            end = text.find("-->", position, stop)
+            following = stop if end == -1 else end + 3
+            parts.append(" " * (following - position))
+            position = following
             in_comment = end == -1
-        else:
-            start = line.find("<!--", position)
-            if start == -1:
-                parts.append(line[position:])
-                break
-            parts.append(line[position:start])
-            position = start
+        elif position < protected_until:
+            following = min(stop, protected_until)
+            parts.append(" " * (following - position))
+            position = following
+        elif text.startswith("<!--", position):
             in_comment = True
-    return "".join(parts), in_comment
+        else:
+            protected_until = literal_end(text, position)
+            if protected_until == position:
+                parts.append(text[position])
+                position += 1
+    return "".join(parts), in_comment, protected_until
 
 
 def declaration_lines(text: str) -> Iterator[str]:
     """Yield physical lines outside fences, with HTML comment contents masked."""
     closing_fence = None
     in_comment = False
-    for line in text.splitlines():
+    protected_until = 0
+    lines = text.splitlines()
+    text = "\n".join(lines)
+    offset = 0
+    for line in lines:
+        start, stop = offset, offset + len(line)
+        offset = stop + 1
         # Fence contents are literal: even an unclosed comment opener is inert.
         if closing_fence is not None:
             if closing_fence.fullmatch(line):
                 closing_fence = None
             yield ""
             continue
-        opening = None if in_comment else FENCE_OPEN.fullmatch(line)
+        opening = None if in_comment or start < protected_until else FENCE_OPEN.fullmatch(line)
         if opening is not None:
             marker, info = opening.groups()
             if marker[0] == "~" or "`" not in info:
                 closing_fence = re.compile(r" {0,3}" + re.escape(marker[0]) + rf"{{{len(marker)},}}[ \t]*")
                 yield ""
                 continue
-        line, in_comment = mask_comments(line, in_comment)
+        line, in_comment, protected_until = mask_comments(
+            text, start, stop, in_comment, protected_until
+        )
         yield line
 
 
