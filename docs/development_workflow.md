@@ -33,7 +33,9 @@ issues raised while it was open — by its review, or by the work itself —
 when the change they call for belongs in the same diff. That is the normal
 way a change grows under scrutiny: a problem found during work becomes an
 issue rather than a drive-by fix, and closing it here keeps the fix with
-what caused it.
+what caused it. A pull request that closes more than one issue this way is a
+**bundled** pull request. This document and ADR-0006 use "bundle" in that
+sense only.
 
 Issues that already exist when a pull request is opened are **never grouped
 into it**, and a decision that establishes or alters a contract is reviewed
@@ -212,8 +214,8 @@ links are permitted; anything that alters what the record says is not.
   reversal of a past decision.
 - **Do not write an ADR for**: numeric parameters determined by sweeps or
   measurement (update `design.md` / `docs/open-issues.md` instead).
-- A small decision may be bundled with its implementation PR; include `[ADR]`
-  in the PR title.
+- A small decision may ship its ADR in the same PR as its implementation;
+  include `[ADR]` in the PR title.
 
 ## 7. Merge policy: owner-only authority
 
