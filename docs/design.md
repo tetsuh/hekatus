@@ -2737,6 +2737,29 @@ Reasons:
   not model
 - maintaining two languages and environments would reliably slow the sweeps
 
+### Pulse evaluation support (Issue #165)
+
+The simulator defaults to evaluating each contribution only on samples within
+**±5.5σ** of its per-channel arrival, where σ is the Gaussian envelope's
+standard deviation from the profile bandwidth (§4). `pulse_support_sigmas=None`
+retains the full-record reference. Windows are clipped at the record edges;
+the work buffer width depends only on k, σ and fs, not signal amplitude. The
+pulse formula, transmit models, every-contribution summation (silent elements
+included), and single frame-wide int16 scale are unchanged.
+
+The [board-free sweep](measurements/issue165-pulse-support/2026-11-02/README.md)
+selected 5.5 as the fastest measured candidate meeting the `1e-6` maximum
+peak-relative float64 frame-error bound over the existing one-point and golden
+sets and a seeded 200-scatterer field, using all 128 events of the provisional
+`linear-5mhz` profile. Its worst relative error was **2.53123053e-7**; k=5
+failed at **1.64067241e-6**. On the 200-scatterer field, simulation before
+int16 scaling took **174.124856 s** with `None` and **4.943297 s** at the
+selected default (**0.870624** vs **0.024716 s/scatterer**, about 35×).
+These are CPU simulation timings, not full-pipeline or board throughput;
+`uptime` load averages accompany each timed frame in the JSON. Numeric support
+is a measured approximation, not a universal error guarantee for arbitrary
+scatterer cancellation or other profiles.
+
 **When Field II becomes necessary:** the home-built PSF looks suspect, an
 external publication is planned, or the battleground moves to low
 frequencies / near field. Buy the license then.

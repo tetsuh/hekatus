@@ -29,7 +29,7 @@ from enodia.spec.records import EventHeader, RFEventRecord
 from enodia.spec.sequence import TransmitConfig, TxEvent
 from enodia.spec.sim.transmit import transmit_contributions
 
-DEFAULT_PULSE_SUPPORT_SIGMAS = 6.0
+DEFAULT_PULSE_SUPPORT_SIGMAS = 5.5
 
 __all__ = [
     "DEFAULT_PULSE_SUPPORT_SIGMAS",
