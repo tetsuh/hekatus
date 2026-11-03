@@ -885,10 +885,12 @@ def main() -> int:
         if isinstance(result, dict):
             print(json.dumps(result, indent=2, allow_nan=False))
             return 2
-        print(result[0].as_posix())
-        print(result[1].as_posix())
+        output_json = validated_output_dir / OUTPUT_JSON
+        print(output_json.as_posix())
+        print((validated_output_dir / OUTPUT_README).as_posix())
+        # Read only the fixed filename under the independently validated output directory.
         # The record is persisted even when a sanity bound fails.
-        record = json.loads(result[0].read_text(encoding="utf-8"))
+        record = json.loads(output_json.read_text(encoding="utf-8"))
         return 0 if record["sanity"]["status"] == "pass" else 1
     except (RuntimeError, ValueError, FileExistsError) as error:
         print(str(error), file=sys.stderr)

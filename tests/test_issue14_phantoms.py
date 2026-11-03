@@ -716,6 +716,29 @@ def test_cli_rejects_unsafe_output_before_estimate_or_record(
     assert "output" in capsys.readouterr().err
 
 
+def test_cli_reads_only_the_validated_measurement_output(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "measurements"
+    destination = root / "2026-11-03"
+    outside = tmp_path / "outside.json"
+    outside.write_text(json.dumps({"sanity": {"status": "fail"}}), encoding="utf-8")
+
+    def runner(output_dir, *, seed):
+        assert output_dir == destination
+        output_dir.mkdir(parents=True)
+        (output_dir / record.OUTPUT_JSON).write_text(
+            json.dumps({"sanity": {"status": "pass"}}), encoding="utf-8"
+        )
+        return outside, outside
+
+    monkeypatch.setattr(record, "MEASUREMENT_ROOT", root)
+    monkeypatch.setattr(record, "run_record", runner)
+    monkeypatch.setattr(sys, "argv", ["record", "--output-dir", str(destination)])
+    assert record.main() == 0
+    printed = capsys.readouterr().out
+    assert str(outside) not in printed
+    assert str(destination / record.OUTPUT_JSON) in printed
+
+
 def test_measurement_root_rejects_escape_paths_and_existing_outputs(tmp_path, monkeypatch):
     root = tmp_path / "records"
     outside = tmp_path / "outside"
