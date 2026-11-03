@@ -61,12 +61,17 @@ def test_all_generators_are_seeded_and_keep_points_inside_golden_imaging_region(
         ),
         lambda seed: anechoic_cysts(
             profile, seed=seed, density_per_cell=0.2, cyst_diameters_m=(0.2e-3, 0.4e-3, 0.8e-3),
-            cyst_centers_x_m=(-0.5e-3, 0.0, 0.5e-3), cyst_centers_z_m=(5e-3, 12e-3)
+            cyst_centers_x_m=(-0.5e-3, 0.0, 0.5e-3), cyst_centers_z_m=(5e-3, 12e-3),
+            background_x_bounds_m=(-1e-3, 1e-3), background_z_bounds_m=(3e-3, 17e-3)
         ),
-        lambda seed: uniform_speckle(profile, seed=seed, density_per_cell=0.2),
+        lambda seed: uniform_speckle(
+            profile, seed=seed, density_per_cell=0.2,
+            background_x_bounds_m=(-1e-3, 1e-3), background_z_bounds_m=(3e-3, 17e-3)
+        ),
         lambda seed: high_echo_structures(
             profile, seed=seed, density_per_cell=0.2, needle_center_z_m=9e-3, needle_length_m=1e-3,
-            calcification_positions_m=((-0.7e-3, 6e-3), (0.7e-3, 12e-3))
+            calcification_positions_m=((-0.7e-3, 6e-3), (0.7e-3, 12e-3)),
+            background_x_bounds_m=(-1e-3, 1e-3), background_z_bounds_m=(3e-3, 17e-3)
         ),
     ]
     for generate in generators:
@@ -85,7 +90,7 @@ def test_all_generators_are_seeded_and_keep_points_inside_golden_imaging_region(
 
 def test_cyst_generator_excludes_strict_interior_and_uses_configured_radii():
     profile = linear_5mhz()
-    centers_x = (-0.010, 0.0, 0.010)
+    centers_x = (-0.010, -0.003, 0.006)
     centers_z = (0.022, 0.040)
     diameters = (0.002, 0.004, 0.008)
     points = anechoic_cysts(
@@ -117,6 +122,8 @@ def test_cyst_generator_excludes_strict_interior_and_uses_configured_radii():
         profile,
         BoundaryRng(),
         1,
+        background_x_bounds_m=(-15e-3, 15e-3),
+        background_z_bounds_m=(10e-3, 50e-3),
         z_min_m=2e-3,
         amplitude_std=1.0,
         excluded_circles=[(0.0, 0.022, 0.001)],
@@ -128,9 +135,10 @@ def test_cyst_generator_excludes_strict_interior_and_uses_configured_radii():
 def test_speckle_count_uses_the_documented_resolution_cell_density_formula():
     profile = linear_5mhz()
     density = 0.25
-    xmin, xmax, zmin, zmax = imaging_region(profile)
+    bounds_x = (-15e-3, 15e-3)
+    bounds_z = (10e-3, 50e-3)
     cell_width, cell_height = resolution_cell(profile)
-    expected = math.ceil(density * (xmax - xmin) * (zmax - zmin) / (cell_width * cell_height))
+    expected = math.ceil(density * (bounds_x[1] - bounds_x[0]) * (bounds_z[1] - bounds_z[0]) / (cell_width * cell_height))
     assert len(uniform_speckle(profile, seed=5, density_per_cell=density)) == expected
 
 
@@ -178,8 +186,9 @@ def test_production_estimate_guard_does_not_start_or_write_a_record(tmp_path, mo
     monkeypatch.setattr(record, "_require_clean_checkout", lambda: None)
     monkeypatch.setattr(record, "estimate_project", lambda **kwargs: {"production_allowed": False})
     monkeypatch.setattr(record, "build_record", lambda **kwargs: pytest.fail("production started"))
-    with pytest.raises(RuntimeError, match="exceeds two hours"):
-        record.run_record(root / "2026-11-03")
+    result = record.run_record(root / "2026-11-03")
+    assert result["status"] == "blocked"
+    assert result["preflight"] == {"production_allowed": False}
     assert not root.exists()
 
 
@@ -191,7 +200,12 @@ def test_failed_sanity_record_is_preserved(tmp_path, monkeypatch):
     result = record.build_record(
         profile=_small_profile(),
         cases={"uniform_speckle": {"generator": uniform_speckle,
-                                  "parameters": {"seed": 8, "density_per_cell": 0.01}}},
+                                  "parameters": {
+                                      "seed": 8,
+                                      "density_per_cell": 0.01,
+                                      "background_x_bounds_m": (-1e-3, 1e-3),
+                                      "background_z_bounds_m": (3e-3, 17e-3),
+                                  }}},
     )
     assert result["sanity"]["status"] == "fail"
     monkeypatch.setattr(record, "build_record", lambda **kwargs: result)
@@ -201,18 +215,7 @@ def test_failed_sanity_record_is_preserved(tmp_path, monkeypatch):
 
 
 def test_record_rendering_and_small_end_to_end_json(tmp_path, monkeypatch):
-    profile = ProbeProfile(
-        name="test-linear",
-        n_elements=8,
-        pitch_m=0.3e-3,
-        f0_hz=5.0e6,
-        bandwidth_frac=0.7,
-        fs_hz=40.0e6,
-        c_m_s=1540.0,
-        depth_m=18e-3,
-        tx_focus_m=12e-3,
-        f_number=2.0,
-    )
+    profile = _small_profile()
     output_root = tmp_path / "measurements"
     monkeypatch.setattr(record, "MEASUREMENT_ROOT", output_root)
     monkeypatch.setattr(record, "_git", lambda *args: "a" * 40)
@@ -221,7 +224,12 @@ def test_record_rendering_and_small_end_to_end_json(tmp_path, monkeypatch):
     tiny_cases = {
         "uniform_speckle": {
             "generator": uniform_speckle,
-            "parameters": {"seed": 8, "density_per_cell": 0.01},
+            "parameters": {
+                "seed": 8,
+                "density_per_cell": 0.01,
+                "background_x_bounds_m": (-1e-3, 1e-3),
+                "background_z_bounds_m": (3e-3, 17e-3),
+            },
         }
     }
     result = record.build_record(profile=profile, cases=tiny_cases)
@@ -234,14 +242,19 @@ def test_record_rendering_and_small_end_to_end_json(tmp_path, monkeypatch):
     assert case["scatterer_count"] > 0
     assert case["generator_arguments"]["seed"] == 8
     assert case["generator_arguments"]["density_per_cell"] == 0.01
+    assert case["generator_arguments"]["background_x_bounds_m"] == [-1e-3, 1e-3]
+    assert case["generator_arguments"]["background_z_bounds_m"] == [3e-3, 17e-3]
     assert case["elapsed_seconds"] >= 0.0
     assert "before" in case["uptime_load_average"] and "after" in case["uptime_load_average"]
     assert "speckle_snr" in case["metrics"]
+    assert result["metric_roi_arguments"]["uniform_speckle"]
     assert result["definitions"]["resolution_cell"]
 
     path = output_root / "2026-11-03"
     json_path, readme_path = record.write_record(path, result)
-    decoded = json.loads(json_path.read_text(encoding="utf-8"))
+    json_text = json_path.read_text(encoding="utf-8")
+    decoded = json.loads(json_text)
+    assert str(tmp_path) not in json_text
     assert json.dumps(decoded, allow_nan=False)
     assert record.render_readme(decoded) == readme_path.read_text(encoding="utf-8")
     with pytest.raises(FileExistsError):
@@ -287,6 +300,299 @@ def test_production_record_refuses_a_dirty_checkout_before_measuring(tmp_path, m
     with pytest.raises(RuntimeError, match="clean committed checkout"):
         record.run_record(root / "2026-11-03")
     assert not root.exists()
+
+
+def test_default_background_bounds_set_candidate_count_and_contain_scatterers(monkeypatch):
+    profile = linear_5mhz()
+    x_bounds = (-15e-3, 15e-3)
+    z_bounds = (10e-3, 50e-3)
+    density = 0.01
+    cell_width, cell_height = resolution_cell(profile)
+    candidate_count = math.ceil(
+        density * (x_bounds[1] - x_bounds[0]) * (z_bounds[1] - z_bounds[0])
+        / (cell_width * cell_height)
+    )
+    generators = [
+        lambda: uniform_speckle(profile, seed=11, density_per_cell=density),
+        lambda: anechoic_cysts(profile, seed=11, density_per_cell=density),
+        lambda: high_echo_structures(profile, seed=11, density_per_cell=density),
+    ]
+    for generate in generators:
+        points = generate()
+        assert points
+        assert all(x_bounds[0] <= point.x_m <= x_bounds[1] for point in points)
+        assert all(z_bounds[0] <= point.z_m <= z_bounds[1] for point in points)
+        xmin, xmax, zmin, zmax = imaging_region(profile)
+        assert all(xmin <= point.x_m <= xmax for point in points)
+        assert all(zmin <= point.z_m <= zmax for point in points)
+    assert len(generators[0]()) == candidate_count
+    assert len(generators[2]()) == candidate_count + 23
+
+    observed_counts = []
+    monkeypatch.setattr(
+        phantom_generators,
+        "_uniform_points",
+        lambda profile, rng, count, **kwargs: observed_counts.append(count) or [],
+    )
+    anechoic_cysts(profile, seed=11, density_per_cell=density)
+    assert observed_counts == [candidate_count]
+
+
+def test_background_bounds_must_be_finite_ordered_and_inside_imaging_region():
+    profile = linear_5mhz()
+    generators = (uniform_speckle, anechoic_cysts, high_echo_structures)
+    invalid_bounds = [
+        {"background_x_bounds_m": (-20e-3, 20e-3), "background_z_bounds_m": (10e-3, 50e-3)},
+        {"background_x_bounds_m": (1e-3, -1e-3), "background_z_bounds_m": (10e-3, 50e-3)},
+        {"background_x_bounds_m": (-1e-3, 1e-3), "background_z_bounds_m": (float("nan"), 50e-3)},
+    ]
+    for generator in generators:
+        for bounds in invalid_bounds:
+            with pytest.raises(ValueError, match="background bounds"):
+                generator(profile, density_per_cell=0.0, **bounds)
+
+
+def test_default_structure_and_metric_roi_extents_fit_background_bounds():
+    cases = record._default_cases(14)
+    x_bounds = (-15e-3, 15e-3)
+    z_bounds = (10e-3, 50e-3)
+    for name in ("anechoic_cysts", "uniform_speckle", "high_echo_structures"):
+        params = cases[name]["parameters"]
+        assert params["background_x_bounds_m"] == x_bounds
+        assert params["background_z_bounds_m"] == z_bounds
+
+    points = cases["point_scatterer_array"]["parameters"]
+    point_targets = point_scatterer_array(linear_5mhz(), **points)
+    assert all(x_bounds[0] <= target.x_m <= x_bounds[1] for target in point_targets)
+    assert all(z_bounds[0] <= target.z_m <= z_bounds[1] for target in point_targets)
+    assert min(points["lateral_positions_m"]) - 3e-3 >= x_bounds[0]
+    assert max(points["lateral_positions_m"]) + 3e-3 <= x_bounds[1]
+    assert points["z_start_m"] - 2e-3 >= z_bounds[0]
+    assert points["z_stop_m"] + 2e-3 <= z_bounds[1]
+
+    cyst = cases["anechoic_cysts"]["parameters"]
+    for center_x, diameter in zip(cyst["cyst_centers_x_m"], cyst["cyst_diameters_m"], strict=True):
+        outer_radius = 1.75 * diameter / 2
+        assert x_bounds[0] <= center_x - outer_radius
+        assert center_x + outer_radius <= x_bounds[1]
+    assert tuple(cyst["cyst_centers_x_m"]) == (-10e-3, -3e-3, 6e-3)
+    assert all(z_bounds[0] <= z - 1.75 * 8e-3 / 2 for z in cyst["cyst_centers_z_m"])
+    assert all(z + 1.75 * 8e-3 / 2 <= z_bounds[1] for z in cyst["cyst_centers_z_m"])
+
+    rois = record._roi_record()
+    speckle_roi = rois["uniform_speckle"]
+    assert x_bounds[0] <= speckle_roi["x_bounds_m"][0]
+    assert speckle_roi["x_bounds_m"][1] <= x_bounds[1]
+    assert z_bounds[0] <= speckle_roi["z_bounds_m"][0]
+    assert speckle_roi["z_bounds_m"][1] <= z_bounds[1]
+    high = cases["high_echo_structures"]["parameters"]
+    needle_margin = high["needle_length_m"] / 2 + rois["high_echo"]["needle_outside_distance_m"][1]
+    assert x_bounds[0] <= high["needle_center_x_m"] - needle_margin
+    assert high["needle_center_x_m"] + needle_margin <= x_bounds[1]
+    assert z_bounds[0] <= high["needle_center_z_m"] - needle_margin
+    assert high["needle_center_z_m"] + needle_margin <= z_bounds[1]
+    calc_margin = rois["high_echo"]["calcification_outside_radius_m"][1]
+    for x, z in high["calcification_positions_m"]:
+        assert x_bounds[0] <= x - calc_margin and x + calc_margin <= x_bounds[1]
+        assert z_bounds[0] <= z - calc_margin and z + calc_margin <= z_bounds[1]
+
+
+def test_two_point_timing_fit_and_invalid_slope_fail_closed():
+    model = record.fit_pilot_timing_model(
+        [
+            {"scatterer_count": 500, "elapsed_seconds": 20.0},
+            {"scatterer_count": 2000, "elapsed_seconds": 50.0},
+        ]
+    )
+    assert model["valid"]
+    assert model["raw_seconds_per_scatterer"] == pytest.approx(0.02)
+    assert model["raw_intercept_seconds"] == pytest.approx(10.0)
+    assert model["applied_seconds_per_scatterer"] == pytest.approx(0.02)
+    assert model["applied_intercept_seconds"] == pytest.approx(10.0)
+
+    clamped = record.fit_pilot_timing_model(
+        [
+            {"scatterer_count": 500, "elapsed_seconds": 10.0},
+            {"scatterer_count": 2000, "elapsed_seconds": 100.0},
+        ]
+    )
+    assert clamped["valid"]
+    assert clamped["raw_intercept_seconds"] == pytest.approx(-20.0)
+    assert clamped["applied_intercept_seconds"] == 0.0
+    assert clamped["clamped"]["intercept"]
+
+    invalid = record.fit_pilot_timing_model(
+        [
+            {"scatterer_count": 500, "elapsed_seconds": 20.0},
+            {"scatterer_count": 2000, "elapsed_seconds": 19.0},
+        ]
+    )
+    assert not invalid["valid"]
+    assert invalid["failure_reason"]
+
+
+def test_estimator_runs_exact_500_then_2000_point_pilots_and_fits_recorded_json(monkeypatch):
+    profile = _small_profile()
+    calls = []
+
+    def fixed_case(profile, *, seed, gain):
+        return [PointScatterer(0.0, 10e-3, float(seed) * gain) for _ in range(100)]
+
+    cases = {"pilot_test": {"generator": fixed_case, "parameters": {"seed": 37, "gain": 2.0}}}
+
+    def timed_pilot(profile, *, scatterer_count, seed):
+        calls.append((scatterer_count, seed))
+        elapsed = 20.0 if scatterer_count == 500 else 50.0
+        return {
+            "scatterer_count": scatterer_count,
+            "seed": seed,
+            "elapsed_seconds": elapsed,
+            "uptime_load_average": {"before": {"load_average": "0"}, "after": {"load_average": "0"}},
+        }
+
+    monkeypatch.setattr(record, "_time_pilot", timed_pilot)
+    monkeypatch.setattr(
+        record, "_git", lambda *args: "" if args[0] == "status" else "a" * 40
+    )
+    monkeypatch.setattr(record, "_cpu_model", lambda: "test-cpu")
+    estimate = record.estimate_project(profile=profile, seed=36, cases=cases)
+    assert [count for count, _ in calls] == [500, 2000]
+    assert estimate["seed"] == 36
+    assert [pilot["scatterer_count"] for pilot in estimate["pilots"]] == [500, 2000]
+    assert [pilot["seed"] for pilot in estimate["pilots"]] == [36, 37]
+    assert all("before" in pilot["uptime_load_average"] and "after" in pilot["uptime_load_average"] for pilot in estimate["pilots"])
+    assert estimate["timing_model"]["applied_intercept_seconds"] == pytest.approx(10.0)
+    assert estimate["timing_model"]["applied_seconds_per_scatterer"] == pytest.approx(0.02)
+    assert estimate["estimated_cases"][0]["estimated_seconds"] == pytest.approx(12.0)
+    assert estimate["estimated_cases"][0]["generator_arguments"] == {"seed": 37, "gain": 2.0}
+    assert estimate["environment"]["commit"] == "a" * 40
+    assert estimate["environment"]["cpu_model"] == "test-cpu"
+    assert estimate["environment"]["python_version"]
+    assert estimate["environment"]["numpy_version"]
+    assert estimate["formula"]
+    assert estimate["production_allowed"]
+    assert record.MAX_ESTIMATED_SECONDS == 3 * 60 * 60
+
+
+def test_estimator_blocks_when_fitted_total_exceeds_three_hours(monkeypatch):
+    profile = _small_profile()
+
+    def large_case(profile, *, seed):
+        return [PointScatterer(0.0, 10e-3, float(seed)) for _ in range(3000)]
+
+    cases = {"large": {"generator": large_case, "parameters": {"seed": 4}}}
+    pilot_times = iter((2000.0, 8000.0))
+
+    def timed_pilot(profile, *, scatterer_count, seed):
+        return {
+            "scatterer_count": scatterer_count,
+            "seed": seed,
+            "elapsed_seconds": next(pilot_times),
+            "uptime_load_average": {"before": {}, "after": {}},
+        }
+
+    monkeypatch.setattr(record, "_time_pilot", timed_pilot)
+    monkeypatch.setattr(
+        record, "_git", lambda *args: "" if args[0] == "status" else "a" * 40
+    )
+    monkeypatch.setattr(record, "_cpu_model", lambda: "test-cpu")
+    estimate = record.estimate_project(profile=profile, seed=4, cases=cases)
+    assert estimate["estimated_total_seconds"] == pytest.approx(12_000.0)
+    assert estimate["maximum_allowed_seconds"] == 10_800
+    assert not estimate["production_allowed"]
+    assert estimate["failure_reason"] == "estimated total exceeds the three-hour limit"
+
+
+def test_pilot_scatterer_helper_returns_exact_requested_counts():
+    profile = linear_5mhz()
+    for count in (500, 2000):
+        points = record._pilot_scatterers(profile, scatterer_count=count, seed=14)
+        assert len(points) == count
+        assert all(-15e-3 <= point.x_m <= 15e-3 for point in points)
+        assert all(10e-3 <= point.z_m <= 50e-3 for point in points)
+
+
+def test_estimate_only_returns_preflight_without_production(tmp_path, monkeypatch):
+    root = tmp_path / "records"
+    preflight = {"production_allowed": False, "pilots": [{"scatterer_count": 500}, {"scatterer_count": 2000}]}
+    monkeypatch.setattr(record, "MEASUREMENT_ROOT", root)
+    monkeypatch.setattr(record, "estimate_project", lambda **kwargs: preflight)
+    monkeypatch.setattr(record, "build_record", lambda **kwargs: pytest.fail("production started"))
+    result = record.run_record(root / "2026-11-03", estimate_only=True)
+    assert result == preflight
+    assert not root.exists()
+
+
+def test_invalid_pilot_fit_is_returned_as_blocked_preflight(monkeypatch):
+    profile = _small_profile()
+
+    def fixed_case(profile, *, seed):
+        return [PointScatterer(0.0, 10e-3, float(seed)) for _ in range(5)]
+
+    cases = {"pilot_test": {"generator": fixed_case, "parameters": {"seed": 9}}}
+    durations = iter((20.0, 19.0))
+
+    def noisy_pilot(profile, *, scatterer_count, seed):
+        return {
+            "scatterer_count": scatterer_count,
+            "seed": seed,
+            "elapsed_seconds": next(durations),
+            "uptime_load_average": {"before": {"load_average": "0"}, "after": {"load_average": "0"}},
+        }
+
+    monkeypatch.setattr(record, "_time_pilot", noisy_pilot)
+    monkeypatch.setattr(
+        record, "_git", lambda *args: "" if args[0] == "status" else "a" * 40
+    )
+    monkeypatch.setattr(record, "_cpu_model", lambda: "test-cpu")
+    result = record.estimate_project(profile=profile, seed=3, cases=cases)
+    assert not result["production_allowed"]
+    assert result["estimated_total_seconds"] is None
+    assert [pilot["elapsed_seconds"] for pilot in result["pilots"]] == [20.0, 19.0]
+    assert result["timing_model"]["raw_seconds_per_scatterer"] < 0.0
+    assert result["failure_reason"]
+
+
+def test_blocked_preflight_preserves_pilots_and_never_starts_production(tmp_path, monkeypatch):
+    root = tmp_path / "records"
+    preflight = {
+        "production_allowed": False,
+        "estimated_total_seconds": 10_801.0,
+        "pilots": [{"scatterer_count": 500, "elapsed_seconds": 20.0}, {"scatterer_count": 2000, "elapsed_seconds": 50.0}],
+    }
+    monkeypatch.setattr(record, "MEASUREMENT_ROOT", root)
+    monkeypatch.setattr(record, "_require_clean_checkout", lambda: None)
+    monkeypatch.setattr(record, "estimate_project", lambda **kwargs: preflight)
+    monkeypatch.setattr(record, "build_record", lambda **kwargs: pytest.fail("production started"))
+    result = record.run_record(root / "2026-11-03")
+    assert result == {"status": "blocked", "preflight": preflight}
+    assert not root.exists()
+
+
+def _minimal_write_record():
+    return {
+        "environment": {"commit": "x", "cpu_model": "test", "python_version": "3", "numpy_version": "2"},
+        "profile": {"name": "linear-5mhz", "bandwidth_frac": 0.7, "bandwidth_source": None},
+        "processing": {"imaging_region_m": {"x": [-1.0, 1.0], "z": [0.0, 1.0]}},
+        "definitions": {
+            "resolution_cell": {"lateral_width_m": 1.0, "axial_height_m": 1.0},
+            "density_count_formula": "ceil(...) ",
+            "cyst_exclusion": "strict interior excluded",
+            "background_amplitude": "normal",
+        },
+        "cases": [],
+        "sanity": {"status": "pass"},
+    }
+
+
+def test_fresh_nested_dated_record_is_write_once(tmp_path, monkeypatch):
+    root = tmp_path / "records"
+    monkeypatch.setattr(record, "MEASUREMENT_ROOT", root)
+    destination = root / "2026-11-03" / "rerun-1"
+    json_path, readme_path = record.write_record(destination, _minimal_write_record())
+    assert json_path.exists() and readme_path.exists()
+    with pytest.raises(FileExistsError):
+        record.write_record(destination, _minimal_write_record())
 
 
 def test_measurement_root_rejects_escape_paths_and_existing_outputs(tmp_path, monkeypatch):

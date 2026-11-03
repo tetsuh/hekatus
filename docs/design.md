@@ -2793,6 +2793,19 @@ Metrics improving while the image looks wrong is a normal occurrence.
 | **high-echo structures (needles, calcifications)** | **where MV fails hardest. Mandatory** |
 | flow phantom (moving point clouds, constant-velocity region) | color velocity-bias verification (§7) |
 
+The Track A CPU phantom generators place speckle backgrounds in the
+rectangular region x = [−15, +15] mm, z = [10, 50] mm, inside the profile's
+imaging region. Density is 10 scatterers per resolution cell by default; the
+candidate count is `ceil(density × background-region area / resolution-cell
+area)`, before cyst-interior candidates are removed. The uniform-speckle SNR
+ROI uses x = [−10, +10] mm and z = [15, 45] mm, leaving 5 mm margins to the
+background bounds. Cyst gCNR uses pixels within 0.75r and in the 1.25r–1.75r
+annulus; point-target widths use profiles through a locally searched peak.
+The CPU record preflight times sequential full-pipeline pilots with exactly
+500 and 2,000 scatterers, fits `t(n) = a + b·n`, and estimates each case with
+`max(0, a) + max(0, b)·n`; non-positive slopes block the production run. The
+preflight record carries both pilot observations and its estimated workload.
+
 ### Element dropout and variation
 
 Real probes run with a few percent of elements dead. **MV is especially

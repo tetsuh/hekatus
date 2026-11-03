@@ -2,10 +2,11 @@
 
 Run ``uv run python -m enodia.spec.phantom.record --output-dir
  docs/measurements/issue14-phantom-metrics/YYYY-MM-DD`` on a clean, committed
-checkout. Run with ``--estimate-only`` first to time a small full pipeline and
-estimate the production workload; the harness refuses a production run whose
-estimated total exceeds two hours. Output is write-once and confined to the
-Issue #14 measurement tree.
+checkout. Run with ``--estimate-only`` first to time sequential 500- and
+2000-scatterer full-pipeline pilots and estimate the production workload; the
+harness refuses a production run whose estimated total exceeds three hours. A same-day rerun may use a fresh nested
+path such as ``YYYY-MM-DD/rerun-1``; existing outputs are never overwritten.
+Output is write-once and confined to the Issue #14 measurement tree.
 """
 
 from __future__ import annotations
@@ -28,7 +29,10 @@ import numpy as np
 from enodia.spec.beamform import das_rf_golden, envelope
 from enodia.spec.eval.metrics import gcnr, speckle_snr, width_at
 from enodia.spec.phantom import (
+    DEFAULT_BACKGROUND_X_BOUNDS_M,
+    DEFAULT_BACKGROUND_Z_BOUNDS_M,
     DEFAULT_Z_MIN_M,
+    _background_bounds,
     anechoic_cysts,
     high_echo_structures,
     imaging_region,
@@ -45,8 +49,9 @@ OUTPUT_README = "README.md"
 MEASUREMENT_ROOT = (
     Path(__file__).resolve().parents[3] / "docs/measurements/issue14-phantom-metrics"
 )
-MAX_ESTIMATED_SECONDS = 2 * 60 * 60
-ESTIMATE_SCATTERER_COUNT = 64
+PILOT_SCATTERER_COUNTS = (500, 2000)
+MAX_ESTIMATED_SECONDS = 3 * 60 * 60
+PILOT_BACKGROUND_AMPLITUDE_STD = 1.0
 FWHM_LEVEL_DB = float(20.0 * np.log10(0.5))
 WIDTH_LEVELS_DB = (FWHM_LEVEL_DB, -40.0)
 
@@ -74,9 +79,11 @@ def _default_cases(seed: int) -> dict[str, dict[str, Any]]:
                 "seed": seed + 1,
                 "density_per_cell": 10.0,
                 "cyst_diameters_m": (2e-3, 4e-3, 8e-3),
-                "cyst_centers_x_m": (-10e-3, 0.0, 10e-3),
+                "cyst_centers_x_m": (-10e-3, -3e-3, 6e-3),
                 "cyst_centers_z_m": (20e-3, 40e-3),
                 "background_amplitude_std": 1.0,
+                "background_x_bounds_m": DEFAULT_BACKGROUND_X_BOUNDS_M,
+                "background_z_bounds_m": DEFAULT_BACKGROUND_Z_BOUNDS_M,
                 "z_min_m": DEFAULT_Z_MIN_M,
             },
         },
@@ -86,6 +93,8 @@ def _default_cases(seed: int) -> dict[str, dict[str, Any]]:
                 "seed": seed + 2,
                 "density_per_cell": 10.0,
                 "amplitude_std": 1.0,
+                "background_x_bounds_m": DEFAULT_BACKGROUND_X_BOUNDS_M,
+                "background_z_bounds_m": DEFAULT_BACKGROUND_Z_BOUNDS_M,
                 "z_min_m": DEFAULT_Z_MIN_M,
             },
         },
@@ -95,6 +104,8 @@ def _default_cases(seed: int) -> dict[str, dict[str, Any]]:
                 "seed": seed + 3,
                 "density_per_cell": 10.0,
                 "background_amplitude_std": 1.0,
+                "background_x_bounds_m": DEFAULT_BACKGROUND_X_BOUNDS_M,
+                "background_z_bounds_m": DEFAULT_BACKGROUND_Z_BOUNDS_M,
                 "needle_center_x_m": 0.0,
                 "needle_center_z_m": 32e-3,
                 "needle_length_m": 10e-3,
@@ -445,7 +456,7 @@ def build_record(
                 "lateral_formula": "lambda * profile.f_number; lambda = c / f0",
                 "axial_formula": "c / (2 * profile.bandwidth_frac * f0)",
             },
-            "density_count_formula": "ceil(density_per_cell * imaging_region_area / (resolution_cell_lateral_width * resolution_cell_axial_height))",
+            "density_count_formula": "ceil(density_per_cell * background_area / (resolution_cell_lateral_width * resolution_cell_axial_height))",
             "cyst_exclusion": "discard random candidate points whose center distance is strictly less than cyst radius; do not replenish",
             "background_amplitude": "zero-mean Gaussian; amplitude_std is configurable",
         },
@@ -517,7 +528,7 @@ def _render_readme(record: dict[str, Any]) -> str:
         "",
         "## What was measured",
         "",
-        "Each phantom was passed through `simulate_frame` → `das_rf_golden` → `envelope` using the `linear_5mhz` profile. Metrics use the linear envelope before log compression; no dB image or CNR is used.",
+        f"Each phantom was passed through `simulate_frame` → `das_rf_golden` → `envelope` using the `{profile['name']}` profile. Metrics use the linear envelope before log compression; no dB image or CNR is used.",
         "",
         f"- Harness commit: `{env['commit']}`",
         f"- CPU model: `{env['cpu_model']}`",
@@ -585,13 +596,22 @@ def _validate_output_dir(output_dir: Path) -> tuple[Path, Path]:
     requested = output_dir if output_dir.is_absolute() else Path.cwd() / output_dir
     resolved = requested.resolve(strict=False)
     if not resolved.is_relative_to(root) or resolved == root:
-        raise ValueError("output must be a date subdirectory of the Issue #14 measurement directory")
-    if resolved.parent != root or len(resolved.name) != 10 or resolved.name[4:5] != "-" or resolved.name[7:8] != "-":
-        raise ValueError("output must be a date subdirectory of the Issue #14 measurement directory")
+        raise ValueError("output must be inside the Issue #14 measurement directory")
+    relative = resolved.relative_to(root)
+    date_component = relative.parts[0]
     try:
-        date.fromisoformat(resolved.name)
+        parsed_date = date.fromisoformat(date_component)
+        if parsed_date.isoformat() != date_component:
+            raise ValueError("non-canonical ISO date")
     except ValueError as error:
-        raise ValueError("output must be a date subdirectory of the Issue #14 measurement directory") from error
+        raise ValueError("output must be inside an ISO date subdirectory of the Issue #14 measurement directory") from error
+    candidate = requested
+    while candidate != candidate.parent and candidate != root:
+        if candidate.is_symlink():
+            raise ValueError("output path must not traverse symlinks")
+        candidate = candidate.parent
+    if candidate == root and candidate.is_symlink():
+        raise ValueError("output path must not traverse symlinks")
     json_path = resolved / OUTPUT_JSON
     readme_path = resolved / OUTPUT_README
     if resolved.exists() or resolved.is_symlink() or any(
@@ -602,12 +622,13 @@ def _validate_output_dir(output_dir: Path) -> tuple[Path, Path]:
 
 
 def write_record(output_dir: Path, record: dict[str, Any]) -> tuple[Path, Path]:
-    """Atomically create a dated write-once JSON/README record."""
+    """Atomically create a write-once record under an ISO-date directory."""
     destination, root = _validate_output_dir(Path(output_dir))
     root.mkdir(parents=True, exist_ok=True)
     if destination.exists() or destination.is_symlink():
         raise FileExistsError(f"refusing to overwrite measurement output in {destination}")
-    temporary = Path(tempfile.mkdtemp(prefix=f".{destination.name}.", dir=root))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{destination.name}.", dir=destination.parent))
     try:
         json_path = temporary / OUTPUT_JSON
         readme_path = temporary / OUTPUT_README
@@ -624,51 +645,199 @@ def write_record(output_dir: Path, record: dict[str, Any]) -> tuple[Path, Path]:
     return destination / OUTPUT_JSON, destination / OUTPUT_README
 
 
-def estimate_project(*, profile: ProbeProfile | None = None, seed: int = 14) -> dict[str, Any]:
-    """Time a 64-point full pipeline and extrapolate the four case workloads."""
-    profile = linear_5mhz() if profile is None else profile
-    cases = _default_cases(seed)
-    counts = {}
-    for name, case in cases.items():
-        points = case["generator"](profile, **case["parameters"])
-        counts[name] = len(points)
-        del points
-    xmin, xmax, zmin, zmax = imaging_region(profile)
-    region_area = (xmax - xmin) * (zmax - zmin)
-    cell_width, cell_height = resolution_cell(profile)
-    sample_density = 63.5 * cell_width * cell_height / region_area
-    sample = uniform_speckle(profile, seed=seed, density_per_cell=sample_density)
-    sample_count = len(sample)
+def _pilot_scatterers(
+    profile: ProbeProfile,
+    *,
+    scatterer_count: int,
+    seed: int,
+    background_x_bounds_m: tuple[float, float] = DEFAULT_BACKGROUND_X_BOUNDS_M,
+    background_z_bounds_m: tuple[float, float] = DEFAULT_BACKGROUND_Z_BOUNDS_M,
+) -> list[PointScatterer]:
+    """Create exactly ``scatterer_count`` background points without density rounding."""
+    x_bounds, z_bounds = _background_bounds(
+        profile,
+        background_x_bounds_m=background_x_bounds_m,
+        background_z_bounds_m=background_z_bounds_m,
+        z_min_m=DEFAULT_Z_MIN_M,
+    )
+    rng = np.random.default_rng(seed)
+    x = rng.uniform(x_bounds[0], x_bounds[1], scatterer_count)
+    z = rng.uniform(z_bounds[0], z_bounds[1], scatterer_count)
+    amplitudes = rng.normal(0.0, PILOT_BACKGROUND_AMPLITUDE_STD, scatterer_count)
+    return [
+        PointScatterer(float(x_m), float(z_m), float(amplitude))
+        for x_m, z_m, amplitude in zip(x, z, amplitudes, strict=True)
+    ]
+
+
+def _time_pilot(
+    profile: ProbeProfile, *, scatterer_count: int, seed: int
+) -> dict[str, Any]:
+    """Time one complete simulator→golden-DAS→envelope pilot frame."""
+    before = _uptime_load_average()
     started = time.perf_counter()
-    image, _, _ = _run_pipeline(profile, sample, z_min_m=zmin)
+    scatterers = _pilot_scatterers(
+        profile,
+        scatterer_count=scatterer_count,
+        seed=seed,
+    )
+    image, _, _ = _run_pipeline(profile, scatterers, z_min_m=DEFAULT_Z_MIN_M)
     elapsed = time.perf_counter() - started
-    del sample, image
-    per_scatterer = elapsed / sample_count
-    estimates = {
-        name: {
-            "scatterer_count": count,
-            "estimated_seconds": elapsed * count / sample_count,
-        }
-        for name, count in counts.items()
-    }
-    total = sum(row["estimated_seconds"] for row in estimates.values())
+    after = _uptime_load_average()
+    del scatterers, image
     return {
-        "profile": profile.name,
-        "sample_scatterer_count": sample_count,
-        "sample_full_pipeline_seconds": elapsed,
-        "measured_seconds_per_scatterer": per_scatterer,
-        "estimated_cases": estimates,
-        "estimated_total_seconds": total,
-        "estimated_total_hours": total / 3600.0,
+        "scatterer_count": scatterer_count,
+        "seed": seed,
+        "generator_arguments": {
+            "background_x_bounds_m": list(DEFAULT_BACKGROUND_X_BOUNDS_M),
+            "background_z_bounds_m": list(DEFAULT_BACKGROUND_Z_BOUNDS_M),
+            "amplitude_std": PILOT_BACKGROUND_AMPLITUDE_STD,
+        },
+        "elapsed_seconds": float(elapsed),
+        "uptime_load_average": {"before": before, "after": after},
+    }
+
+
+def fit_pilot_timing_model(pilots: list[dict[str, Any]]) -> dict[str, Any]:
+    """Fit ``t(n)=a+b*n`` to the ordered 500/2000-point pilot observations.
+
+    A non-finite/non-positive timing or non-positive slope fails closed. A
+    negative intercept is clamped to zero and both raw and applied
+    coefficients are retained in the estimate record.
+    """
+    result: dict[str, Any] = {
+        "valid": False,
+        "raw_intercept_seconds": None,
+        "raw_seconds_per_scatterer": None,
+        "applied_intercept_seconds": None,
+        "applied_seconds_per_scatterer": None,
+        "clamped": {"intercept": False, "slope": False},
+        "failure_reason": None,
+    }
+    if len(pilots) != 2 or [row.get("scatterer_count") for row in pilots] != list(PILOT_SCATTERER_COUNTS):
+        result["failure_reason"] = "pilot scatterer counts must be exactly 500 then 2000"
+        return result
+    try:
+        t1 = float(pilots[0]["elapsed_seconds"])
+        t2 = float(pilots[1]["elapsed_seconds"])
+    except (KeyError, TypeError, ValueError):
+        result["failure_reason"] = "pilot timings must be finite and positive"
+        return result
+    if not all(math.isfinite(value) and value > 0.0 for value in (t1, t2)):
+        result["failure_reason"] = "pilot timings must be finite and positive"
+        return result
+    n1, n2 = PILOT_SCATTERER_COUNTS
+    slope = (t2 - t1) / (n2 - n1)
+    intercept = t1 - slope * n1
+    result["raw_intercept_seconds"] = _finite_json(intercept)
+    result["raw_seconds_per_scatterer"] = _finite_json(slope)
+    if not math.isfinite(intercept) or not math.isfinite(slope) or slope <= 0.0:
+        result["failure_reason"] = "pilot fit must have finite coefficients and a strictly positive slope"
+        return result
+    result.update(
+        {
+            "valid": True,
+            "applied_intercept_seconds": max(0.0, intercept),
+            "applied_seconds_per_scatterer": max(0.0, slope),
+            "clamped": {"intercept": intercept < 0.0, "slope": False},
+        }
+    )
+    return result
+
+
+def estimate_project(
+    *,
+    profile: ProbeProfile | None = None,
+    seed: int = 14,
+    cases: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Measure exact 500/2000 full-pipeline pilots and estimate each phantom."""
+    _require_clean_checkout()
+    profile = linear_5mhz() if profile is None else profile
+    case_specs = _default_cases(seed) if cases is None else cases
+    estimated_cases = []
+    for name, case in case_specs.items():
+        generator = case["generator"]
+        arguments = dict(case["parameters"])
+        scatterers = generator(profile, **arguments)
+        estimated_cases.append(
+            {
+                "name": name,
+                "generator": generator.__name__,
+                "generator_arguments": _json_safe(arguments),
+                "scatterer_count": len(scatterers),
+            }
+        )
+        del scatterers
+    pilots = [
+        _time_pilot(profile, scatterer_count=count, seed=seed + index)
+        for index, count in enumerate(PILOT_SCATTERER_COUNTS)
+    ]
+    timing_model = fit_pilot_timing_model(pilots)
+    if timing_model["valid"]:
+        intercept = timing_model["applied_intercept_seconds"]
+        slope = timing_model["applied_seconds_per_scatterer"]
+        predictions = [intercept + slope * case["scatterer_count"] for case in estimated_cases]
+        if not all(math.isfinite(value) and value >= 0.0 for value in predictions):
+            for case in estimated_cases:
+                case["estimated_seconds"] = None
+            total_seconds = None
+            within_time_limit = False
+            failure_reason = "case extrapolation produced a non-finite or negative time"
+        else:
+            for case, prediction in zip(estimated_cases, predictions, strict=True):
+                case["estimated_seconds"] = prediction
+            total_seconds = sum(predictions)
+            if not math.isfinite(total_seconds):
+                total_seconds = None
+                within_time_limit = False
+                failure_reason = "estimated total is non-finite"
+            else:
+                within_time_limit = total_seconds <= MAX_ESTIMATED_SECONDS
+                failure_reason = None if within_time_limit else "estimated total exceeds the three-hour limit"
+    else:
+        for case in estimated_cases:
+            case["estimated_seconds"] = None
+        total_seconds = None
+        within_time_limit = False
+        failure_reason = timing_model["failure_reason"]
+    return {
+        "issue": 14,
+        "measurement_date_utc": datetime.now(UTC).date().isoformat(),
+        "profile": _profile_record(profile),
+        "seed": seed,
+        "environment": {
+            "commit": _git("rev-parse", "HEAD"),
+            "cpu_model": _cpu_model(),
+            "python_version": platform.python_version(),
+            "numpy_version": np.__version__,
+        },
+        "formula": {
+            "fit": "b = (t_2000 - t_500) / (2000 - 500); a = t_500 - b * 500",
+            "case_estimate": "max(0, a) + max(0, b) * scatterer_count",
+            "invalid_fit_policy": "non-finite/non-positive timings or non-positive raw slope block production",
+        },
+        "pilot_scatterer_counts": list(PILOT_SCATTERER_COUNTS),
+        "pilot_generator_arguments": {
+            "background_x_bounds_m": list(DEFAULT_BACKGROUND_X_BOUNDS_M),
+            "background_z_bounds_m": list(DEFAULT_BACKGROUND_Z_BOUNDS_M),
+            "amplitude_std": PILOT_BACKGROUND_AMPLITUDE_STD,
+        },
+        "pilots": pilots,
+        "timing_model": timing_model,
+        "estimated_cases": estimated_cases,
+        "estimated_total_seconds": total_seconds,
+        "estimated_total_hours": None if total_seconds is None else total_seconds / 3600.0,
         "maximum_allowed_seconds": MAX_ESTIMATED_SECONDS,
-        "production_allowed": total <= MAX_ESTIMATED_SECONDS,
+        "production_allowed": bool(within_time_limit),
+        "failure_reason": failure_reason,
     }
 
 
 def run_record(
     output_dir: Path, *, seed: int = 14, estimate_only: bool = False
 ) -> tuple[Path, Path] | dict[str, Any]:
-    """Preflight then, only within the two-hour limit, take and write a record."""
+    """Return the complete preflight, then write production only when allowed."""
     output_dir = Path(output_dir)
     _validate_output_dir(output_dir)
     if estimate_only:
@@ -676,10 +845,7 @@ def run_record(
     _require_clean_checkout()
     estimate = estimate_project(seed=seed)
     if not estimate["production_allowed"]:
-        raise RuntimeError(
-            "estimated phantom measurement exceeds two hours; production was not run: "
-            + json.dumps(estimate, sort_keys=True)
-        )
+        return {"status": "blocked", "preflight": estimate}
     result = build_record(seed=seed)
     result["preflight_estimate"] = estimate
     written = write_record(output_dir, result)
@@ -694,10 +860,13 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.estimate_only:
-            print(json.dumps(estimate_project(seed=args.seed), indent=2, allow_nan=False))
-            return 0
+            preflight = estimate_project(seed=args.seed)
+            print(json.dumps(preflight, indent=2, allow_nan=False))
+            return 0 if preflight["production_allowed"] else 2
         result = run_record(args.output_dir, seed=args.seed)
-        assert isinstance(result, tuple)
+        if isinstance(result, dict):
+            print(json.dumps(result, indent=2, allow_nan=False))
+            return 2
         print(result[0].as_posix())
         print(result[1].as_posix())
         # The record is persisted even when a sanity bound fails.

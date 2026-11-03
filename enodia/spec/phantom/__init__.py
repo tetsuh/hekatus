@@ -2,9 +2,10 @@
 
 A resolution cell has lateral width ``lambda * profile.f_number`` and axial
 height ``c / (2 * profile.bandwidth_frac * profile.f0_hz)``. At density
-``d`` scatterers per cell, the candidate count is
-``ceil(d * imaging_region_area / resolution_cell_area)``. The imaging region
-is the golden DAS scan-line extent by ``[z_min_m, profile.depth_m]``.
+``d`` scatterers per cell, the background candidate count is
+``ceil(d * background_area / resolution_cell_area)``. Background bounds are
+inside the profile imaging region, which is the golden DAS scan-line extent
+by ``[z_min_m, profile.depth_m]``.
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ from enodia.spec.sim import PointScatterer
 
 DEFAULT_Z_MIN_M = 2e-3
 DEFAULT_SEED = 14
+DEFAULT_BACKGROUND_X_BOUNDS_M = (-15e-3, 15e-3)
+DEFAULT_BACKGROUND_Z_BOUNDS_M = (10e-3, 50e-3)
 
 
 def imaging_region(
@@ -60,11 +63,50 @@ def _validate_density(density_per_cell: float) -> float:
     return density
 
 
-def _candidate_count(profile: ProbeProfile, density_per_cell: float, *, z_min_m: float) -> int:
-    density = _validate_density(density_per_cell)
+def _background_bounds(
+    profile: ProbeProfile,
+    *,
+    background_x_bounds_m: Sequence[float],
+    background_z_bounds_m: Sequence[float],
+    z_min_m: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Validate and normalize rectangular background bounds inside the image."""
     xmin, xmax, zmin, zmax = imaging_region(profile, z_min_m=z_min_m)
+    try:
+        x_bounds = tuple(float(value) for value in background_x_bounds_m)
+        z_bounds = tuple(float(value) for value in background_z_bounds_m)
+    except (TypeError, ValueError) as error:
+        raise ValueError("background bounds must be two finite ordered coordinates") from error
+    if (
+        len(x_bounds) != 2
+        or len(z_bounds) != 2
+        or not all(math.isfinite(value) for value in (*x_bounds, *z_bounds))
+        or x_bounds[0] >= x_bounds[1]
+        or z_bounds[0] >= z_bounds[1]
+    ):
+        raise ValueError("background bounds must be two finite ordered coordinates")
+    if x_bounds[0] < xmin or x_bounds[1] > xmax or z_bounds[0] < zmin or z_bounds[1] > zmax:
+        raise ValueError("background bounds must lie inside the profile imaging region")
+    return (x_bounds[0], x_bounds[1]), (z_bounds[0], z_bounds[1])
+
+
+def _candidate_count(
+    profile: ProbeProfile,
+    density_per_cell: float,
+    *,
+    background_x_bounds_m: Sequence[float],
+    background_z_bounds_m: Sequence[float],
+    z_min_m: float,
+) -> int:
+    density = _validate_density(density_per_cell)
+    x_bounds, z_bounds = _background_bounds(
+        profile,
+        background_x_bounds_m=background_x_bounds_m,
+        background_z_bounds_m=background_z_bounds_m,
+        z_min_m=z_min_m,
+    )
     cell_width, cell_height = resolution_cell(profile)
-    area = (xmax - xmin) * (zmax - zmin)
+    area = (x_bounds[1] - x_bounds[0]) * (z_bounds[1] - z_bounds[0])
     return math.ceil(density * area / (cell_width * cell_height))
 
 
@@ -73,13 +115,20 @@ def _uniform_points(
     rng: np.random.Generator,
     count: int,
     *,
+    background_x_bounds_m: Sequence[float],
+    background_z_bounds_m: Sequence[float],
     z_min_m: float,
     amplitude_std: float,
     excluded_circles: Sequence[tuple[float, float, float]] = (),
 ) -> list[PointScatterer]:
-    xmin, xmax, zmin, zmax = imaging_region(profile, z_min_m=z_min_m)
-    x = rng.uniform(xmin, xmax, count)
-    z = rng.uniform(zmin, zmax, count)
+    x_bounds, z_bounds = _background_bounds(
+        profile,
+        background_x_bounds_m=background_x_bounds_m,
+        background_z_bounds_m=background_z_bounds_m,
+        z_min_m=z_min_m,
+    )
+    x = rng.uniform(x_bounds[0], x_bounds[1], count)
+    z = rng.uniform(z_bounds[0], z_bounds[1], count)
     amplitude = rng.normal(0.0, amplitude_std, count)
     points: list[PointScatterer] = []
     for x_m, z_m, amp in zip(x, z, amplitude, strict=True):
@@ -157,17 +206,20 @@ def anechoic_cysts(
     seed: int = DEFAULT_SEED,
     density_per_cell: float = 10.0,
     cyst_diameters_m: Sequence[float] = (2e-3, 4e-3, 8e-3),
-    cyst_centers_x_m: Sequence[float] = (-10e-3, 0.0, 10e-3),
+    cyst_centers_x_m: Sequence[float] = (-10e-3, -3e-3, 6e-3),
     cyst_centers_z_m: Sequence[float] = (20e-3, 40e-3),
     background_amplitude_std: float = 1.0,
+    background_x_bounds_m: Sequence[float] = DEFAULT_BACKGROUND_X_BOUNDS_M,
+    background_z_bounds_m: Sequence[float] = DEFAULT_BACKGROUND_Z_BOUNDS_M,
     z_min_m: float = DEFAULT_Z_MIN_M,
 ) -> list[PointScatterer]:
     """Make seeded Gaussian speckle with anechoic cysts excluded.
 
     Each diameter is paired with the corresponding x coordinate, and each
     paired cyst is repeated at every configured depth. Random candidates are
-    counted over the full imaging region using the resolution-cell formula;
-    candidates strictly inside any cyst are removed without replenishment.
+    counted over the background rectangle using
+    ``ceil(density_per_cell * background_area / cell_area)``; candidates
+    strictly inside any cyst are removed without replenishment.
     """
     density = _validate_density(density_per_cell)
     diameters = _validate_positions("cyst_diameters_m", cyst_diameters_m)
@@ -178,6 +230,12 @@ def anechoic_cysts(
     if any(diameter <= 0.0 for diameter in diameters):
         raise ValueError("cyst diameters must be positive")
     std = _validate_amplitude(background_amplitude_std, "background_amplitude_std")
+    x_bounds, z_bounds = _background_bounds(
+        profile,
+        background_x_bounds_m=background_x_bounds_m,
+        background_z_bounds_m=background_z_bounds_m,
+        z_min_m=z_min_m,
+    )
     circles = [
         (x, z, diameter / 2.0)
         for x, diameter in zip(centers_x, diameters, strict=True)
@@ -192,11 +250,19 @@ def anechoic_cysts(
         z_min_m=z_min_m,
     )
     rng = np.random.default_rng(seed)
-    count = _candidate_count(profile, density, z_min_m=z_min_m)
+    count = _candidate_count(
+        profile,
+        density,
+        background_x_bounds_m=x_bounds,
+        background_z_bounds_m=z_bounds,
+        z_min_m=z_min_m,
+    )
     return _uniform_points(
         profile,
         rng,
         count,
+        background_x_bounds_m=x_bounds,
+        background_z_bounds_m=z_bounds,
         z_min_m=z_min_m,
         amplitude_std=std,
         excluded_circles=circles,
@@ -209,22 +275,38 @@ def uniform_speckle(
     seed: int = DEFAULT_SEED,
     density_per_cell: float = 10.0,
     amplitude_std: float = 1.0,
+    background_x_bounds_m: Sequence[float] = DEFAULT_BACKGROUND_X_BOUNDS_M,
+    background_z_bounds_m: Sequence[float] = DEFAULT_BACKGROUND_Z_BOUNDS_M,
     z_min_m: float = DEFAULT_Z_MIN_M,
 ) -> list[PointScatterer]:
     """Make a uniform random field with zero-mean Gaussian RF amplitudes.
 
-    The number of points is ``ceil(density_per_cell * region_area /
+    The number of points is ``ceil(density_per_cell * background_area /
     (cell_width * cell_height))``. Resolution-cell width is ``lambda * F#``;
     height is ``c / (2 * bandwidth_frac * f0)``. ``amplitude_std`` is the
     standard deviation of the zero-mean normal amplitude distribution.
     """
     density = _validate_density(density_per_cell)
     std = _validate_amplitude(amplitude_std, "amplitude_std", allow_zero=True)
+    x_bounds, z_bounds = _background_bounds(
+        profile,
+        background_x_bounds_m=background_x_bounds_m,
+        background_z_bounds_m=background_z_bounds_m,
+        z_min_m=z_min_m,
+    )
     rng = np.random.default_rng(seed)
     return _uniform_points(
         profile,
         rng,
-        _candidate_count(profile, density, z_min_m=z_min_m),
+        _candidate_count(
+            profile,
+            density,
+            background_x_bounds_m=x_bounds,
+            background_z_bounds_m=z_bounds,
+            z_min_m=z_min_m,
+        ),
+        background_x_bounds_m=x_bounds,
+        background_z_bounds_m=z_bounds,
         z_min_m=z_min_m,
         amplitude_std=std,
     )
@@ -236,6 +318,8 @@ def high_echo_structures(
     seed: int = DEFAULT_SEED,
     density_per_cell: float = 10.0,
     background_amplitude_std: float = 1.0,
+    background_x_bounds_m: Sequence[float] = DEFAULT_BACKGROUND_X_BOUNDS_M,
+    background_z_bounds_m: Sequence[float] = DEFAULT_BACKGROUND_Z_BOUNDS_M,
     needle_center_x_m: float = 0.0,
     needle_center_z_m: float = 32e-3,
     needle_length_m: float = 10e-3,
@@ -251,7 +335,8 @@ def high_echo_structures(
     The needle is a line with regular spacing and random seeded polarity;
     calcifications use independent random seeded polarities. Structure
     amplitudes are ratios to the Gaussian background's standard-deviation
-    reference. Background candidate count follows the resolution-cell formula.
+    reference. Background candidate count is based on the configured background
+    rectangle and resolution-cell area.
     """
     density = _validate_density(density_per_cell)
     std = _validate_amplitude(background_amplitude_std, "background_amplitude_std")
@@ -279,11 +364,25 @@ def high_echo_structures(
         needle + list(calcifications),
         z_min_m=z_min_m,
     )
+    x_bounds, z_bounds = _background_bounds(
+        profile,
+        background_x_bounds_m=background_x_bounds_m,
+        background_z_bounds_m=background_z_bounds_m,
+        z_min_m=z_min_m,
+    )
     rng = np.random.default_rng(seed)
     points = _uniform_points(
         profile,
         rng,
-        _candidate_count(profile, density, z_min_m=z_min_m),
+        _candidate_count(
+            profile,
+            density,
+            background_x_bounds_m=x_bounds,
+            background_z_bounds_m=z_bounds,
+            z_min_m=z_min_m,
+        ),
+        background_x_bounds_m=x_bounds,
+        background_z_bounds_m=z_bounds,
         z_min_m=z_min_m,
         amplitude_std=std,
     )
@@ -297,6 +396,8 @@ def high_echo_structures(
 
 
 __all__ = [
+    "DEFAULT_BACKGROUND_X_BOUNDS_M",
+    "DEFAULT_BACKGROUND_Z_BOUNDS_M",
     "DEFAULT_SEED",
     "DEFAULT_Z_MIN_M",
     "anechoic_cysts",
