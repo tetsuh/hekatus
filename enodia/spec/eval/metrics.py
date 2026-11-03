@@ -44,6 +44,8 @@ def _crossing(db: np.ndarray, coords: np.ndarray, peak: int, step: int, level: f
     stop = db.size if step == 1 else -1
     for index in range(peak + step, stop, step):
         if db[index] <= level:
+            if np.isneginf(db[index]):
+                raise ValueError("outer crossing sample must be nonzero")
             inner = index - step
             crossing = float(
                 np.interp(level, [db[index], db[inner]], [coords[index], coords[inner]])
@@ -62,6 +64,7 @@ def width_at(profile: np.ndarray, coords: np.ndarray, level_db: float) -> float:
     nonuniform, strictly increasing coordinates. A missing crossing returns
     NaN. Non-finite or negative samples and mismatched lengths raise ValueError.
     Non-finite coordinate distances or result widths also raise ValueError.
+    A zero outer bracketing sample raises ValueError; zeros beyond the first crossing are ignored.
     FWHM uses level_db=20*log10(0.5); the -40 dB width uses level_db=-40.0.
     """
     profile = np.asarray(profile, dtype=np.float64)

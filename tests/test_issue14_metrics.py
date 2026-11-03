@@ -142,6 +142,27 @@ def test_width_requires_strictly_increasing_coords(coords):
         width_at(np.array([0.1, 1.0, 0.1]), np.asarray(coords), -6.0)
 
 
+@pytest.mark.parametrize("bad_coord", [np.nan, np.inf, -np.inf])
+def test_width_rejects_one_sample_nonfinite_coords(bad_coord):
+    with pytest.raises(ValueError, match="coords.*finite"):
+        width_at(np.array([1.0]), np.array([bad_coord]), -6.0)
+
+
+# Invariant 10: only a zero at the first outer bracketing sample is undefined.
+@pytest.mark.parametrize("profile", [[0.0, 1.0, 0.0], [0.2, 1.0, 0.0], [0.0, 1.0, 0.2]])
+def test_width_rejects_zero_outer_bracket(profile):
+    with pytest.raises(ValueError, match="outer.*zero"):
+        width_at(np.array(profile), np.array([-1.0, 0.0, 1.0]), -6.0)
+
+
+def test_width_ignores_zeros_beyond_first_crossings():
+    profile = np.array([0.0, 0.2, 1.0, 0.2, 0.0])
+    coords = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    width = width_at(profile, coords, -6.0)
+    assert np.isfinite(width)
+    assert width == width_at(profile[1:-1], coords[1:-1], -6.0)
+
+
 # Invariant 7: population deviation, stated invalid cases, seeded Rayleigh reference.
 def test_speckle_snr_population_deviation():
     region = np.array([[1.0, 2.0], [3.0, 4.0]])
