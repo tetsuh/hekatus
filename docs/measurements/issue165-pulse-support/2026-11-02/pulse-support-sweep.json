@@ -1,0 +1,1062 @@
+{
+  "issue": 165,
+  "measurement_date_utc": "2026-11-02",
+  "measurement_type": "board-free CPU simulator sweep",
+  "environment": {
+    "commit": "30a0935d9e73e6c0efa36cbae7a85d3744374859",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "python_version": "3.12.13",
+    "numpy_version": "2.5.1"
+  },
+  "profile": {
+    "name": "linear-5mhz",
+    "f0_hz": 5000000.0,
+    "bandwidth_frac": 0.7,
+    "sampling_rate_hz": 40000000.0,
+    "event_count": 128
+  },
+  "scatterers": {
+    "counts": [
+      1,
+      3,
+      200
+    ],
+    "seed": 165,
+    "seeded_random_region_m": {
+      "x": [
+        -0.01,
+        0.01
+      ],
+      "z": [
+        0.02,
+        0.04
+      ]
+    }
+  },
+  "selection_error_limit": 1e-06,
+  "timing_repeats_per_candidate": 3,
+  "implementation_default_sigmas_before_sweep": 6.0,
+  "recommended_default_sigmas": 5.5,
+  "recommended_default_max_relative_error": 2.5312305281989887e-07,
+  "cases": [
+    {
+      "name": "existing_single_scatterer",
+      "scatterer_count": 1,
+      "rows": [
+        {
+          "k": null,
+          "max_relative_error": 0.0,
+          "max_relative_error_pct": 0.0,
+          "seconds": 0.9638292219897266,
+          "seconds_per_scatterer": 0.9638292219897266,
+          "uptime_load_average": {
+            "before": {
+              "captured_at_utc": "2026-11-02T16:24:31.883078+00:00",
+              "load_average": "1.13, 3.34, 2.91",
+              "uptime_output": "01:24:31 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+            },
+            "after": {
+              "captured_at_utc": "2026-11-02T16:24:32.848478+00:00",
+              "load_average": "1.13, 3.34, 2.91",
+              "uptime_output": "01:24:32 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+            }
+          }
+        },
+        {
+          "k": 4.0,
+          "max_relative_error": 0.00020810623800624544,
+          "max_relative_error_pct": 0.020810623800624543,
+          "seconds": 0.03755826299311593,
+          "seconds_per_scatterer": 0.03755826299311593,
+          "seconds_samples": [
+            0.046850418992107734,
+            0.03755826299311593,
+            0.03741867799544707
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:32.849658+00:00",
+                "load_average": "1.13, 3.34, 2.91",
+                "uptime_output": "01:24:32 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:32.897739+00:00",
+                "load_average": "1.13, 3.34, 2.91",
+                "uptime_output": "01:24:32 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:33.104744+00:00",
+                "load_average": "1.13, 3.34, 2.91",
+                "uptime_output": "01:24:33 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:33.143613+00:00",
+                "load_average": "1.13, 3.34, 2.91",
+                "uptime_output": "01:24:33 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:33.356581+00:00",
+                "load_average": "1.13, 3.34, 2.91",
+                "uptime_output": "01:24:33 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:33.395493+00:00",
+                "load_average": "1.13, 3.34, 2.91",
+                "uptime_output": "01:24:33 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+              }
+            }
+          ]
+        },
+        {
+          "k": 5.0,
+          "max_relative_error": 1.6406724084059258e-06,
+          "max_relative_error_pct": 0.00016406724084059259,
+          "seconds": 0.04048631098703481,
+          "seconds_per_scatterer": 0.04048631098703481,
+          "seconds_samples": [
+            0.04048631098703481,
+            0.040646236011525616,
+            0.039438870997400954
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:33.608577+00:00",
+                "load_average": "1.13, 3.34, 2.91",
+                "uptime_output": "01:24:33 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:33.650537+00:00",
+                "load_average": "1.13, 3.34, 2.91",
+                "uptime_output": "01:24:33 up 2 days, 16:10,  2 users,  load average: 1.13, 3.34, 2.91"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:33.863743+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:33 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:33.905861+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:33 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:34.097757+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:34 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:34.138636+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:34 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            }
+          ]
+        },
+        {
+          "k": 5.5,
+          "max_relative_error": 2.5312305281989887e-07,
+          "max_relative_error_pct": 2.5312305281989887e-05,
+          "seconds": 0.04535820797900669,
+          "seconds_per_scatterer": 0.04535820797900669,
+          "seconds_samples": [
+            0.041883355006575584,
+            0.05458613901282661,
+            0.04535820797900669
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:34.352701+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:34 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:34.396154+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:34 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:34.595995+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:34 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:34.652264+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:34 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:34.845132+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:34 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:34.891661+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:34 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            }
+          ]
+        },
+        {
+          "k": 6.0,
+          "max_relative_error": 3.525808855327246e-09,
+          "max_relative_error_pct": 3.525808855327246e-07,
+          "seconds": 0.04346988399629481,
+          "seconds_per_scatterer": 0.04346988399629481,
+          "seconds_samples": [
+            0.042505225021159276,
+            0.043485210015205666,
+            0.04346988399629481
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:35.085690+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:35 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:35.129505+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:35 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:35.344308+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:35 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:35.389227+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:35 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:35.592335+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:35 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:35.637237+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:35 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            }
+          ]
+        },
+        {
+          "k": 7.0,
+          "max_relative_error": 3.759782269753685e-12,
+          "max_relative_error_pct": 3.759782269753685e-10,
+          "seconds": 0.04647229198599234,
+          "seconds_per_scatterer": 0.04647229198599234,
+          "seconds_samples": [
+            0.046181893994798884,
+            0.04647229198599234,
+            0.048949014977552
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:35.829535+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:35 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:35.877273+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:35 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:36.071367+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:36 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:36.119418+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:36 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:36.312139+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:36 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:36.362557+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:36 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            }
+          ]
+        },
+        {
+          "k": 8.0,
+          "max_relative_error": 3.1243757899819852e-15,
+          "max_relative_error_pct": 3.1243757899819854e-13,
+          "seconds": 0.049725900986231863,
+          "seconds_per_scatterer": 0.049725900986231863,
+          "seconds_samples": [
+            0.049725900986231863,
+            0.048809280997375026,
+            0.05759356400812976
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:36.555624+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:36 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:36.606548+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:36 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:36.799571+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:36 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:36.849680+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:36 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:37.043210+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:37 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:37.102392+00:00",
+                "load_average": "1.12, 3.30, 2.90",
+                "uptime_output": "01:24:37 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "golden_path_scatterers",
+      "scatterer_count": 3,
+      "rows": [
+        {
+          "k": null,
+          "max_relative_error": 0.0,
+          "max_relative_error_pct": 0.0,
+          "seconds": 2.718707363004796,
+          "seconds_per_scatterer": 0.9062357876682654,
+          "uptime_load_average": {
+            "before": {
+              "captured_at_utc": "2026-11-02T16:24:37.333564+00:00",
+              "load_average": "1.12, 3.30, 2.90",
+              "uptime_output": "01:24:37 up 2 days, 16:10,  2 users,  load average: 1.12, 3.30, 2.90"
+            },
+            "after": {
+              "captured_at_utc": "2026-11-02T16:24:40.053708+00:00",
+              "load_average": "1.11, 3.26, 2.89",
+              "uptime_output": "01:24:40 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+            }
+          }
+        },
+        {
+          "k": 4.0,
+          "max_relative_error": 0.0002106965337331106,
+          "max_relative_error_pct": 0.02106965337331106,
+          "seconds": 0.11053077800897881,
+          "seconds_per_scatterer": 0.03684359266965961,
+          "seconds_samples": [
+            0.11040100498939864,
+            0.11053077800897881,
+            0.11114025700953789
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:40.055072+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:40 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:40.166657+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:40 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:40.380671+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:40 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:40.492591+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:40 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:40.708711+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:40 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:40.821241+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:40 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            }
+          ]
+        },
+        {
+          "k": 5.0,
+          "max_relative_error": 1.638825746328715e-06,
+          "max_relative_error_pct": 0.0001638825746328715,
+          "seconds": 0.11795810598414391,
+          "seconds_per_scatterer": 0.039319368661381304,
+          "seconds_samples": [
+            0.11773200400057249,
+            0.11795810598414391,
+            0.11801498499698937
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:41.037515+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:41 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:41.156651+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:41 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:41.361423+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:41 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:41.480431+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:41 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:41.700743+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:41 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:41.820364+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:41 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            }
+          ]
+        },
+        {
+          "k": 5.5,
+          "max_relative_error": 2.5298773377590984e-07,
+          "max_relative_error_pct": 2.5298773377590983e-05,
+          "seconds": 0.12280589700094424,
+          "seconds_per_scatterer": 0.04093529900031475,
+          "seconds_samples": [
+            0.12420589599059895,
+            0.12280589700094424,
+            0.12271352999960072
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:42.040707+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:42 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:42.166451+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:42 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:42.383495+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:42 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:42.507699+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:42 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:42.727569+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:42 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:42.851671+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:42 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            }
+          ]
+        },
+        {
+          "k": 6.0,
+          "max_relative_error": 3.516775813247183e-09,
+          "max_relative_error_pct": 3.5167758132471834e-07,
+          "seconds": 0.1287692970072385,
+          "seconds_per_scatterer": 0.04292309900241283,
+          "seconds_samples": [
+            0.12888353900052607,
+            0.1287692970072385,
+            0.12846041799639352
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:43.056533+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:43 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:43.186743+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:43 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:43.405402+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:43 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:43.535597+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:43 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:43.755706+00:00",
+                "load_average": "1.11, 3.26, 2.89",
+                "uptime_output": "01:24:43 up 2 days, 16:10,  2 users,  load average: 1.11, 3.26, 2.89"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:43.885580+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:43 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              }
+            }
+          ]
+        },
+        {
+          "k": 7.0,
+          "max_relative_error": 3.7595479000815186e-12,
+          "max_relative_error_pct": 3.7595479000815183e-10,
+          "seconds": 0.1362874059996102,
+          "seconds_per_scatterer": 0.0454291353332034,
+          "seconds_samples": [
+            0.13604803898488171,
+            0.13648962799925357,
+            0.1362874059996102
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:44.087500+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:44 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:44.224673+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:44 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:44.442372+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:44 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:44.580078+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:44 up 2 days, 16:10,  3 users,  load average: 1.10, 3.23, 2.88"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:44.781512+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:44 up 2 days, 16:10,  3 users,  load average: 1.10, 3.23, 2.88"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:44.919361+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:44 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              }
+            }
+          ]
+        },
+        {
+          "k": 8.0,
+          "max_relative_error": 3.1241177664566845e-15,
+          "max_relative_error_pct": 3.1241177664566845e-13,
+          "seconds": 0.14420871599577367,
+          "seconds_per_scatterer": 0.04806957199859122,
+          "seconds_samples": [
+            0.14343048000591807,
+            0.14581324701430276,
+            0.14420871599577367
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:45.140193+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:45 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:45.285242+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:45 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:45.487586+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:45 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:45.634883+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:45 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:24:45.849472+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:45 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:24:45.995294+00:00",
+                "load_average": "1.10, 3.23, 2.88",
+                "uptime_output": "01:24:45 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded_random_field",
+      "scatterer_count": 200,
+      "rows": [
+        {
+          "k": null,
+          "max_relative_error": 0.0,
+          "max_relative_error_pct": 0.0,
+          "seconds": 174.12485644000117,
+          "seconds_per_scatterer": 0.8706242822000059,
+          "uptime_load_average": {
+            "before": {
+              "captured_at_utc": "2026-11-02T16:24:46.217218+00:00",
+              "load_average": "1.10, 3.23, 2.88",
+              "uptime_output": "01:24:46 up 2 days, 16:10,  2 users,  load average: 1.10, 3.23, 2.88"
+            },
+            "after": {
+              "captured_at_utc": "2026-11-02T16:27:40.343447+00:00",
+              "load_average": "1.00, 2.23, 2.55",
+              "uptime_output": "01:27:40 up 2 days, 16:13,  2 users,  load average: 1.00, 2.23, 2.55"
+            }
+          }
+        },
+        {
+          "k": 4.0,
+          "max_relative_error": 0.0001500968731575116,
+          "max_relative_error_pct": 0.01500968731575116,
+          "seconds": 4.165785032004351,
+          "seconds_per_scatterer": 0.020828925160021754,
+          "seconds_samples": [
+            4.165785032004351,
+            4.164542604004964,
+            4.179883931996301
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:27:40.344592+00:00",
+                "load_average": "1.00, 2.23, 2.55",
+                "uptime_output": "01:27:40 up 2 days, 16:13,  2 users,  load average: 1.00, 2.23, 2.55"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:27:44.511660+00:00",
+                "load_average": "1.00, 2.21, 2.54",
+                "uptime_output": "01:27:44 up 2 days, 16:13,  2 users,  load average: 1.00, 2.21, 2.54"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:27:44.705216+00:00",
+                "load_average": "1.00, 2.21, 2.54",
+                "uptime_output": "01:27:44 up 2 days, 16:13,  2 users,  load average: 1.00, 2.21, 2.54"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:27:48.871261+00:00",
+                "load_average": "1.00, 2.19, 2.53",
+                "uptime_output": "01:27:48 up 2 days, 16:13,  2 users,  load average: 1.00, 2.19, 2.53"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:27:49.081139+00:00",
+                "load_average": "1.00, 2.19, 2.53",
+                "uptime_output": "01:27:49 up 2 days, 16:13,  2 users,  load average: 1.00, 2.19, 2.53"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:27:53.262484+00:00",
+                "load_average": "1.00, 2.19, 2.53",
+                "uptime_output": "01:27:53 up 2 days, 16:13,  2 users,  load average: 1.00, 2.19, 2.53"
+              }
+            }
+          ]
+        },
+        {
+          "k": 5.0,
+          "max_relative_error": 1.2176344717254011e-06,
+          "max_relative_error_pct": 0.00012176344717254012,
+          "seconds": 4.628056082990952,
+          "seconds_per_scatterer": 0.02314028041495476,
+          "seconds_samples": [
+            4.635700370999984,
+            4.625736357003916,
+            4.628056082990952
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:27:53.480232+00:00",
+                "load_average": "1.00, 2.19, 2.53",
+                "uptime_output": "01:27:53 up 2 days, 16:13,  2 users,  load average: 1.00, 2.19, 2.53"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:27:58.117459+00:00",
+                "load_average": "1.08, 2.19, 2.53",
+                "uptime_output": "01:27:58 up 2 days, 16:13,  2 users,  load average: 1.08, 2.19, 2.53"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:27:58.336155+00:00",
+                "load_average": "1.08, 2.19, 2.53",
+                "uptime_output": "01:27:58 up 2 days, 16:13,  2 users,  load average: 1.08, 2.19, 2.53"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:02.963481+00:00",
+                "load_average": "1.08, 2.17, 2.52",
+                "uptime_output": "01:28:02 up 2 days, 16:13,  2 users,  load average: 1.08, 2.17, 2.52"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:03.182685+00:00",
+                "load_average": "1.08, 2.17, 2.52",
+                "uptime_output": "01:28:03 up 2 days, 16:13,  2 users,  load average: 1.08, 2.17, 2.52"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:07.812337+00:00",
+                "load_average": "1.07, 2.15, 2.51",
+                "uptime_output": "01:28:07 up 2 days, 16:13,  2 users,  load average: 1.07, 2.15, 2.51"
+              }
+            }
+          ]
+        },
+        {
+          "k": 5.5,
+          "max_relative_error": 2.0242828077750451e-07,
+          "max_relative_error_pct": 2.024282807775045e-05,
+          "seconds": 4.9432972200156655,
+          "seconds_per_scatterer": 0.024716486100078327,
+          "seconds_samples": [
+            4.947444603982149,
+            4.9432972200156655,
+            4.932757570000831
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:08.031607+00:00",
+                "load_average": "1.07, 2.15, 2.51",
+                "uptime_output": "01:28:08 up 2 days, 16:13,  2 users,  load average: 1.07, 2.15, 2.51"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:12.980521+00:00",
+                "load_average": "1.06, 2.13, 2.50",
+                "uptime_output": "01:28:12 up 2 days, 16:14,  2 users,  load average: 1.06, 2.13, 2.50"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:13.199899+00:00",
+                "load_average": "1.06, 2.13, 2.50",
+                "uptime_output": "01:28:13 up 2 days, 16:14,  2 users,  load average: 1.06, 2.13, 2.50"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:18.144672+00:00",
+                "load_average": "1.06, 2.11, 2.50",
+                "uptime_output": "01:28:18 up 2 days, 16:14,  2 users,  load average: 1.06, 2.11, 2.50"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:18.343571+00:00",
+                "load_average": "1.06, 2.11, 2.50",
+                "uptime_output": "01:28:18 up 2 days, 16:14,  2 users,  load average: 1.06, 2.11, 2.50"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:23.277678+00:00",
+                "load_average": "1.05, 2.09, 2.49",
+                "uptime_output": "01:28:23 up 2 days, 16:14,  2 users,  load average: 1.05, 2.09, 2.49"
+              }
+            }
+          ]
+        },
+        {
+          "k": 6.0,
+          "max_relative_error": 2.2916050182710236e-09,
+          "max_relative_error_pct": 2.2916050182710235e-07,
+          "seconds": 5.221666784986155,
+          "seconds_per_scatterer": 0.026108333924930775,
+          "seconds_samples": [
+            5.203898892010329,
+            5.221666784986155,
+            5.231400521006435
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:23.490618+00:00",
+                "load_average": "1.05, 2.09, 2.49",
+                "uptime_output": "01:28:23 up 2 days, 16:14,  2 users,  load average: 1.05, 2.09, 2.49"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:28.695685+00:00",
+                "load_average": "1.05, 2.07, 2.48",
+                "uptime_output": "01:28:28 up 2 days, 16:14,  2 users,  load average: 1.05, 2.07, 2.48"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:28.914146+00:00",
+                "load_average": "1.04, 2.06, 2.47",
+                "uptime_output": "01:28:28 up 2 days, 16:14,  2 users,  load average: 1.04, 2.06, 2.47"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:34.137333+00:00",
+                "load_average": "1.12, 2.05, 2.47",
+                "uptime_output": "01:28:34 up 2 days, 16:14,  2 users,  load average: 1.12, 2.05, 2.47"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:34.350765+00:00",
+                "load_average": "1.12, 2.05, 2.47",
+                "uptime_output": "01:28:34 up 2 days, 16:14,  2 users,  load average: 1.12, 2.05, 2.47"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:39.583621+00:00",
+                "load_average": "1.11, 2.04, 2.46",
+                "uptime_output": "01:28:39 up 2 days, 16:14,  2 users,  load average: 1.11, 2.04, 2.46"
+              }
+            }
+          ]
+        },
+        {
+          "k": 7.0,
+          "max_relative_error": 4.553425619405397e-12,
+          "max_relative_error_pct": 4.553425619405397e-10,
+          "seconds": 5.617928555991966,
+          "seconds_per_scatterer": 0.02808964277995983,
+          "seconds_samples": [
+            5.628829047986073,
+            5.617928555991966,
+            5.613440456014359
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:39.783614+00:00",
+                "load_average": "1.11, 2.04, 2.46",
+                "uptime_output": "01:28:39 up 2 days, 16:14,  2 users,  load average: 1.11, 2.04, 2.46"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:45.413778+00:00",
+                "load_average": "1.10, 2.02, 2.45",
+                "uptime_output": "01:28:45 up 2 days, 16:14,  2 users,  load average: 1.10, 2.02, 2.45"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:45.612603+00:00",
+                "load_average": "1.10, 2.02, 2.45",
+                "uptime_output": "01:28:45 up 2 days, 16:14,  2 users,  load average: 1.10, 2.02, 2.45"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:51.231762+00:00",
+                "load_average": "1.09, 2.00, 2.44",
+                "uptime_output": "01:28:51 up 2 days, 16:14,  2 users,  load average: 1.09, 2.00, 2.44"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:51.429693+00:00",
+                "load_average": "1.09, 2.00, 2.44",
+                "uptime_output": "01:28:51 up 2 days, 16:14,  2 users,  load average: 1.09, 2.00, 2.44"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:28:57.044584+00:00",
+                "load_average": "1.09, 1.99, 2.44",
+                "uptime_output": "01:28:57 up 2 days, 16:14,  2 users,  load average: 1.09, 1.99, 2.44"
+              }
+            }
+          ]
+        },
+        {
+          "k": 8.0,
+          "max_relative_error": 3.188676061238324e-15,
+          "max_relative_error_pct": 3.188676061238324e-13,
+          "seconds": 6.205323667993071,
+          "seconds_per_scatterer": 0.031026618339965353,
+          "seconds_samples": [
+            6.200937782996334,
+            6.205323667993071,
+            6.232171734998701
+          ],
+          "uptime_load_average": [
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:28:57.263742+00:00",
+                "load_average": "1.09, 1.99, 2.44",
+                "uptime_output": "01:28:57 up 2 days, 16:14,  2 users,  load average: 1.09, 1.99, 2.44"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:29:03.466166+00:00",
+                "load_average": "1.08, 1.97, 2.43",
+                "uptime_output": "01:29:03 up 2 days, 16:14,  2 users,  load average: 1.08, 1.97, 2.43"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:29:03.666775+00:00",
+                "load_average": "1.08, 1.97, 2.43",
+                "uptime_output": "01:29:03 up 2 days, 16:14,  2 users,  load average: 1.08, 1.97, 2.43"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:29:09.873567+00:00",
+                "load_average": "1.07, 1.94, 2.41",
+                "uptime_output": "01:29:09 up 2 days, 16:14,  2 users,  load average: 1.07, 1.94, 2.41"
+              }
+            },
+            {
+              "before": {
+                "captured_at_utc": "2026-11-02T16:29:10.072531+00:00",
+                "load_average": "1.07, 1.94, 2.41",
+                "uptime_output": "01:29:10 up 2 days, 16:14,  2 users,  load average: 1.07, 1.94, 2.41"
+              },
+              "after": {
+                "captured_at_utc": "2026-11-02T16:29:16.306263+00:00",
+                "load_average": "1.06, 1.92, 2.40",
+                "uptime_output": "01:29:16 up 2 days, 16:15,  2 users,  load average: 1.06, 1.92, 2.40"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "sweep_summary": [
+    {
+      "k": null,
+      "max_relative_error": 0.0,
+      "max_relative_error_pct": 0.0,
+      "seconds": 177.8073930249957
+    },
+    {
+      "k": 4.0,
+      "max_relative_error": 0.0002106965337331106,
+      "max_relative_error_pct": 0.02106965337331106,
+      "seconds": 4.3138740730064455
+    },
+    {
+      "k": 5.0,
+      "max_relative_error": 1.6406724084059258e-06,
+      "max_relative_error_pct": 0.00016406724084059259,
+      "seconds": 4.786500499962131
+    },
+    {
+      "k": 5.5,
+      "max_relative_error": 2.5312305281989887e-07,
+      "max_relative_error_pct": 2.5312305281989887e-05,
+      "seconds": 5.1114613249956165
+    },
+    {
+      "k": 6.0,
+      "max_relative_error": 3.525808855327246e-09,
+      "max_relative_error_pct": 3.525808855327246e-07,
+      "seconds": 5.393905965989688
+    },
+    {
+      "k": 7.0,
+      "max_relative_error": 4.553425619405397e-12,
+      "max_relative_error_pct": 4.553425619405397e-10,
+      "seconds": 5.800688253977569
+    },
+    {
+      "k": 8.0,
+      "max_relative_error": 3.188676061238324e-15,
+      "max_relative_error_pct": 3.188676061238324e-13,
+      "seconds": 6.399258284975076
+    }
+  ]
+}
