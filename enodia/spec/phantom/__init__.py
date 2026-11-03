@@ -320,14 +320,12 @@ def high_echo_structures(
     background_amplitude_std: float = 1.0,
     background_x_bounds_m: Sequence[float] = DEFAULT_BACKGROUND_X_BOUNDS_M,
     background_z_bounds_m: Sequence[float] = DEFAULT_BACKGROUND_Z_BOUNDS_M,
-    needle_center_x_m: float = 0.0,
-    needle_center_z_m: float = 32e-3,
+    needle_center_m: tuple[float, float] = (0.0, 32e-3),
     needle_length_m: float = 10e-3,
     needle_angle_rad: float = math.radians(30.0),
     needle_spacing_m: float = 0.5e-3,
-    needle_amplitude_ratio: float = 10.0,
+    structure_amplitude_ratios: tuple[float, float] = (10.0, 20.0),
     calcification_positions_m: Sequence[tuple[float, float]] = ((-12e-3, 32e-3), (12e-3, 38e-3)),
-    calcification_amplitude_ratio: float = 20.0,
     z_min_m: float = DEFAULT_Z_MIN_M,
 ) -> list[PointScatterer]:
     """Make Gaussian speckle plus an angled needle and point calcifications.
@@ -338,6 +336,8 @@ def high_echo_structures(
     reference. Background candidate count is based on the configured background
     rectangle and resolution-cell area.
     """
+    needle_center_x_m, needle_center_z_m = needle_center_m
+    needle_amplitude_ratio, calcification_amplitude_ratio = structure_amplitude_ratios
     density = _validate_density(density_per_cell)
     std = _validate_amplitude(background_amplitude_std, "background_amplitude_std")
     needle_ratio = _validate_amplitude(needle_amplitude_ratio, "needle_amplitude_ratio")

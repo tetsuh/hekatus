@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import platform
 import subprocess
 import sys
@@ -54,6 +55,9 @@ MAX_ESTIMATED_SECONDS = 3 * 60 * 60
 PILOT_BACKGROUND_AMPLITUDE_STD = 1.0
 FWHM_LEVEL_DB = float(20.0 * np.log10(0.5))
 WIDTH_LEVELS_DB = (FWHM_LEVEL_DB, -40.0)
+SUPPORTED_PHANTOM_NAMES = frozenset(
+    {"point_scatterer_array", "anechoic_cysts", "uniform_speckle", "high_echo_structures"}
+)
 
 
 # The paired diameter/x coordinates make three non-overlapping cyst sizes at
@@ -106,14 +110,12 @@ def _default_cases(seed: int) -> dict[str, dict[str, Any]]:
                 "background_amplitude_std": 1.0,
                 "background_x_bounds_m": DEFAULT_BACKGROUND_X_BOUNDS_M,
                 "background_z_bounds_m": DEFAULT_BACKGROUND_Z_BOUNDS_M,
-                "needle_center_x_m": 0.0,
-                "needle_center_z_m": 32e-3,
+                "needle_center_m": (0.0, 32e-3),
                 "needle_length_m": 10e-3,
                 "needle_angle_rad": math.radians(30.0),
                 "needle_spacing_m": 0.5e-3,
-                "needle_amplitude_ratio": 10.0,
+                "structure_amplitude_ratios": (10.0, 20.0),
                 "calcification_positions_m": ((-12e-3, 32e-3), (12e-3, 38e-3)),
-                "calcification_amplitude_ratio": 20.0,
                 "z_min_m": DEFAULT_Z_MIN_M,
             },
         },
@@ -184,18 +186,6 @@ def _roi_record() -> dict[str, Any]:
     }
 
 
-def _mask_region(
-    image: np.ndarray,
-    x_axis: np.ndarray,
-    z_axis: np.ndarray,
-    mask: np.ndarray,
-) -> np.ndarray:
-    values = image[mask]
-    if values.size < 2:
-        raise ValueError("metric region contains fewer than two envelope pixels")
-    return values
-
-
 def _gcnr_from_masks(image: np.ndarray, inside: np.ndarray, outside: np.ndarray) -> float | None:
     if np.count_nonzero(inside) < 2 or np.count_nonzero(outside) < 2:
         return None
@@ -205,55 +195,61 @@ def _gcnr_from_masks(image: np.ndarray, inside: np.ndarray, outside: np.ndarray)
         return None
 
 
+def _profile_widths(values: np.ndarray, coords: np.ndarray) -> dict[str, float | None]:
+    widths = []
+    for level in WIDTH_LEVELS_DB:
+        try:
+            widths.append(_finite_json(width_at(values, coords, level)))
+        except ValueError:
+            widths.append(None)
+    return {"fwhm_m": widths[0], "width_40db_m": widths[1]}
+
+
+def _point_target_metrics(
+    image: np.ndarray,
+    x_axis: np.ndarray,
+    z_axis: np.ndarray,
+    target_index: int,
+    scatterer: PointScatterer,
+) -> dict[str, Any]:
+    x_mask = np.abs(x_axis - scatterer.x_m) <= 3e-3
+    z_mask = np.abs(z_axis - scatterer.z_m) <= 2e-3
+    if not np.any(x_mask) or not np.any(z_mask):
+        peak = None
+        lateral = {"fwhm_m": None, "width_40db_m": None}
+        axial = {"fwhm_m": None, "width_40db_m": None}
+    else:
+        patch = image[np.ix_(z_mask, x_mask)]
+        local_z, local_x = np.unravel_index(int(np.argmax(patch)), patch.shape)
+        z_indices = np.flatnonzero(z_mask)
+        x_indices = np.flatnonzero(x_mask)
+        peak_z = int(z_indices[local_z])
+        peak_x = int(x_indices[local_x])
+        peak = {"x_m": float(x_axis[peak_x]), "z_m": float(z_axis[peak_z]), "envelope": float(image[peak_z, peak_x])}
+        lateral = _profile_widths(image[peak_z, x_mask], x_axis[x_mask])
+        axial = _profile_widths(image[z_mask, peak_x], z_axis[z_mask])
+    return {
+        "target_index": target_index,
+        "scatterer_x_m": scatterer.x_m,
+        "scatterer_z_m": scatterer.z_m,
+        "peak": peak,
+        "lateral_fwhm_m": lateral["fwhm_m"],
+        "lateral_width_40db_m": lateral["width_40db_m"],
+        "axial_fwhm_m": axial["fwhm_m"],
+        "axial_width_40db_m": axial["width_40db_m"],
+    }
+
+
 def _point_metrics(
     image: np.ndarray,
     x_axis: np.ndarray,
     z_axis: np.ndarray,
     scatterers: list[PointScatterer],
 ) -> dict[str, Any]:
-    targets = []
-    for index, scatterer in enumerate(scatterers):
-        x_mask = np.abs(x_axis - scatterer.x_m) <= 3e-3
-        z_mask = np.abs(z_axis - scatterer.z_m) <= 2e-3
-        if not np.any(x_mask) or not np.any(z_mask):
-            peak = None
-            lateral = {"fwhm_m": None, "width_40db_m": None}
-            axial = {"fwhm_m": None, "width_40db_m": None}
-        else:
-            patch = image[np.ix_(z_mask, x_mask)]
-            local_z, local_x = np.unravel_index(int(np.argmax(patch)), patch.shape)
-            z_indices = np.flatnonzero(z_mask)
-            x_indices = np.flatnonzero(x_mask)
-            peak_z = int(z_indices[local_z])
-            peak_x = int(x_indices[local_x])
-            peak = {"x_m": float(x_axis[peak_x]), "z_m": float(z_axis[peak_z]), "envelope": float(image[peak_z, peak_x])}
-            lateral_profile = image[peak_z, x_mask]
-            lateral_coords = x_axis[x_mask]
-            axial_profile = image[z_mask, peak_x]
-            axial_coords = z_axis[z_mask]
-            widths = []
-            for values, coords in ((lateral_profile, lateral_coords), (axial_profile, axial_coords)):
-                row = []
-                for level in WIDTH_LEVELS_DB:
-                    try:
-                        row.append(_finite_json(width_at(values, coords, level)))
-                    except ValueError:
-                        row.append(None)
-                widths.append(row)
-            lateral = {"fwhm_m": widths[0][0], "width_40db_m": widths[0][1]}
-            axial = {"fwhm_m": widths[1][0], "width_40db_m": widths[1][1]}
-        targets.append(
-            {
-                "target_index": index,
-                "scatterer_x_m": scatterer.x_m,
-                "scatterer_z_m": scatterer.z_m,
-                "peak": peak,
-                "lateral_fwhm_m": lateral["fwhm_m"],
-                "lateral_width_40db_m": lateral["width_40db_m"],
-                "axial_fwhm_m": axial["fwhm_m"],
-                "axial_width_40db_m": axial["width_40db_m"],
-            }
-        )
+    targets = [
+        _point_target_metrics(image, x_axis, z_axis, index, scatterer)
+        for index, scatterer in enumerate(scatterers)
+    ]
     return {"targets": targets}
 
 
@@ -316,8 +312,7 @@ def _high_echo_metrics(
     parameters: dict[str, Any],
 ) -> dict[str, Any]:
     xx, zz = np.meshgrid(x_axis, z_axis)
-    x0 = float(parameters["needle_center_x_m"])
-    z0 = float(parameters["needle_center_z_m"])
+    x0, z0 = (float(value) for value in parameters["needle_center_m"])
     length = float(parameters["needle_length_m"])
     angle = float(parameters["needle_angle_rad"])
     along = (xx - x0) * math.cos(angle) + (zz - z0) * math.sin(angle)
@@ -374,9 +369,7 @@ def _case_metrics(
         return _uniform_metrics(image, x_axis, z_axis)
     if name == "high_echo_structures":
         return _high_echo_metrics(image, x_axis, z_axis, parameters)
-    # Custom small cases still record an applicable texture metric. This path
-    # exists for fast structural tests and is not used by the production CLI.
-    return _uniform_metrics(image, x_axis, z_axis)
+    raise ValueError(f"unknown phantom name: {name!r}")
 
 
 def _run_pipeline(
@@ -404,6 +397,9 @@ def build_record(
     """Measure supplied/default phantoms through simulator, golden DAS, envelope."""
     profile = linear_5mhz() if profile is None else profile
     case_specs = _default_cases(seed) if cases is None else cases
+    unknown_names = sorted(set(case_specs) - SUPPORTED_PHANTOM_NAMES)
+    if unknown_names:
+        raise ValueError(f"unknown phantom name(s): {unknown_names}")
     xmin, xmax, zmin, zmax = imaging_region(profile)
     cell_width, cell_height = resolution_cell(profile)
     results = []
@@ -591,10 +587,29 @@ def render_readme(record: dict[str, Any]) -> str:
     return _render_readme(record)
 
 
+def _has_symlink_component(path: Path) -> bool:
+    current = Path(path.anchor)
+    for component in path.parts[1:]:
+        if component == "..":
+            current = current.parent
+            continue
+        if component == ".":
+            continue
+        current /= component
+        if current.is_symlink():
+            return True
+    return False
+
+
 def _validate_output_dir(output_dir: Path) -> tuple[Path, Path]:
     root = MEASUREMENT_ROOT.resolve()
     requested = output_dir if output_dir.is_absolute() else Path.cwd() / output_dir
-    resolved = requested.resolve(strict=False)
+    if _has_symlink_component(requested):
+        raise ValueError("output path must not traverse symlinks inside the measurement directory")
+    normalized = Path(os.path.abspath(requested))
+    if not normalized.is_relative_to(root) or normalized == root:
+        raise ValueError("output must be inside the Issue #14 measurement directory")
+    resolved = normalized.resolve(strict=False)
     if not resolved.is_relative_to(root) or resolved == root:
         raise ValueError("output must be inside the Issue #14 measurement directory")
     relative = resolved.relative_to(root)
@@ -604,19 +619,12 @@ def _validate_output_dir(output_dir: Path) -> tuple[Path, Path]:
         if parsed_date.isoformat() != date_component:
             raise ValueError("non-canonical ISO date")
     except ValueError as error:
-        raise ValueError("output must be inside an ISO date subdirectory of the Issue #14 measurement directory") from error
-    candidate = requested
-    while candidate != candidate.parent and candidate != root:
-        if candidate.is_symlink():
-            raise ValueError("output path must not traverse symlinks")
-        candidate = candidate.parent
-    if candidate == root and candidate.is_symlink():
-        raise ValueError("output path must not traverse symlinks")
+        raise ValueError(
+            "output must be inside an ISO date subdirectory of the Issue #14 measurement directory"
+        ) from error
     json_path = resolved / OUTPUT_JSON
     readme_path = resolved / OUTPUT_README
-    if resolved.exists() or resolved.is_symlink() or any(
-        item.exists() or item.is_symlink() for item in (json_path, readme_path)
-    ):
+    if resolved.exists() or any(item.exists() or item.is_symlink() for item in (json_path, readme_path)):
         raise FileExistsError(f"refusing to overwrite measurement output in {resolved}")
     return resolved, root
 
@@ -745,16 +753,9 @@ def fit_pilot_timing_model(pilots: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def estimate_project(
-    *,
-    profile: ProbeProfile | None = None,
-    seed: int = 14,
-    cases: dict[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Measure exact 500/2000 full-pipeline pilots and estimate each phantom."""
-    _require_clean_checkout()
-    profile = linear_5mhz() if profile is None else profile
-    case_specs = _default_cases(seed) if cases is None else cases
+def _estimated_case_sizes(
+    profile: ProbeProfile, case_specs: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
     estimated_cases = []
     for name, case in case_specs.items():
         generator = case["generator"]
@@ -769,38 +770,54 @@ def estimate_project(
             }
         )
         del scatterers
+    return estimated_cases
+
+
+def _estimate_case_durations(
+    estimated_cases: list[dict[str, Any]], timing_model: dict[str, Any]
+) -> tuple[float | None, bool, str | None]:
+    if not timing_model["valid"]:
+        for case in estimated_cases:
+            case["estimated_seconds"] = None
+        return None, False, timing_model["failure_reason"]
+
+    intercept = timing_model["applied_intercept_seconds"]
+    slope = timing_model["applied_seconds_per_scatterer"]
+    predictions = [intercept + slope * case["scatterer_count"] for case in estimated_cases]
+    if not all(math.isfinite(value) and value >= 0.0 for value in predictions):
+        for case in estimated_cases:
+            case["estimated_seconds"] = None
+        return None, False, "case extrapolation produced a non-finite or negative time"
+
+    for case, prediction in zip(estimated_cases, predictions, strict=True):
+        case["estimated_seconds"] = prediction
+    total_seconds = sum(predictions)
+    if not math.isfinite(total_seconds):
+        return None, False, "estimated total is non-finite"
+    within_time_limit = total_seconds <= MAX_ESTIMATED_SECONDS
+    failure_reason = None if within_time_limit else "estimated total exceeds the three-hour limit"
+    return total_seconds, within_time_limit, failure_reason
+
+
+def estimate_project(
+    *,
+    profile: ProbeProfile | None = None,
+    seed: int = 14,
+    cases: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Measure exact 500/2000 full-pipeline pilots and estimate each phantom."""
+    _require_clean_checkout()
+    profile = linear_5mhz() if profile is None else profile
+    case_specs = _default_cases(seed) if cases is None else cases
+    estimated_cases = _estimated_case_sizes(profile, case_specs)
     pilots = [
         _time_pilot(profile, scatterer_count=count, seed=seed + index)
         for index, count in enumerate(PILOT_SCATTERER_COUNTS)
     ]
     timing_model = fit_pilot_timing_model(pilots)
-    if timing_model["valid"]:
-        intercept = timing_model["applied_intercept_seconds"]
-        slope = timing_model["applied_seconds_per_scatterer"]
-        predictions = [intercept + slope * case["scatterer_count"] for case in estimated_cases]
-        if not all(math.isfinite(value) and value >= 0.0 for value in predictions):
-            for case in estimated_cases:
-                case["estimated_seconds"] = None
-            total_seconds = None
-            within_time_limit = False
-            failure_reason = "case extrapolation produced a non-finite or negative time"
-        else:
-            for case, prediction in zip(estimated_cases, predictions, strict=True):
-                case["estimated_seconds"] = prediction
-            total_seconds = sum(predictions)
-            if not math.isfinite(total_seconds):
-                total_seconds = None
-                within_time_limit = False
-                failure_reason = "estimated total is non-finite"
-            else:
-                within_time_limit = total_seconds <= MAX_ESTIMATED_SECONDS
-                failure_reason = None if within_time_limit else "estimated total exceeds the three-hour limit"
-    else:
-        for case in estimated_cases:
-            case["estimated_seconds"] = None
-        total_seconds = None
-        within_time_limit = False
-        failure_reason = timing_model["failure_reason"]
+    total_seconds, within_time_limit, failure_reason = _estimate_case_durations(
+        estimated_cases, timing_model
+    )
     return {
         "issue": 14,
         "measurement_date_utc": datetime.now(UTC).date().isoformat(),
@@ -859,11 +876,12 @@ def main() -> int:
     parser.add_argument("--estimate-only", action="store_true")
     args = parser.parse_args()
     try:
+        validated_output_dir, _ = _validate_output_dir(args.output_dir)
         if args.estimate_only:
             preflight = estimate_project(seed=args.seed)
             print(json.dumps(preflight, indent=2, allow_nan=False))
             return 0 if preflight["production_allowed"] else 2
-        result = run_record(args.output_dir, seed=args.seed)
+        result = run_record(validated_output_dir, seed=args.seed)
         if isinstance(result, dict):
             print(json.dumps(result, indent=2, allow_nan=False))
             return 2

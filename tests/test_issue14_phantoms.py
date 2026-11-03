@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import math
+import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -69,7 +72,7 @@ def test_all_generators_are_seeded_and_keep_points_inside_golden_imaging_region(
             background_x_bounds_m=(-1e-3, 1e-3), background_z_bounds_m=(3e-3, 17e-3)
         ),
         lambda seed: high_echo_structures(
-            profile, seed=seed, density_per_cell=0.2, needle_center_z_m=9e-3, needle_length_m=1e-3,
+            profile, seed=seed, density_per_cell=0.2, needle_center_m=(0.0, 9e-3), needle_length_m=1e-3,
             calcification_positions_m=((-0.7e-3, 6e-3), (0.7e-3, 12e-3)),
             background_x_bounds_m=(-1e-3, 1e-3), background_z_bounds_m=(3e-3, 17e-3)
         ),
@@ -78,7 +81,8 @@ def test_all_generators_are_seeded_and_keep_points_inside_golden_imaging_region(
         first = generate(14)
         repeated = generate(14)
         different = generate(15)
-        assert first and all(isinstance(point, PointScatterer) for point in first)
+        assert first
+        assert all(isinstance(point, PointScatterer) for point in first)
         assert _scatterer_tuples(first) == _scatterer_tuples(repeated)
         assert _scatterer_tuples(first) != _scatterer_tuples(different)
         assert all(xmin <= point.x_m <= xmax for point in first)
@@ -155,10 +159,12 @@ def test_generator_parameters_change_geometry_and_amplitudes():
 
     low = uniform_speckle(profile, seed=3, density_per_cell=0.1)
     high = uniform_speckle(profile, seed=3, density_per_cell=0.2)
-    assert len(high) == 2 * len(low) or len(high) == 2 * len(low) - 1
+    assert len(high) in {2 * len(low) - 1, 2 * len(low)}
     assert np.mean([point.amplitude for point in high]) == pytest.approx(0.0, abs=0.15)
-    assert high_echo_structures(profile, seed=4, density_per_cell=0.05, needle_amplitude_ratio=12.0) != high_echo_structures(
-        profile, seed=4, density_per_cell=0.05, needle_amplitude_ratio=24.0
+    assert high_echo_structures(
+        profile, seed=4, density_per_cell=0.05, structure_amplitude_ratios=(12.0, 20.0)
+    ) != high_echo_structures(
+        profile, seed=4, density_per_cell=0.05, structure_amplitude_ratios=(24.0, 20.0)
     )
 
 
@@ -171,6 +177,37 @@ def test_high_echo_ratios_scale_with_background_standard_deviation():
     np.testing.assert_allclose(
         [p.amplitude for p in scaled], 3.0 * np.array([p.amplitude for p in unit])
     )
+
+
+def test_high_echo_grouped_settings_preserve_defaults_and_remain_adjustable():
+    profile = linear_5mhz()
+    assert len(inspect.signature(high_echo_structures).parameters) <= 13
+    default = high_echo_structures(profile, seed=27, density_per_cell=0.01)
+    explicit_defaults = high_echo_structures(
+        profile,
+        seed=27,
+        density_per_cell=0.01,
+        needle_center_m=(0.0, 32e-3),
+        structure_amplitude_ratios=(10.0, 20.0),
+    )
+    assert _scatterer_tuples(default) == _scatterer_tuples(explicit_defaults)
+
+    moved = high_echo_structures(
+        profile,
+        seed=27,
+        density_per_cell=0.01,
+        needle_center_m=(1e-3, 34e-3),
+        structure_amplitude_ratios=(12.0, 24.0),
+    )
+    background_count = len(default) - 23
+    assert _scatterer_tuples(default[:background_count]) == _scatterer_tuples(moved[:background_count])
+    default_needle = default[background_count : background_count + 21]
+    moved_needle = moved[background_count : background_count + 21]
+    for before, after in zip(default_needle, moved_needle, strict=True):
+        assert after.x_m - before.x_m == pytest.approx(1e-3)
+        assert after.z_m - before.z_m == pytest.approx(2e-3)
+        assert abs(after.amplitude) == 12.0
+    assert all(abs(point.amplitude) == 24.0 for point in moved[-2:])
 
 
 def test_zero_deviation_speckle_is_recorded_as_an_undefined_metric():
@@ -214,6 +251,41 @@ def test_failed_sanity_record_is_preserved(tmp_path, monkeypatch):
     assert readme_path.read_text() == record.render_readme(json.loads(json_path.read_text()))
 
 
+def test_build_record_rejects_unknown_phantom_name_before_generator_execution():
+    def unexpected_generator(profile, **parameters):
+        pytest.fail("unknown phantom generator ran before name validation")
+
+    profile = _small_profile()
+    with pytest.raises(ValueError, match="unknown phantom"):
+        record.build_record(
+            profile=profile,
+            cases={"not_a_phantom": {"generator": unexpected_generator, "parameters": {}}},
+        )
+
+
+def test_case_metrics_rejects_unknown_phantom_name():
+    image = np.zeros((2, 2))
+    x_axis = np.array([0.0, 1.0])
+    z_axis = np.array([0.0, 1.0])
+    with pytest.raises(ValueError, match="unknown phantom"):
+        record._case_metrics("not_a_phantom", image, x_axis, z_axis, [], {})
+
+
+def test_committed_measurement_readme_renders_unchanged_with_historical_generator_arguments():
+    record_dir = (
+        Path(__file__).resolve().parents[1]
+        / "docs/measurements/issue14-phantom-metrics/2026-11-03"
+    )
+    saved_record = json.loads((record_dir / record.OUTPUT_JSON).read_text(encoding="utf-8"))
+    high_echo_case = next(case for case in saved_record["cases"] if case["name"] == "high_echo_structures")
+    arguments = high_echo_case["generator_arguments"]
+    assert "needle_center_x_m" in arguments
+    assert "needle_center_z_m" in arguments
+    assert "needle_amplitude_ratio" in arguments
+    assert "calcification_amplitude_ratio" in arguments
+    assert record.render_readme(saved_record) == (record_dir / record.OUTPUT_README).read_text(encoding="utf-8")
+
+
 def test_record_rendering_and_small_end_to_end_json(tmp_path, monkeypatch):
     profile = _small_profile()
     output_root = tmp_path / "measurements"
@@ -245,7 +317,8 @@ def test_record_rendering_and_small_end_to_end_json(tmp_path, monkeypatch):
     assert case["generator_arguments"]["background_x_bounds_m"] == [-1e-3, 1e-3]
     assert case["generator_arguments"]["background_z_bounds_m"] == [3e-3, 17e-3]
     assert case["elapsed_seconds"] >= 0.0
-    assert "before" in case["uptime_load_average"] and "after" in case["uptime_load_average"]
+    assert "before" in case["uptime_load_average"]
+    assert "after" in case["uptime_load_average"]
     assert "speckle_snr" in case["metrics"]
     assert result["metric_roi_arguments"]["uniform_speckle"]
     assert result["definitions"]["resolution_cell"]
@@ -386,15 +459,18 @@ def test_default_structure_and_metric_roi_extents_fit_background_bounds():
     assert z_bounds[0] <= speckle_roi["z_bounds_m"][0]
     assert speckle_roi["z_bounds_m"][1] <= z_bounds[1]
     high = cases["high_echo_structures"]["parameters"]
+    needle_center_x_m, needle_center_z_m = high["needle_center_m"]
     needle_margin = high["needle_length_m"] / 2 + rois["high_echo"]["needle_outside_distance_m"][1]
-    assert x_bounds[0] <= high["needle_center_x_m"] - needle_margin
-    assert high["needle_center_x_m"] + needle_margin <= x_bounds[1]
-    assert z_bounds[0] <= high["needle_center_z_m"] - needle_margin
-    assert high["needle_center_z_m"] + needle_margin <= z_bounds[1]
+    assert x_bounds[0] <= needle_center_x_m - needle_margin
+    assert needle_center_x_m + needle_margin <= x_bounds[1]
+    assert z_bounds[0] <= needle_center_z_m - needle_margin
+    assert needle_center_z_m + needle_margin <= z_bounds[1]
     calc_margin = rois["high_echo"]["calcification_outside_radius_m"][1]
     for x, z in high["calcification_positions_m"]:
-        assert x_bounds[0] <= x - calc_margin and x + calc_margin <= x_bounds[1]
-        assert z_bounds[0] <= z - calc_margin and z + calc_margin <= z_bounds[1]
+        assert x_bounds[0] <= x - calc_margin
+        assert x + calc_margin <= x_bounds[1]
+        assert z_bounds[0] <= z - calc_margin
+        assert z + calc_margin <= z_bounds[1]
 
 
 def test_two_point_timing_fit_and_invalid_slope_fail_closed():
@@ -460,7 +536,9 @@ def test_estimator_runs_exact_500_then_2000_point_pilots_and_fits_recorded_json(
     assert estimate["seed"] == 36
     assert [pilot["scatterer_count"] for pilot in estimate["pilots"]] == [500, 2000]
     assert [pilot["seed"] for pilot in estimate["pilots"]] == [36, 37]
-    assert all("before" in pilot["uptime_load_average"] and "after" in pilot["uptime_load_average"] for pilot in estimate["pilots"])
+    for pilot in estimate["pilots"]:
+        assert "before" in pilot["uptime_load_average"]
+        assert "after" in pilot["uptime_load_average"]
     assert estimate["timing_model"]["applied_intercept_seconds"] == pytest.approx(10.0)
     assert estimate["timing_model"]["applied_seconds_per_scatterer"] == pytest.approx(0.02)
     assert estimate["estimated_cases"][0]["estimated_seconds"] == pytest.approx(12.0)
@@ -590,9 +668,52 @@ def test_fresh_nested_dated_record_is_write_once(tmp_path, monkeypatch):
     monkeypatch.setattr(record, "MEASUREMENT_ROOT", root)
     destination = root / "2026-11-03" / "rerun-1"
     json_path, readme_path = record.write_record(destination, _minimal_write_record())
-    assert json_path.exists() and readme_path.exists()
+    assert json_path.exists()
+    assert readme_path.exists()
+    existing_record = _minimal_write_record()
     with pytest.raises(FileExistsError):
-        record.write_record(destination, _minimal_write_record())
+        record.write_record(destination, existing_record)
+
+
+@pytest.mark.parametrize("mode", ["production", "estimate"])
+@pytest.mark.parametrize(
+    "path_kind",
+    ["traversal", "absolute_outside", "directory_symlink", "file_symlink", "dangling_symlink", "root"],
+)
+def test_cli_rejects_unsafe_output_before_estimate_or_record(
+    tmp_path, monkeypatch, capsys, mode, path_kind
+):
+    root = tmp_path / "measurements"
+    dated = root / "2026-11-03"
+    dated.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    if path_kind == "traversal":
+        destination = dated / ".." / ".." / "escaped"
+    elif path_kind == "absolute_outside":
+        destination = outside / "2026-11-03"
+    elif path_kind == "directory_symlink":
+        destination = dated / "directory-link" / "run-1"
+        (dated / "directory-link").symlink_to(outside, target_is_directory=True)
+    elif path_kind == "file_symlink":
+        target = dated / "file-target"
+        target.write_text("not a directory", encoding="utf-8")
+        destination = dated / "file-link" / "run-1"
+        (dated / "file-link").symlink_to(target)
+    elif path_kind == "dangling_symlink":
+        destination = dated / "dangling-link" / "run-1"
+        (dated / "dangling-link").symlink_to(outside / "missing", target_is_directory=True)
+    else:
+        destination = root
+    monkeypatch.setattr(record, "MEASUREMENT_ROOT", root)
+    monkeypatch.setattr(record, "estimate_project", lambda **kwargs: pytest.fail("estimate ran before path validation"))
+    monkeypatch.setattr(record, "run_record", lambda *args, **kwargs: pytest.fail("record runner ran before path validation"))
+    argv = ["record", "--output-dir", str(destination)]
+    if mode == "estimate":
+        argv.append("--estimate-only")
+    monkeypatch.setattr(sys, "argv", argv)
+    assert record.main() == 2
+    assert "output" in capsys.readouterr().err
 
 
 def test_measurement_root_rejects_escape_paths_and_existing_outputs(tmp_path, monkeypatch):
