@@ -170,3 +170,55 @@ def test_speckle_snr_preserves_ratio_under_amplitude_scaling(scale):
 def test_speckle_snr_seeded_rayleigh():
     region = np.random.default_rng(14).rayleigh(size=100_000)
     assert speckle_snr(region) == pytest.approx(1.913, abs=0.02)
+
+
+# Invariant 8: identical represented values use float64 regardless of input dtype.
+@pytest.mark.parametrize("dtype", [np.float16, np.float32, np.float64])
+def test_gcnr_float64_domain_dtype_agreement(dtype):
+    inside = np.array([2048, 2056, 4100], dtype=dtype)
+    outside = np.array([2048, 2048, 4100], dtype=dtype)
+    assert gcnr(inside, outside) == gcnr(inside.astype(np.float64), outside.astype(np.float64))
+    assert gcnr(inside, outside) == 0.0
+
+
+@pytest.mark.parametrize("profile_dtype", [np.float16, np.float32, np.float64])
+@pytest.mark.parametrize("coords_dtype", [np.float16, np.float32, np.float64])
+def test_width_float64_domain_dtype_agreement(profile_dtype, coords_dtype):
+    profile = np.array([0.125, 1.0, 0.25], dtype=profile_dtype)
+    coords = np.array([-2.0, 0.0, 3.0], dtype=coords_dtype)
+    assert width_at(profile, coords, -6.0) == width_at(
+        profile.astype(np.float64), coords.astype(np.float64), -6.0
+    )
+
+
+@pytest.mark.parametrize("dtype", [np.float16, np.float32, np.float64])
+def test_speckle_snr_float64_domain_dtype_agreement(dtype):
+    region = np.array([1.0, 2.0, 4.0], dtype=dtype)
+    assert speckle_snr(region) == speckle_snr(region.astype(np.float64))
+
+
+# Invariant 9: overflowing spans are rejected, not returned as infinite widths.
+def test_gcnr_rejects_overflowing_sample_range():
+    with (
+        np.errstate(over="raise", invalid="raise"),
+        pytest.raises(ValueError, match="range.*finite"),
+    ):
+        gcnr(np.array([-1e308]), np.array([1e308]))
+
+
+@pytest.mark.parametrize(
+    "coords", [[-1e308, 1e308, 1.1e308], [-1.1e308, -1e308, 1e308]]
+)
+def test_width_rejects_overflowing_coordinate_distances(coords):
+    with (
+        np.errstate(over="raise", invalid="raise"),
+        pytest.raises(ValueError, match="distance.*finite"),
+    ):
+        width_at(np.array([0.1, 1.0, 0.1]), np.array(coords), -6.0)
+
+
+def test_width_rejects_overflowing_result_width():
+    with pytest.raises(ValueError, match="width.*finite"):
+        width_at(
+            np.array([0.5, 1.0, 0.5]), np.array([-1e308, 0.0, 1e308]), 20.0 * np.log10(0.5)
+        )

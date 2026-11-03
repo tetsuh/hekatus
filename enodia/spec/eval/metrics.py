@@ -1,4 +1,10 @@
-"""Pure NumPy quality metrics on linear envelope amplitudes, before log compression."""
+"""Pure NumPy quality metrics on linear envelope amplitudes, before log compression.
+
+All input arrays, including coordinates, are converted to float64 on entry;
+arithmetic uses float64. Equal represented values give equal results across
+floating dtypes. Integers beyond 2**53 are unsupported due to conversion loss.
+Overflowing intermediate sample ranges or coordinate distances raise ValueError.
+"""
 
 import numpy as np
 
@@ -8,10 +14,10 @@ def gcnr(inside: np.ndarray, outside: np.ndarray, *, bins: int = 256) -> float:
 
     Each histogram is normalized by its own sample count. Empty inputs or
     non-finite samples raise ValueError; if every value in both inputs is
-    equal, return 0.0.
+    equal, return 0.0. A non-finite sample range also raises ValueError.
     """
-    inside = np.asarray(inside).ravel()
-    outside = np.asarray(outside).ravel()
+    inside = np.asarray(inside, dtype=np.float64).ravel()
+    outside = np.asarray(outside, dtype=np.float64).ravel()
     if inside.size == 0 or outside.size == 0:
         raise ValueError("inside and outside must be nonempty")
     if not np.all(np.isfinite(inside)) or not np.all(np.isfinite(outside)):
@@ -20,6 +26,10 @@ def gcnr(inside: np.ndarray, outside: np.ndarray, *, bins: int = 256) -> float:
     high = max(inside.max(), outside.max())
     if low == high:
         return 0.0
+    with np.errstate(over="ignore"):
+        span = high - low
+    if not np.isfinite(span):
+        raise ValueError("sample range must be finite in float64")
     edges = np.linspace(low, high, bins + 1)
     p_in = np.histogram(inside, bins=edges)[0] / inside.size
     p_out = np.histogram(outside, bins=edges)[0] / outside.size
@@ -35,7 +45,12 @@ def _crossing(db: np.ndarray, coords: np.ndarray, peak: int, step: int, level: f
     for index in range(peak + step, stop, step):
         if db[index] <= level:
             inner = index - step
-            return float(np.interp(level, [db[index], db[inner]], [coords[index], coords[inner]]))
+            crossing = float(
+                np.interp(level, [db[index], db[inner]], [coords[index], coords[inner]])
+            )
+            if not np.isfinite(crossing):
+                raise ValueError("crossing coordinate must be finite in float64")
+            return crossing
     return float("nan")
 
 
@@ -46,6 +61,7 @@ def width_at(profile: np.ndarray, coords: np.ndarray, level_db: float) -> float:
     Interpolate the first crossing on each side linearly in dB, including on
     nonuniform, strictly increasing coordinates. A missing crossing returns
     NaN. Non-finite or negative samples and mismatched lengths raise ValueError.
+    Non-finite coordinate distances or result widths also raise ValueError.
     FWHM uses level_db=20*log10(0.5); the -40 dB width uses level_db=-40.0.
     """
     profile = np.asarray(profile, dtype=np.float64)
@@ -56,8 +72,12 @@ def width_at(profile: np.ndarray, coords: np.ndarray, level_db: float) -> float:
         raise ValueError("profile must be nonempty")
     if not np.all(np.isfinite(profile)) or np.any(profile < 0):
         raise ValueError("profile samples must be finite and nonnegative")
-    if not np.all(np.isfinite(coords)) or np.any(np.diff(coords) <= 0):
+    if not np.all(np.isfinite(coords)) or np.any(coords[1:] <= coords[:-1]):
         raise ValueError("coords must be finite and strictly increasing")
+    with np.errstate(over="ignore"):
+        distances = np.diff(coords)
+    if not np.all(np.isfinite(distances)):
+        raise ValueError("coordinate distances must be finite in float64")
     peak = int(np.argmax(profile))
     if profile[peak] == 0:
         return float("nan")
@@ -65,7 +85,12 @@ def width_at(profile: np.ndarray, coords: np.ndarray, level_db: float) -> float:
         db = 20.0 * (np.log10(profile) - np.log10(profile[peak]))
     left = _crossing(db, coords, peak, -1, level_db)
     right = _crossing(db, coords, peak, 1, level_db)
-    return right - left
+    if np.isnan(left) or np.isnan(right):
+        return float("nan")
+    width = right - left
+    if not np.isfinite(width):
+        raise ValueError("result width must be finite in float64")
+    return width
 
 
 def speckle_snr(region: np.ndarray) -> float:
