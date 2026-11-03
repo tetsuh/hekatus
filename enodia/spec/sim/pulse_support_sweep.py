@@ -2,7 +2,8 @@
 
 Run with ``uv run python -m enodia.spec.sim.pulse_support_sweep --output-dir
  docs/measurements/issue165-pulse-support/YYYY-MM-DD`` from a clean committed
-checkout. The result directory is write-once.
+checkout. Output must be a subdirectory of the Issue #165 measurement tree.
+The result directory is write-once.
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ import argparse
 import json
 import math
 import platform
-import re
 import subprocess
 import time
 from datetime import UTC, datetime
@@ -33,6 +33,7 @@ MAX_RELATIVE_ERROR = 1e-6
 TIMING_REPEATS = 3
 OUTPUT_JSON = "pulse-support-sweep.json"
 OUTPUT_README = "README.md"
+MEASUREMENT_ROOT = Path(__file__).resolve().parents[3] / "docs/measurements/issue165-pulse-support"
 
 
 def select_default_sigmas(
@@ -71,14 +72,16 @@ def _uptime_load_average() -> dict[str, str]:
     raw = subprocess.run(
         ["uptime"], check=True, capture_output=True, text=True
     ).stdout.strip()
-    match = re.search(r"load averages?:\s*(.+)$", raw, flags=re.IGNORECASE)
-    if match is None:
-        raise RuntimeError("uptime output did not include a load average")
-    return {
-        "captured_at_utc": datetime.now(UTC).isoformat(),
-        "load_average": match.group(1),
-        "uptime_output": raw,
-    }
+    for label in ("load average:", "load averages:"):
+        prefix, separator, _ = raw.lower().partition(label)
+        load_average = raw[len(prefix) + len(label):].lstrip()
+        if separator and load_average:
+            return {
+                "captured_at_utc": datetime.now(UTC).isoformat(),
+                "load_average": load_average,
+                "uptime_output": raw,
+            }
+    raise RuntimeError("uptime output did not include a load average")
 
 
 def _timed_frame(profile, events, scatterers, support_sigmas):
@@ -98,8 +101,8 @@ def _timed_frame(profile, events, scatterers, support_sigmas):
 def _relative_error(candidate: np.ndarray, reference: np.ndarray) -> float:
     peak = float(np.max(np.abs(reference)))
     difference = float(np.max(np.abs(candidate - reference)))
-    if peak == 0.0:
-        return 0.0 if difference == 0.0 else math.inf
+    if peak <= 0.0:
+        return 0.0 if difference <= 0.0 else math.inf
     return difference / peak
 
 
@@ -222,9 +225,13 @@ def _render_readme(record: dict) -> str:
 
 
 def run_sweep(output_dir: Path, *, seed: int = 165) -> tuple[Path, Path]:
+    root = MEASUREMENT_ROOT.resolve()
+    output_dir = output_dir.resolve()
+    if not output_dir.is_relative_to(root) or output_dir == root:
+        raise ValueError("output must be a subdirectory of the Issue #165 measurement directory")
     output_json = output_dir / OUTPUT_JSON
     output_readme = output_dir / OUTPUT_README
-    if output_json.exists() or output_readme.exists():
+    if any(path.exists() or path.is_symlink() for path in (output_json, output_readme)):
         raise FileExistsError(f"refusing to overwrite measurement output in {output_dir}")
     if _git("status", "--porcelain"):
         raise RuntimeError("pulse-support measurements require a clean committed checkout")

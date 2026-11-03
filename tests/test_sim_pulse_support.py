@@ -299,25 +299,28 @@ def test_zero_weight_contributions_are_still_evaluated(monkeypatch):
 def test_support_sigmas_must_be_finite_and_nonnegative(bad):
     profile = linear_5mhz()
     config = make_bmode_config(profile)
+    single_event_config = replace(config, events=config.events[:1])
+    events = list(config.events[:1])
     with pytest.raises(ValueError, match="pulse_support_sigmas"):
         sim.simulate_frame(
             profile,
-            replace(config, events=config.events[:1]),
+            single_event_config,
             [],
             pulse_support_sigmas=bad,
         )
     with pytest.raises(ValueError, match="pulse_support_sigmas"):
-        sim._simulate_bmode_frame(profile, list(config.events[:1]), [], pulse_support_sigmas=bad)
+        sim._simulate_bmode_frame(profile, events, [], pulse_support_sigmas=bad)
 
 
 @pytest.mark.parametrize("bad", [True, "6.0"])
 def test_support_sigmas_reject_non_numeric_values(bad):
     profile = linear_5mhz()
     config = make_bmode_config(profile)
+    single_event_config = replace(config, events=config.events[:1])
     with pytest.raises(TypeError, match="pulse_support_sigmas"):
         sim.simulate_frame(
             profile,
-            replace(config, events=config.events[:1]),
+            single_event_config,
             [],
             pulse_support_sigmas=bad,
         )
@@ -492,7 +495,9 @@ def test_sweep_run_writes_complete_records_and_refuses_overwrite(tmp_path, monke
         return frame, seconds, {"before": load, "after": load}
 
     monkeypatch.setattr(sweep, "_timed_frame", fake_timed_frame)
-    output_dir = tmp_path / "issue165" / "2026-11-02"
+    root = tmp_path / "issue165"
+    monkeypatch.setattr(sweep, "MEASUREMENT_ROOT", root)
+    output_dir = root / "2026-11-02"
     json_path, readme_path = sweep.run_sweep(output_dir, seed=27)
 
     assert json_path.exists()
