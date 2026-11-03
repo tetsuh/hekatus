@@ -6,13 +6,16 @@ import numpy as np
 def gcnr(inside: np.ndarray, outside: np.ndarray, *, bins: int = 256) -> float:
     """Return 1 minus histogram overlap on common, equal-width min-to-max edges.
 
-    Each histogram is normalized by its own sample count. Empty inputs raise
-    ValueError; if every value in both inputs is equal, return 0.0.
+    Each histogram is normalized by its own sample count. Empty inputs or
+    non-finite samples raise ValueError; if every value in both inputs is
+    equal, return 0.0.
     """
     inside = np.asarray(inside).ravel()
     outside = np.asarray(outside).ravel()
     if inside.size == 0 or outside.size == 0:
         raise ValueError("inside and outside must be nonempty")
+    if not np.all(np.isfinite(inside)) or not np.all(np.isfinite(outside)):
+        raise ValueError("inside and outside samples must be finite")
     low = min(inside.min(), outside.min())
     high = max(inside.max(), outside.max())
     if low == high:
@@ -59,7 +62,7 @@ def width_at(profile: np.ndarray, coords: np.ndarray, level_db: float) -> float:
     if profile[peak] == 0:
         return float("nan")
     with np.errstate(divide="ignore"):
-        db = 20.0 * np.log10(profile / profile[peak])
+        db = 20.0 * (np.log10(profile) - np.log10(profile[peak]))
     left = _crossing(db, coords, peak, -1, level_db)
     right = _crossing(db, coords, peak, 1, level_db)
     return right - left
@@ -68,13 +71,19 @@ def width_at(profile: np.ndarray, coords: np.ndarray, level_db: float) -> float:
 def speckle_snr(region: np.ndarray) -> float:
     """Return envelope mean / population standard deviation (ddof=0).
 
-    Fewer than two samples or zero deviation raises ValueError. The Rayleigh
-    reference is sqrt(pi / (4 - pi)), approximately 1.913.
+    Fewer than two samples, non-finite samples, or zero deviation raises
+    ValueError. The Rayleigh reference is sqrt(pi / (4 - pi)), approximately 1.913.
     """
     region = np.asarray(region, dtype=np.float64)
     if region.size < 2:
         raise ValueError("region must contain at least two samples")
-    deviation = np.std(region, ddof=0)
+    if not np.all(np.isfinite(region)):
+        raise ValueError("region samples must be finite")
+    if np.all(region == region.flat[0]):
+        raise ValueError("region must have nonzero standard deviation")
+    # The common scale cancels in mean/std and keeps the variance representable.
+    scaled = region / np.max(np.abs(region))
+    deviation = np.std(scaled, ddof=0)
     if deviation == 0:
         raise ValueError("region must have nonzero standard deviation")
-    return float(np.mean(region) / deviation)
+    return float(np.mean(scaled) / deviation)

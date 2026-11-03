@@ -53,6 +53,7 @@ def test_gcnr_common_edges_and_separate_normalization():
 
 
 def test_gcnr_disjoint_and_identical():
+    # These ranges occupy non-overlapping bins with the default 256-bin edges.
     samples = np.linspace(0.0, 1.0, 1000)
     assert gcnr(samples, samples + 2.0) == 1.0
     assert gcnr(samples, samples) == 0.0
@@ -67,6 +68,15 @@ def test_gcnr_all_values_equal(value):
 def test_gcnr_empty_input(inside, outside):
     with pytest.raises(ValueError):
         gcnr(np.asarray(inside), np.asarray(outside))
+
+
+@pytest.mark.parametrize("bad_sample", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("side", ["inside", "outside"])
+def test_gcnr_rejects_nonfinite_samples(bad_sample, side):
+    inputs = {"inside": np.array([0.0, 1.0]), "outside": np.array([0.0, 1.0])}
+    inputs[side] = np.array([0.0, 1.0, bad_sample])
+    with pytest.raises(ValueError, match="finite"):
+        gcnr(**inputs)
 
 
 @pytest.mark.parametrize("d", [0.5, 1.0, 2.0])
@@ -116,6 +126,11 @@ def test_width_rejects_nonfinite_or_negative_samples(bad_sample):
         width_at(np.array([bad_sample, 1.0, 0.1]), np.arange(3.0), -6.0)
 
 
+def test_width_preserves_finite_extreme_amplitude_ratios():
+    profile = np.array([1e-200, 1e200, 1e-200])
+    assert width_at(profile, np.array([-1.0, 0.0, 1.0]), -40.0) == pytest.approx(0.01)
+
+
 def test_width_rejects_mismatched_lengths():
     with pytest.raises(ValueError):
         width_at(np.ones(3), np.arange(4.0), -6.0)
@@ -133,10 +148,23 @@ def test_speckle_snr_population_deviation():
     assert speckle_snr(region) == pytest.approx(2.5 / np.sqrt(1.25))
 
 
-@pytest.mark.parametrize("region", [[], [1.0], [0.0, 0.0], [2.0, 2.0, 2.0]])
+@pytest.mark.parametrize(
+    "region", [[], [1.0], [0.0, 0.0], [2.0, 2.0, 2.0], [0.1] * 3, [0.1] * 7, [1e308] * 2]
+)
 def test_speckle_snr_rejects_small_or_constant_region(region):
     with pytest.raises(ValueError):
         speckle_snr(np.asarray(region))
+
+
+@pytest.mark.parametrize("bad_sample", [np.nan, np.inf, -np.inf])
+def test_speckle_snr_rejects_nonfinite_samples(bad_sample):
+    with pytest.raises(ValueError, match="finite"):
+        speckle_snr(np.array([1.0, 2.0, bad_sample]))
+
+
+@pytest.mark.parametrize("scale", [1e-200, 1.0, 1e200, 1e307])
+def test_speckle_snr_preserves_ratio_under_amplitude_scaling(scale):
+    assert speckle_snr(scale * np.array([1.0, 2.0])) == pytest.approx(3.0)
 
 
 def test_speckle_snr_seeded_rayleigh():
