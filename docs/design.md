@@ -2805,6 +2805,11 @@ The CPU record preflight times sequential full-pipeline pilots with exactly
 500 and 2,000 scatterers, fits `t(n) = a + b·n`, and estimates each case with
 `max(0, a) + max(0, b)·n`; non-positive slopes block the production run. The
 preflight record carries both pilot observations and its estimated workload.
+The [Issue #14 CPU record](measurements/issue14-phantom-metrics/2026-11-03/README.md)
+reports linear-envelope speckle SNR 1.83751, finite lateral FWHM for all 21
+point targets, and 8 mm cyst gCNR 0.999076 and 0.978708 at the two recorded
+depths. These are the recorded sanity observations, not final acceptance
+thresholds or a beamformer performance comparison.
 
 ### Element dropout and variation
 

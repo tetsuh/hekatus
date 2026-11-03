@@ -1,0 +1,964 @@
+{
+  "issue": 14,
+  "measurement_date_utc": "2026-11-03",
+  "measurement_type": "board-free CPU phantom metrics",
+  "environment": {
+    "commit": "f89b53a0ab0dbed4a8417ec6b7609094a5359c67",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "python_version": "3.12.13",
+    "numpy_version": "2.5.1"
+  },
+  "profile": {
+    "name": "linear-5mhz",
+    "n_elements": 128,
+    "pitch_m": 0.0003,
+    "f0_hz": 5000000.0,
+    "bandwidth_frac": 0.7,
+    "fs_hz": 40000000.0,
+    "c_m_s": 1540.0,
+    "depth_m": 0.06,
+    "tx_focus_m": 0.02,
+    "f_number": 2.0,
+    "bandwidth_source": null
+  },
+  "processing": {
+    "pipeline": [
+      "simulate_frame",
+      "das_rf_golden",
+      "envelope"
+    ],
+    "pulse_support_sigmas": 5.5,
+    "envelope_domain": "linear envelope before log compression",
+    "metric_domain": "linear envelope before log compression",
+    "z_min_m": 0.002,
+    "imaging_region_m": {
+      "x": [
+        -0.019049999999999997,
+        0.019049999999999997
+      ],
+      "z": [
+        0.002,
+        0.06
+      ]
+    }
+  },
+  "definitions": {
+    "resolution_cell": {
+      "lateral_width_m": 0.000616,
+      "axial_height_m": 0.00022,
+      "lateral_formula": "lambda * profile.f_number; lambda = c / f0",
+      "axial_formula": "c / (2 * profile.bandwidth_frac * f0)"
+    },
+    "density_count_formula": "ceil(density_per_cell * background_area / (resolution_cell_lateral_width * resolution_cell_axial_height))",
+    "cyst_exclusion": "discard random candidate points whose center distance is strictly less than cyst radius; do not replenish",
+    "background_amplitude": "zero-mean Gaussian; amplitude_std is configurable"
+  },
+  "metric_roi_arguments": {
+    "point_targets": {
+      "peak_search_half_width_x_m": 0.003,
+      "peak_search_half_width_z_m": 0.002,
+      "profile_crop_half_width_x_m": 0.003,
+      "profile_crop_half_width_z_m": 0.002,
+      "levels_db": [
+        -6.020599913279624,
+        -40.0
+      ]
+    },
+    "cysts": {
+      "inside_radius_fraction": 0.75,
+      "outside_radius_fractions": [
+        1.25,
+        1.75
+      ],
+      "gcnr_bins": 256
+    },
+    "uniform_speckle": {
+      "x_bounds_m": [
+        -0.01,
+        0.01
+      ],
+      "z_bounds_m": [
+        0.015,
+        0.045
+      ]
+    },
+    "high_echo": {
+      "needle_half_width_m": 0.0006,
+      "needle_outside_distance_m": [
+        0.00125,
+        0.00175
+      ],
+      "calcification_inside_radius_m": 0.0006,
+      "calcification_outside_radius_m": [
+        0.001,
+        0.0015
+      ],
+      "gcnr_bins": 256
+    }
+  },
+  "cases": [
+    {
+      "name": "point_scatterer_array",
+      "generator": "point_scatterer_array",
+      "generator_arguments": {
+        "seed": 14,
+        "lateral_positions_m": [
+          -0.008,
+          0.0,
+          0.008
+        ],
+        "z_start_m": 0.015,
+        "z_stop_m": 0.045,
+        "z_spacing_m": 0.005,
+        "amplitude_ratio": 1.0,
+        "z_min_m": 0.002
+      },
+      "scatterer_count": 21,
+      "elapsed_seconds": 7.9487085709988605,
+      "uptime_load_average": {
+        "before": {
+          "captured_at_utc": "2026-11-03T08:47:24.049492+00:00",
+          "load_average": "1.90, 2.68, 1.52"
+        },
+        "after": {
+          "captured_at_utc": "2026-11-03T08:47:31.999542+00:00",
+          "load_average": "1.83, 2.66, 1.51"
+        }
+      },
+      "metrics": {
+        "targets": [
+          {
+            "target_index": 0,
+            "scatterer_x_m": -0.008,
+            "scatterer_z_m": 0.015,
+            "peak": {
+              "x_m": -0.007949999999999999,
+              "z_m": 0.01499375,
+              "envelope": 10026.919921875
+            },
+            "lateral_fwhm_m": 0.0011319520500407904,
+            "lateral_width_40db_m": 0.0035520380910892277,
+            "axial_fwhm_m": 0.0001941351668586517,
+            "axial_width_40db_m": 0.0004998674932980215
+          },
+          {
+            "target_index": 1,
+            "scatterer_x_m": -0.008,
+            "scatterer_z_m": 0.02,
+            "peak": {
+              "x_m": -0.007949999999999999,
+              "z_m": 0.019998750000000003,
+              "envelope": 10028.6533203125
+            },
+            "lateral_fwhm_m": 0.0009058462412243375,
+            "lateral_width_40db_m": 0.002512196143421702,
+            "axial_fwhm_m": 0.00019436712904843945,
+            "axial_width_40db_m": 0.000500066512591664
+          },
+          {
+            "target_index": 2,
+            "scatterer_x_m": -0.008,
+            "scatterer_z_m": 0.025,
+            "peak": {
+              "x_m": -0.007949999999999999,
+              "z_m": 0.025003749999999998,
+              "envelope": 10045.4384765625
+            },
+            "lateral_fwhm_m": 0.0011159403121075223,
+            "lateral_width_40db_m": 0.0034460327405050626,
+            "axial_fwhm_m": 0.0001941282471864432,
+            "axial_width_40db_m": 0.0004999723165498328
+          },
+          {
+            "target_index": 3,
+            "scatterer_x_m": -0.008,
+            "scatterer_z_m": 0.03,
+            "peak": {
+              "x_m": -0.007949999999999999,
+              "z_m": 0.03000875,
+              "envelope": 10005.5498046875
+            },
+            "lateral_fwhm_m": 0.0012075344728377062,
+            "lateral_width_40db_m": 0.004160217760843619,
+            "axial_fwhm_m": 0.00019440624967045211,
+            "axial_width_40db_m": 0.0004999867424571973
+          },
+          {
+            "target_index": 4,
+            "scatterer_x_m": -0.008,
+            "scatterer_z_m": 0.035,
+            "peak": {
+              "x_m": -0.007949999999999999,
+              "z_m": 0.034994500000000005,
+              "envelope": 10039.185546875
+            },
+            "lateral_fwhm_m": 0.0012097887452847417,
+            "lateral_width_40db_m": 0.004287064468817154,
+            "axial_fwhm_m": 0.00019411126805037732,
+            "axial_width_40db_m": 0.000499904693000118
+          },
+          {
+            "target_index": 5,
+            "scatterer_x_m": -0.008,
+            "scatterer_z_m": 0.04,
+            "peak": {
+              "x_m": -0.007949999999999999,
+              "z_m": 0.0399995,
+              "envelope": 10062.236328125
+            },
+            "lateral_fwhm_m": 0.0012222040588287485,
+            "lateral_width_40db_m": 0.004337204594479931,
+            "axial_fwhm_m": 0.00019439231913685046,
+            "axial_width_40db_m": 0.0004999827433146142
+          },
+          {
+            "target_index": 6,
+            "scatterer_x_m": -0.008,
+            "scatterer_z_m": 0.045,
+            "peak": {
+              "x_m": -0.007949999999999999,
+              "z_m": 0.0450045,
+              "envelope": 10048.86328125
+            },
+            "lateral_fwhm_m": 0.001229767327255861,
+            "lateral_width_40db_m": 0.004368643682889932,
+            "axial_fwhm_m": 0.0001940760157479876,
+            "axial_width_40db_m": 0.0004996446356755474
+          },
+          {
+            "target_index": 7,
+            "scatterer_x_m": 0.0,
+            "scatterer_z_m": 0.015,
+            "peak": {
+              "x_m": -0.00015,
+              "z_m": 0.01499375,
+              "envelope": 9614.0048828125
+            },
+            "lateral_fwhm_m": 0.0011517238348739086,
+            "lateral_width_40db_m": 0.0035829104617093616,
+            "axial_fwhm_m": 0.00019464689098036038,
+            "axial_width_40db_m": 0.0005013023756897991
+          },
+          {
+            "target_index": 8,
+            "scatterer_x_m": 0.0,
+            "scatterer_z_m": 0.02,
+            "peak": {
+              "x_m": -0.00015,
+              "z_m": 0.019998750000000003,
+              "envelope": 9419.486328125
+            },
+            "lateral_fwhm_m": 0.0009713249196682896,
+            "lateral_width_40db_m": 0.0025282530997379413,
+            "axial_fwhm_m": 0.00019487756012156673,
+            "axial_width_40db_m": 0.0005014297459260443
+          },
+          {
+            "target_index": 9,
+            "scatterer_x_m": 0.0,
+            "scatterer_z_m": 0.025,
+            "peak": {
+              "x_m": -0.00015,
+              "z_m": 0.025003749999999998,
+              "envelope": 9630.7685546875
+            },
+            "lateral_fwhm_m": 0.0011336241080355347,
+            "lateral_width_40db_m": 0.003469179007408155,
+            "axial_fwhm_m": 0.0001947657264969871,
+            "axial_width_40db_m": 0.0005014291359277459
+          },
+          {
+            "target_index": 10,
+            "scatterer_x_m": 0.0,
+            "scatterer_z_m": 0.03,
+            "peak": {
+              "x_m": 0.00015,
+              "z_m": 0.03000875,
+              "envelope": 9642.0498046875
+            },
+            "lateral_fwhm_m": 0.0012246209219314405,
+            "lateral_width_40db_m": 0.004199541955860437,
+            "axial_fwhm_m": 0.00019484088061772278,
+            "axial_width_40db_m": 0.000501304815593951
+          },
+          {
+            "target_index": 11,
+            "scatterer_x_m": 0.0,
+            "scatterer_z_m": 0.035,
+            "peak": {
+              "x_m": 0.00015,
+              "z_m": 0.034994500000000005,
+              "envelope": 9671.337890625
+            },
+            "lateral_fwhm_m": 0.0012284094460345307,
+            "lateral_width_40db_m": 0.004349759228680005,
+            "axial_fwhm_m": 0.00019466218570058508,
+            "axial_width_40db_m": 0.000501240250161239
+          },
+          {
+            "target_index": 12,
+            "scatterer_x_m": 0.0,
+            "scatterer_z_m": 0.04,
+            "peak": {
+              "x_m": -0.00015,
+              "z_m": 0.0399995,
+              "envelope": 9699.7314453125
+            },
+            "lateral_fwhm_m": 0.0012403391766712237,
+            "lateral_width_40db_m": 0.004370601811582981,
+            "axial_fwhm_m": 0.00019488978920143701,
+            "axial_width_40db_m": 0.0005012467198948281
+          },
+          {
+            "target_index": 13,
+            "scatterer_x_m": 0.0,
+            "scatterer_z_m": 0.045,
+            "peak": {
+              "x_m": -0.00015,
+              "z_m": 0.0450045,
+              "envelope": 9690.4208984375
+            },
+            "lateral_fwhm_m": 0.0012475670264252936,
+            "lateral_width_40db_m": 0.0044376470044476795,
+            "axial_fwhm_m": 0.0001946353981927898,
+            "axial_width_40db_m": 0.0005013437415310878
+          },
+          {
+            "target_index": 14,
+            "scatterer_x_m": 0.008,
+            "scatterer_z_m": 0.015,
+            "peak": {
+              "x_m": 0.007949999999999999,
+              "z_m": 0.01499375,
+              "envelope": 10026.890625
+            },
+            "lateral_fwhm_m": 0.001131958770264666,
+            "lateral_width_40db_m": 0.0035527562772932966,
+            "axial_fwhm_m": 0.0001941356075739354,
+            "axial_width_40db_m": 0.00049986605268682
+          },
+          {
+            "target_index": 15,
+            "scatterer_x_m": 0.008,
+            "scatterer_z_m": 0.02,
+            "peak": {
+              "x_m": 0.007949999999999999,
+              "z_m": 0.019998750000000003,
+              "envelope": 10028.6669921875
+            },
+            "lateral_fwhm_m": 0.0009058530070309408,
+            "lateral_width_40db_m": 0.0025127081319623913,
+            "axial_fwhm_m": 0.0001943664283613547,
+            "axial_width_40db_m": 0.0005000669539688626
+          },
+          {
+            "target_index": 16,
+            "scatterer_x_m": 0.008,
+            "scatterer_z_m": 0.025,
+            "peak": {
+              "x_m": 0.007949999999999999,
+              "z_m": 0.025003749999999998,
+              "envelope": 10045.3603515625
+            },
+            "lateral_fwhm_m": 0.0011159965080561832,
+            "lateral_width_40db_m": 0.0034465997478320314,
+            "axial_fwhm_m": 0.0001941303200839982,
+            "axial_width_40db_m": 0.0004999839864140258
+          },
+          {
+            "target_index": 17,
+            "scatterer_x_m": 0.008,
+            "scatterer_z_m": 0.03,
+            "peak": {
+              "x_m": 0.007949999999999999,
+              "z_m": 0.03000875,
+              "envelope": 10005.943359375
+            },
+            "lateral_fwhm_m": 0.0012074622812186953,
+            "lateral_width_40db_m": 0.00414954139090357,
+            "axial_fwhm_m": 0.00019439995729092496,
+            "axial_width_40db_m": 0.0004999574170779231
+          },
+          {
+            "target_index": 18,
+            "scatterer_x_m": 0.008,
+            "scatterer_z_m": 0.035,
+            "peak": {
+              "x_m": 0.007949999999999999,
+              "z_m": 0.034994500000000005,
+              "envelope": 10039.544921875
+            },
+            "lateral_fwhm_m": 0.0012099282938004838,
+            "lateral_width_40db_m": 0.004313677557105146,
+            "axial_fwhm_m": 0.0001941050203412148,
+            "axial_width_40db_m": 0.000499920028840875
+          },
+          {
+            "target_index": 19,
+            "scatterer_x_m": 0.008,
+            "scatterer_z_m": 0.04,
+            "peak": {
+              "x_m": 0.007949999999999999,
+              "z_m": 0.0399995,
+              "envelope": 10062.2275390625
+            },
+            "lateral_fwhm_m": 0.0012222038529647976,
+            "lateral_width_40db_m": 0.004337540464265452,
+            "axial_fwhm_m": 0.0001943927637131984,
+            "axial_width_40db_m": 0.0005000355430614042
+          },
+          {
+            "target_index": 20,
+            "scatterer_x_m": 0.008,
+            "scatterer_z_m": 0.045,
+            "peak": {
+              "x_m": 0.007949999999999999,
+              "z_m": 0.0450045,
+              "envelope": 10047.2509765625
+            },
+            "lateral_fwhm_m": 0.0012297491063416018,
+            "lateral_width_40db_m": 0.004422511245129988,
+            "axial_fwhm_m": 0.00019412308772978615,
+            "axial_width_40db_m": 0.0005001905128416764
+          }
+        ]
+      }
+    },
+    {
+      "name": "anechoic_cysts",
+      "generator": "anechoic_cysts",
+      "generator_arguments": {
+        "seed": 15,
+        "density_per_cell": 10.0,
+        "cyst_diameters_m": [
+          0.002,
+          0.004,
+          0.008
+        ],
+        "cyst_centers_x_m": [
+          -0.01,
+          -0.003,
+          0.006
+        ],
+        "cyst_centers_z_m": [
+          0.02,
+          0.04
+        ],
+        "background_amplitude_std": 1.0,
+        "background_x_bounds_m": [
+          -0.015,
+          0.015
+        ],
+        "background_z_bounds_m": [
+          0.01,
+          0.05
+        ],
+        "z_min_m": 0.002
+      },
+      "scatterer_count": 78799,
+      "elapsed_seconds": 1930.6125931919996,
+      "uptime_load_average": {
+        "before": {
+          "captured_at_utc": "2026-11-03T08:47:32.004615+00:00",
+          "load_average": "1.83, 2.66, 1.51"
+        },
+        "after": {
+          "captured_at_utc": "2026-11-03T09:19:42.618699+00:00",
+          "load_average": "1.02, 1.05, 1.08"
+        }
+      },
+      "metrics": {
+        "cysts": [
+          {
+            "center_x_m": -0.01,
+            "center_z_m": 0.02,
+            "diameter_m": 0.002,
+            "inside_radius_m": 0.00075,
+            "outside_radius_m": [
+              0.00125,
+              0.00175
+            ],
+            "gcnr": 0.6724696453424197,
+            "inside_pixel_count": 311,
+            "outside_pixel_count": 804
+          },
+          {
+            "center_x_m": -0.01,
+            "center_z_m": 0.04,
+            "diameter_m": 0.002,
+            "inside_radius_m": 0.00075,
+            "outside_radius_m": [
+              0.00125,
+              0.00175
+            ],
+            "gcnr": 0.7556190110540545,
+            "inside_pixel_count": 311,
+            "outside_pixel_count": 804
+          },
+          {
+            "center_x_m": -0.003,
+            "center_z_m": 0.02,
+            "diameter_m": 0.004,
+            "inside_radius_m": 0.0015,
+            "outside_radius_m": [
+              0.0025,
+              0.0035
+            ],
+            "gcnr": 0.9207476177362685,
+            "inside_pixel_count": 1236,
+            "outside_pixel_count": 3314
+          },
+          {
+            "center_x_m": -0.003,
+            "center_z_m": 0.04,
+            "diameter_m": 0.004,
+            "inside_radius_m": 0.0015,
+            "outside_radius_m": [
+              0.0025,
+              0.0035
+            ],
+            "gcnr": 0.8802673007495336,
+            "inside_pixel_count": 1234,
+            "outside_pixel_count": 3314
+          },
+          {
+            "center_x_m": 0.006,
+            "center_z_m": 0.02,
+            "diameter_m": 0.008,
+            "inside_radius_m": 0.003,
+            "outside_radius_m": [
+              0.005,
+              0.007
+            ],
+            "gcnr": 0.9990757855822551,
+            "inside_pixel_count": 4918,
+            "outside_pixel_count": 12984
+          },
+          {
+            "center_x_m": 0.006,
+            "center_z_m": 0.04,
+            "diameter_m": 0.008,
+            "inside_radius_m": 0.003,
+            "outside_radius_m": [
+              0.005,
+              0.007
+            ],
+            "gcnr": 0.978708494443594,
+            "inside_pixel_count": 4918,
+            "outside_pixel_count": 12990
+          }
+        ]
+      }
+    },
+    {
+      "name": "uniform_speckle",
+      "generator": "uniform_speckle",
+      "generator_arguments": {
+        "seed": 16,
+        "density_per_cell": 10.0,
+        "amplitude_std": 1.0,
+        "background_x_bounds_m": [
+          -0.015,
+          0.015
+        ],
+        "background_z_bounds_m": [
+          0.01,
+          0.05
+        ],
+        "z_min_m": 0.002
+      },
+      "scatterer_count": 88548,
+      "elapsed_seconds": 2168.903079406002,
+      "uptime_load_average": {
+        "before": {
+          "captured_at_utc": "2026-11-03T09:19:42.629473+00:00",
+          "load_average": "1.02, 1.05, 1.08"
+        },
+        "after": {
+          "captured_at_utc": "2026-11-03T09:55:51.533979+00:00",
+          "load_average": "1.00, 1.01, 1.00"
+        }
+      },
+      "metrics": {
+        "speckle_snr": 1.837508070930463,
+        "roi": {
+          "x_bounds_m": [
+            -0.01,
+            0.01
+          ],
+          "z_bounds_m": [
+            0.015,
+            0.045
+          ],
+          "pixel_count": 102828
+        }
+      }
+    },
+    {
+      "name": "high_echo_structures",
+      "generator": "high_echo_structures",
+      "generator_arguments": {
+        "seed": 17,
+        "density_per_cell": 10.0,
+        "background_amplitude_std": 1.0,
+        "background_x_bounds_m": [
+          -0.015,
+          0.015
+        ],
+        "background_z_bounds_m": [
+          0.01,
+          0.05
+        ],
+        "needle_center_x_m": 0.0,
+        "needle_center_z_m": 0.032,
+        "needle_length_m": 0.01,
+        "needle_angle_rad": 0.5235987755982988,
+        "needle_spacing_m": 0.0005,
+        "needle_amplitude_ratio": 10.0,
+        "calcification_positions_m": [
+          [
+            -0.012,
+            0.032
+          ],
+          [
+            0.012,
+            0.038
+          ]
+        ],
+        "calcification_amplitude_ratio": 20.0,
+        "z_min_m": 0.002
+      },
+      "scatterer_count": 88571,
+      "elapsed_seconds": 2178.902233173001,
+      "uptime_load_average": {
+        "before": {
+          "captured_at_utc": "2026-11-03T09:55:51.541716+00:00",
+          "load_average": "1.00, 1.01, 1.00"
+        },
+        "after": {
+          "captured_at_utc": "2026-11-03T10:32:10.445582+00:00",
+          "load_average": "1.00, 1.00, 1.00"
+        }
+      },
+      "metrics": {
+        "needle": {
+          "center_x_m": 0.0,
+          "center_z_m": 0.032,
+          "length_m": 0.01,
+          "angle_rad": 0.5235987755982988,
+          "inside_half_width_m": 0.0006,
+          "outside_distance_m": [
+            0.00125,
+            0.00175
+          ],
+          "gcnr": 0.42607613421393253,
+          "inside_pixel_count": 2078,
+          "outside_pixel_count": 1740
+        },
+        "calcifications": [
+          {
+            "center_x_m": -0.012,
+            "center_z_m": 0.032,
+            "inside_radius_m": 0.0006,
+            "outside_radius_m": [
+              0.001,
+              0.0015
+            ],
+            "gcnr": 0.4459407358448997,
+            "inside_pixel_count": 204,
+            "outside_pixel_count": 712
+          },
+          {
+            "center_x_m": 0.012,
+            "center_z_m": 0.038,
+            "inside_radius_m": 0.0006,
+            "outside_radius_m": [
+              0.001,
+              0.0015
+            ],
+            "gcnr": 0.3614814197633728,
+            "inside_pixel_count": 204,
+            "outside_pixel_count": 706
+          }
+        ]
+      }
+    }
+  ],
+  "sanity": {
+    "status": "pass",
+    "checks": [
+      {
+        "name": "uniform_speckle_snr_inclusive_1.5_to_2.3",
+        "status": "pass",
+        "observed": 1.837508070930463,
+        "bounds": [
+          1.5,
+          2.3
+        ]
+      },
+      {
+        "name": "all_point_targets_have_finite_lateral_fwhm",
+        "status": "pass",
+        "observed": [
+          0.0011319520500407904,
+          0.0009058462412243375,
+          0.0011159403121075223,
+          0.0012075344728377062,
+          0.0012097887452847417,
+          0.0012222040588287485,
+          0.001229767327255861,
+          0.0011517238348739086,
+          0.0009713249196682896,
+          0.0011336241080355347,
+          0.0012246209219314405,
+          0.0012284094460345307,
+          0.0012403391766712237,
+          0.0012475670264252936,
+          0.001131958770264666,
+          0.0009058530070309408,
+          0.0011159965080561832,
+          0.0012074622812186953,
+          0.0012099282938004838,
+          0.0012222038529647976,
+          0.0012297491063416018
+        ]
+      },
+      {
+        "name": "all_8mm_cysts_gcnr_above_0.5",
+        "status": "pass",
+        "observed": [
+          0.9990757855822551,
+          0.978708494443594
+        ],
+        "lower_exclusive_bound": 0.5
+      }
+    ]
+  },
+  "preflight_estimate": {
+    "issue": 14,
+    "measurement_date_utc": "2026-11-03",
+    "profile": {
+      "name": "linear-5mhz",
+      "n_elements": 128,
+      "pitch_m": 0.0003,
+      "f0_hz": 5000000.0,
+      "bandwidth_frac": 0.7,
+      "fs_hz": 40000000.0,
+      "c_m_s": 1540.0,
+      "depth_m": 0.06,
+      "tx_focus_m": 0.02,
+      "f_number": 2.0,
+      "bandwidth_source": null
+    },
+    "seed": 14,
+    "environment": {
+      "commit": "f89b53a0ab0dbed4a8417ec6b7609094a5359c67",
+      "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+      "python_version": "3.12.13",
+      "numpy_version": "2.5.1"
+    },
+    "formula": {
+      "fit": "b = (t_2000 - t_500) / (2000 - 500); a = t_500 - b * 500",
+      "case_estimate": "max(0, a) + max(0, b) * scatterer_count",
+      "invalid_fit_policy": "non-finite/non-positive timings or non-positive raw slope block production"
+    },
+    "pilot_scatterer_counts": [
+      500,
+      2000
+    ],
+    "pilot_generator_arguments": {
+      "background_x_bounds_m": [
+        -0.015,
+        0.015
+      ],
+      "background_z_bounds_m": [
+        0.01,
+        0.05
+      ],
+      "amplitude_std": 1.0
+    },
+    "pilots": [
+      {
+        "scatterer_count": 500,
+        "seed": 14,
+        "generator_arguments": {
+          "background_x_bounds_m": [
+            -0.015,
+            0.015
+          ],
+          "background_z_bounds_m": [
+            0.01,
+            0.05
+          ],
+          "amplitude_std": 1.0
+        },
+        "elapsed_seconds": 19.636037954998756,
+        "uptime_load_average": {
+          "before": {
+            "captured_at_utc": "2026-11-03T08:45:49.705471+00:00",
+            "load_average": "6.78, 3.41, 1.60"
+          },
+          "after": {
+            "captured_at_utc": "2026-11-03T08:46:09.342942+00:00",
+            "load_average": "5.14, 3.25, 1.59"
+          }
+        }
+      },
+      {
+        "scatterer_count": 2000,
+        "seed": 15,
+        "generator_arguments": {
+          "background_x_bounds_m": [
+            -0.015,
+            0.015
+          ],
+          "background_z_bounds_m": [
+            0.01,
+            0.05
+          ],
+          "amplitude_std": 1.0
+        },
+        "elapsed_seconds": 56.54096157999811,
+        "uptime_load_average": {
+          "before": {
+            "captured_at_utc": "2026-11-03T08:46:09.348603+00:00",
+            "load_average": "5.14, 3.25, 1.59"
+          },
+          "after": {
+            "captured_at_utc": "2026-11-03T08:47:05.890927+00:00",
+            "load_average": "2.65, 2.87, 1.55"
+          }
+        }
+      }
+    ],
+    "timing_model": {
+      "valid": true,
+      "raw_intercept_seconds": 7.334396746665638,
+      "raw_seconds_per_scatterer": 0.024603282416666237,
+      "applied_intercept_seconds": 7.334396746665638,
+      "applied_seconds_per_scatterer": 0.024603282416666237,
+      "clamped": {
+        "intercept": false,
+        "slope": false
+      },
+      "failure_reason": null
+    },
+    "estimated_cases": [
+      {
+        "name": "point_scatterer_array",
+        "generator": "point_scatterer_array",
+        "generator_arguments": {
+          "seed": 14,
+          "lateral_positions_m": [
+            -0.008,
+            0.0,
+            0.008
+          ],
+          "z_start_m": 0.015,
+          "z_stop_m": 0.045,
+          "z_spacing_m": 0.005,
+          "amplitude_ratio": 1.0,
+          "z_min_m": 0.002
+        },
+        "scatterer_count": 21,
+        "estimated_seconds": 7.851065677415629
+      },
+      {
+        "name": "anechoic_cysts",
+        "generator": "anechoic_cysts",
+        "generator_arguments": {
+          "seed": 15,
+          "density_per_cell": 10.0,
+          "cyst_diameters_m": [
+            0.002,
+            0.004,
+            0.008
+          ],
+          "cyst_centers_x_m": [
+            -0.01,
+            -0.003,
+            0.006
+          ],
+          "cyst_centers_z_m": [
+            0.02,
+            0.04
+          ],
+          "background_amplitude_std": 1.0,
+          "background_x_bounds_m": [
+            -0.015,
+            0.015
+          ],
+          "background_z_bounds_m": [
+            0.01,
+            0.05
+          ],
+          "z_min_m": 0.002
+        },
+        "scatterer_count": 78799,
+        "estimated_seconds": 1946.0484478975484
+      },
+      {
+        "name": "uniform_speckle",
+        "generator": "uniform_speckle",
+        "generator_arguments": {
+          "seed": 16,
+          "density_per_cell": 10.0,
+          "amplitude_std": 1.0,
+          "background_x_bounds_m": [
+            -0.015,
+            0.015
+          ],
+          "background_z_bounds_m": [
+            0.01,
+            0.05
+          ],
+          "z_min_m": 0.002
+        },
+        "scatterer_count": 88548,
+        "estimated_seconds": 2185.905848177628
+      },
+      {
+        "name": "high_echo_structures",
+        "generator": "high_echo_structures",
+        "generator_arguments": {
+          "seed": 17,
+          "density_per_cell": 10.0,
+          "background_amplitude_std": 1.0,
+          "background_x_bounds_m": [
+            -0.015,
+            0.015
+          ],
+          "background_z_bounds_m": [
+            0.01,
+            0.05
+          ],
+          "needle_center_x_m": 0.0,
+          "needle_center_z_m": 0.032,
+          "needle_length_m": 0.01,
+          "needle_angle_rad": 0.5235987755982988,
+          "needle_spacing_m": 0.0005,
+          "needle_amplitude_ratio": 10.0,
+          "calcification_positions_m": [
+            [
+              -0.012,
+              0.032
+            ],
+            [
+              0.012,
+              0.038
+            ]
+          ],
+          "calcification_amplitude_ratio": 20.0,
+          "z_min_m": 0.002
+        },
+        "scatterer_count": 88571,
+        "estimated_seconds": 2186.4717236732113
+      }
+    ],
+    "estimated_total_seconds": 6326.277085425803,
+    "estimated_total_hours": 1.7572991903960564,
+    "maximum_allowed_seconds": 10800,
+    "production_allowed": true,
+    "failure_reason": null
+  }
+}
