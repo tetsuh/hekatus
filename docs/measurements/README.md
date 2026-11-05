@@ -3,6 +3,14 @@
 Raw results kept as data, each with the reproducibility information that
 produced it.
 
+## Issue #120 board-free feasibility preparation
+
+The [feasibility plan](issue120-feasibility-plan.md) records the v0.75.0 source
+audit, bounded experimental probes, predictions and mechanism-selection gates.
+Phase 1 performs no board run and adds no timing result. A payload witness is
+not full-window coverage; the Q4 progress/coverage gate remains open before
+production integration or work-count selection.
+
 ## Issue #137 duration-bounded runner (revision 2)
 
 The board-free planning command prints the immutable configurations and their

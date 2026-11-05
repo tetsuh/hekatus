@@ -590,6 +590,33 @@ def test_resident_wrapper_rejects_unsafe_timeout_strings(
 
 
 @pytest.mark.parametrize(
+    ("outer_cap", "native_cap", "first", "watcher", "expected"),
+    [
+        ("61", "30", False, None, 2),
+        ("60", "61", False, None, 2),
+        ("60", "30", True, "1", 2),
+        ("60", "60", True, None, 2),
+        ("60", "60", True, "1", 0),
+        ("60", "30", False, None, 0),
+    ],
+)
+@pytest.mark.usefixtures("wrapper_execution")
+def test_issue120_wrapper_enforces_caps_and_first_watcher(
+    tmp_path, outer_cap, native_cap, first, watcher, expected,
+):
+    args = ["--execute", "--probe", "q1-cq1-completion", "--cap-seconds", native_cap]
+    if first:
+        args.append("--first-kernel-run")
+    completed = _run_resident_wrapper(
+        tmp_path, container_timeout=outer_cap, runner_args=args, watcher_env=watcher,
+        runner="enodia/tt/bench/issue120/run_issue120_probe.py",
+    )
+    assert completed.returncode == expected, completed.stderr
+    if expected:
+        assert not list((tmp_path / "repo/out").glob("env-*.json"))
+
+
+@pytest.mark.parametrize(
     ("container_timeout", "runner_args", "watcher_env"),
     [("600", [], None), ("60", ["--watcher"], "1")],
 )

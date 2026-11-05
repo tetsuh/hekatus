@@ -2147,7 +2147,13 @@ and conversion audit are tracked separately in
 [Issue #122](https://github.com/tetsuh/hekatus/issues/122).
 
 The host-load condition (c) is outside this result and is tracked in
-[Issue #120](https://github.com/tetsuh/hekatus/issues/120).
+[Issue #120](https://github.com/tetsuh/hekatus/issues/120). Its
+[board-free feasibility plan](measurements/issue120-feasibility-plan.md) audits
+v0.75.0 CQ completion gates, ordinary write-only submission, and pinned-host
+NoC access, with short diagnostic probes. No board run or mechanism selection
+is claimed by phase 1. In particular, one card-side payload witness is not
+sustained PCIe or first-through-last-frame coverage; Q4's progress/coverage
+confirmation remains a prerequisite for production counts and measurement.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 
