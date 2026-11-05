@@ -735,6 +735,9 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE120_RUNNER_RELATIVE_
         echo "Issue #120 result path is wrapper-owned" >&2
         exit 2
         ;;
+      *)
+        # Preserve pass-through; the runner validates all remaining arguments.
+        ;;
     esac
     ISSUE120_ARGUMENT_INDEX=$((ISSUE120_ARGUMENT_INDEX + 1))
   done

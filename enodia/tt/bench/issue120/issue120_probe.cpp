@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Probe-only native host runner for Issue #120, pinned to tt-metalium v0.75.0.
+#include "q4_frame_probe.hpp"
 #include <tt-metalium/distributed.hpp>
 #include <tt-metalium/experimental/pinned_memory.hpp>
 #include <tt-metalium/host_api.hpp>
@@ -593,12 +594,15 @@ Json run_pinned_noc_probe(MeshDevice& mesh, const Arguments& args) {
 
 Json run_probe(const Arguments& args) {
     if (args.probe != "q1-cq1-completion" && args.probe != "q2-h2d-write-only" &&
-        args.probe != "q3-pinned-noc" && args.probe != "q4-fixed-window") {
+        args.probe != "q3-pinned-noc" && args.probe != "q4-fixed-window" &&
+        args.probe != "q4-frame-coverage") {
         throw std::invalid_argument("unknown Issue #120 probe");
     }
     auto mesh = MeshDevice::create_unit_mesh(0, DEFAULT_L1_SMALL_SIZE, DEFAULT_TRACE_REGION_SIZE, 2);
     Json result;
-    if (args.probe == "q3-pinned-noc") {
+    if (args.probe == "q4-frame-coverage") {
+        result = run_frame_coverage_probe(*mesh, args.repeat_count, args.watcher, args.cap_seconds);
+    } else if (args.probe == "q3-pinned-noc") {
         result = run_pinned_noc_probe(*mesh, args);
     } else {
         result = run_host_transfer_probe(*mesh, args);

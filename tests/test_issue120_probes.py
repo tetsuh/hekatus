@@ -308,7 +308,8 @@ def test_native_probe_source_keeps_q2_unpinned_and_q3_noc_pinned() -> None:
     assert "get_noc_addr" in host
     assert "noc_read_with_state" in noc
     assert "noc_wwrite_with_state" in noc
-    assert "get_timestamp_32b" in noc and "get_timestamp_32b" in observer
+    assert "get_timestamp_32b" in noc
+    assert "get_timestamp_32b" in observer
     assert not re.search(r"\bget_timestamp\s*\(", noc + observer)
     assert "ncrisc_noc_reads_flushed" in noc
     assert "ncrisc_noc_reads_flushed" in observer
@@ -317,8 +318,10 @@ def test_native_probe_source_keeps_q2_unpinned_and_q3_noc_pinned() -> None:
     assert "page_count" in observer
     assert "observer_deadline" in observer
     assert "CQNocFlags" in noc
-    assert "max_total_pin_size" in host and "has_device" in host
-    assert "get_noc_addr" in host and "noc_addr->device_id" in host
+    assert "max_total_pin_size" in host
+    assert "has_device" in host
+    assert "get_noc_addr" in host
+    assert "noc_addr->device_id" in host
     assert "load_words[4] == args.repeat_count" in host
     assert "load_words[5] == args.repeat_count" in host
 
@@ -357,7 +360,8 @@ def test_native_build_is_pinned_toolchain_only_and_has_no_board_free_fallback() 
     assert "run_fixed_cpu_work" in source
     assert "1'048'576" in source
     assert "20'000" not in source
-    assert "coverage_scope" in source and "not_frame_stream" in source
+    assert "coverage_scope" in source
+    assert "not_frame_stream" in source
     assert "find_package(TT-Metalium REQUIRED)" not in cmake
     assert "HEKATUS_TT_PINNED_CONTAINER" in contract
     assert "native execution is supported only in the pinned container" in contract

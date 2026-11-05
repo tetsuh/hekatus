@@ -1,6 +1,6 @@
 # Issue #120: board-free feasibility plan
 
-- Status: **phase-1 preparation; no board runs**.
+- Status: **phase-1b preparation; no board runs or container starts**.
 - Issue: #120; milestone: M3, TT spike (Track B).
 - Basis: #118 / PR #123, ADR-0005, ADR-0015, #111 frozen snapshots,
   and #104 paired-outlier analysis.
@@ -161,23 +161,33 @@ explicit third-party headers, and the audited pinned-image library/dependencies.
 Populate the tag's UMD submodule at
 `bc77ac2f7382ffeb9fa5430055f0854d53979489`; an archive of the parent tag alone
 omits submodules. Newer UMD coordinate headers change the ABI namespace and must
-not shadow this dependency. CMake checks the pinned coordinate-header hash and
-links the companion pinned-image `libtt_stl.so` explicitly.
+not shadow this dependency. Stage the tag's `tt_metal/llrt` and
+`tt_metal/impl` headers too: Q4 uses a pinned internal targeted-read interface.
+CMake checks the pinned coordinate-header hash and links the companion
+pinned-image `libtt_stl.so` explicitly. Its pinned Python generator creates the
+HAL interface headers during this host-only build; it does not run firmware or
+the probe executable.
 The build command does **not** run the native executable or open a device:
 
 ```bash
 uv run python -m enodia.tt.bench.issue120_probe --build-only \
-  --tt-metal-source-root "$TT_METAL_SOURCE" \
+  --tt-metal-source-root out/issue120-deps/source \
   --tt-metal-source-revision d9a68815f5fcf08a5bfbffb6f1f811823fba8edd \
-  --tt-metal-library "$PINNED_METAL_LIB" \
-  --tt-metal-extra-include "$THIRD_PARTY_INCLUDE" \
-  --tt-metal-extra-lib-dir "$PINNED_LIB_DIR" \
-  --tt-metal-extra-lib-dir "$PINNED_WHEEL_LIBS" \
+  --tt-metal-library out/issue120-deps/lib/libtt_metal.so \
+  --tt-metal-extra-include out/issue120-deps/include \
+  --tt-metal-extra-lib-dir out/issue120-deps/lib \
+  --tt-metal-extra-lib-dir out/issue120-deps/wheel-libs \
   --build-dir out/issue120-native-build
 ```
 
-Variables name externally provisioned development inputs, not published personal
-paths. Do not substitute a newer local Metalium library. Host compilation/linking
+Stage the audited headers/libraries in those repository-local dependency roots
+before building. Build output is confined to `out/issue120-native-build`; source,
+include and library inputs are confined to their respective `out/issue120-deps`
+roots. Paths are resolved before use; root/child symlink escapes and CMake argument
+syntax in paths are rejected. The source revision and native probe/stall-group
+arguments come from fixed allowlists, not unvalidated command fragments.
+Execution additionally confines environment/result paths to the wrapper output
+mount. Do not substitute a newer local Metalium library. Host compilation/linking
 is not device-kernel JIT validation; the latter remains the first Watcher run.
 Phase 1 verified host compilation and linking against these exact tag/UMD
 headers and pinned-image libraries, using GCC 13.3.0 with explicit third-party
@@ -205,10 +215,12 @@ unavailable card fields must never be invented to make a complete record.
 | P2 | Q1, transfer-only stall group | 30 s | 60 s | off | `out/issue120/p2` | Removing resident from this wait list may permit overlap; not guaranteed. |
 | P3 | Q2, 256 write-only 64 KiB transfers (16 MiB) | 30 s | 60 s | off | `out/issue120/p3` | No per-transfer host completion, but possible backpressure/device stall. |
 | P4 | Q3, 256 fixed 4 KiB reads and writes; first pinned kernel | 60 s | 60 s | on | `out/issue120/p4` | Mapping may support verified DMA; unsupported capacity/mapping blocks selection. |
-| P5 | Q4, fixed CPU arithmetic and 256 H2D writes | 30 s | 60 s | off | `out/issue120/p5` | Initial small fixed work likely fails full-window coverage; calibration only. |
+| P5 | Legacy Q4 fixed CPU arithmetic and 256 H2D writes | 30 s | 60 s | off | `out/issue120/p5` | Initial small fixed work likely fails full-window coverage; calibration only. |
+| P6 | Q4 real-frame coverage, first producer/consumer kernels, causal CPU challenge observation | 60 s | 60 s | on | `out/issue120/p6` | With concurrent CQ1/direct-L1 progress and sufficient fixed work, every frame should receive a fresh challenge response. Serialization, torn observations, or exhausted work must fail coverage. |
+| P7 | Q4 real-frame coverage, identical fixed work without Watcher | 60 s | 60 s | off | `out/issue120/p7` | Expect the same functional coverage if P6 established a healthy instrument; no latency threshold or production timing result is implied. |
 
-Five invocations: **300 seconds total outer caps**, with native caps totaling
-210 seconds. Build and host metadata preparation are separate from these caps.
+Seven invocations: **420 seconds total outer caps**, with native caps totaling
+330 seconds. Build and host metadata preparation are separate from these caps.
 No extra run/reset is automatic. The synthetic observer has a primary
 2,700,000,000-tick window and the same fixed tail, approximately two plus two
 seconds at 1350 MHz, not a wall-time guarantee.
@@ -239,6 +251,17 @@ env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
   HEKATUS_TT_RUNNER=enodia/tt/bench/issue120/run_issue120_probe.py \
   enodia/tt/bench/run_in_container.sh out/issue120/p5 -- \
   --execute --probe q4-fixed-window --cap-seconds 30
+
+TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+  HEKATUS_TT_RUNNER=enodia/tt/bench/issue120/run_issue120_probe.py \
+  enodia/tt/bench/run_in_container.sh out/issue120/p6 -- \
+  --execute --probe q4-frame-coverage --stall-group transfer-only \
+  --first-kernel-run --cap-seconds 60
+
+env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+  HEKATUS_TT_RUNNER=enodia/tt/bench/issue120/run_issue120_probe.py \
+  enodia/tt/bench/run_in_container.sh out/issue120/p7 -- \
+  --execute --probe q4-frame-coverage --stall-group transfer-only --cap-seconds 60
 ```
 
 ### Evidence interpretation and memory
@@ -265,22 +288,106 @@ read/write payloads and fixed counters after CQ0 completion. Worker and observer
 clocks are not assumed equal, so this first Q3 run does **not** claim resident
 coverage. No pin or underlying host allocation is released during DMA.
 
-Q4 executes 1,024 by 1,024 fixed integer operations and fixed-size submissions.
-It is a short synthetic-pair **coverage falsifier**, not the production frame
-stream. A CPU span shorter than the conservative program envelope is not_covered;
-otherwise PCIe coverage remains not_evaluable without progress evidence. One
-payload witness cannot establish continuous PCIe traffic or first-through-last
-frame coverage. Do not select production counts from a positive witness alone.
+P5 retains the original 1,024 by 1,024 integer-work coverage falsifier unchanged.
+It never establishes successful frame coverage from a payload witness or host
+envelope. P6/P7 add a separate real-frame instrument, described below.
+
+## Q4 real-frame coverage proof (P6/P7)
+
+The new probe processes **4,096 actual 4 KiB ring frames**, at a nominal
+1,350,000-tick period, on the resident pair. The producer fills/publishes each
+frame using NoC writes and semaphore credits; drop-new overflow is counted.
+The consumer performs 64 fixed work steps per frame and exports its actual
+consumer-admission/completion ticks, frame identity, checksum and progress evidence. The
+4,096-frame schedule crosses a low-word wrap even at the 1350 MHz reference.
+There is no assumption of equal producer/consumer clocks: all proof endpoints
+are stamped by the consumer's continuously sampled low-word clock.
+
+Fixed load: **262,144 repetitions**, each with a four-byte direct L1 challenge
+read, 32 by 1,024 volatile integer operations, fixed payload generation, and one
+ordinary unpinned 4 KiB CQ1 write. This is 8,589,934,592 arithmetic operations,
+1 GiB H2D payload, and 1 MiB direct-read payload in total, not all necessarily
+inside the frame window. The one staging page is reused only after the ordinary
+inline-copy enqueue returns. No per-repeat CQ completion/event/readback is used.
+The direct L1 observation is explicit instrumentation and part of the workload;
+do not present this as PCIe write traffic alone.
+
+The targeted read uses v0.75.0's pinned internal `MetalContext`/`Cluster`
+interface and a fixed host span, with no new device open. In
+`tt_metal/llrt/tt_cluster.cpp:867-888`, `read_core` sanitizes the target under
+Watcher and delegates a read to the driver, without CQ finish or a global
+memory barrier. This is experimental, exact-tag-bound instrumentation, not a
+portable production API. The driver may select its configured read transport;
+the four-byte payload count excludes PCIe protocol overhead.
+
+The public span `ReadFromDeviceL1` is deliberately **not** used: its implementation
+at `tt_metal/impl/host_api/tt_metal.cpp:302-320` adds an L1 barrier. The pinned UMD
+revision's `device/chip/local_chip.cpp:445-483` shows the default barrier covering
+all L1 cores and Blackhole DRAM. That extra device-wide host-write flush is
+unnecessary for this device-owned mailbox: initial host writes are completed
+before launch, and the consumer fences each token store before a host can read
+it. Skipping the public helper does not skip a CQ completion that this protocol
+needs. The targeted interface still needs first-run Watcher and hardware
+validation; a stalled observer is not proof that uninstrumented writes fail.
+
+### Required evidence
+
+- Before releasing the producer, the consumer issues startup challenge 1 and
+  verifies progressing, consistent responses. Each host response can be created
+  only after reading the card-issued token and performing that repetition's
+  fixed CPU work. Thus prequeued DMA alone cannot impersonate current CPU work.
+- Generation and challenge occupy disjoint 19-bit/13-bit fields of one 32-bit
+  wire marker. Every payload word derives from that packed marker; generations
+  cannot cancel challenge bits as a simple XOR encoding would. Repetitions are
+  restricted to 524,287 and the fixed frame count fits the challenge field;
+  neither field wraps or aliases during the probe.
+- For each actual frame completion interval, the consumer issues a new token after the
+  preceding completion, then samples the fixed-size response before the current
+  completion. It requires a newer complete payload generation with the matching
+  challenge. The bracket's lower endpoint is the token-issue tick; its upper
+  endpoint is the validated response-read tick, on that same consumer clock.
+- After the last frame, another newly issued token must receive a fresh CPU/DMA
+  response within the bounded tail. Load start precedes the first frame and the
+  final response follows the last; all intermediate frame intervals are checked.
+- Normal frame processing never waits for a matching response or a higher
+  counter. Each observation makes exactly three full-page reads and selects a
+  consistent one; it does not retry until coverage succeeds. Only startup and
+  the post-frame tail have bounded observation waits, outside frame processing.
+- Missing/reordered frames, overflow, aborted work, checksum mismatch, torn or
+  stale responses, missing challenge causality, or ambiguous clock sampling
+  prevent `covered`. Host timestamps, queued totals and declared coverage flags
+  cannot repair them. Python recomputes the verdict from every frame row.
+
+Only **one witnessed H2D payload per valid bracket** is counted toward the byte
+lower bound. A generation jump is not converted into unobserved transfer bytes.
+The separate during-frame lower bound excludes the first pre-frame bracket and
+post-frame tail; queued totals are retained separately. The preallocated frame/output
+capacity is fixed by 4,096 frames, not by the transfer repetition count. Runtime
+rings, retrieval metadata and allocator alignment overhead are outside the
+explicit payload ledger and remain repeat-independent. There is no per-repeat
+retained buffer or record list.
+
+P6 and P7 use two CQs with resident/transfer sub-devices and a transfer-only
+stall group. Their direct-read challenge instrumentation and device-open setup
+must be retained or independently revalidated before extrapolation to production.
+P7 follows only after a healthy P6 Watcher run. A timeout, bad Watcher report,
+missing progress or insufficient fixed work stops the sequence for an owner
+assessment and a newly committed count/configuration if needed, not an automatic
+repeat-until-covered loop. These probes establish bounded diagnostic feasibility,
+not the 500,000-frame production measurement or an AICLK-independent deadline.
 
 ## Mechanism-selection branches (Q4 remains a gate)
 
 1. A wholly inside Q1 bracket establishes overlap for that exact setup. A
    before-window, boundary, missing, or tail-only result retains its narrower
    meaning; host wait duration is never the deciding evidence.
-2. **First candidate: ordinary unpinned write-only CQ1.** It is the smallest
-   extension of the retained #118 host path, eliminating its per-repeat
-   completion/readback dependency without allocating per repeat. Select it only
-   after card-side progress, bounded memory and full-window coverage are shown.
+2. **First candidate: ordinary unpinned CQ1 bulk writes with explicit direct-L1
+   challenge observation.** It eliminates per-repeat CQ completion/readback
+   waits without allocating per repeat. Select this instrumented mechanism only
+   after Q1 overlap evidence, fixed-memory accounting, and successful P6/P7
+   card-side CPU/DMA progress across every real frame, with valid first/last
+   endpoints, zero overflow/aborts and matching frame checksums. No host-envelope
+   or queued-count success path exists.
 3. If CQ1 remains serialized, evaluate disjoint-core pinned-host NoC traffic.
    Select only after mapping/API checks, Watcher validation, payload/counter
    validation and same-clock coverage evidence succeed. Keep fixed host CPU work
@@ -288,12 +395,15 @@ frame coverage. Do not select production counts from a positive witness alone.
 4. If both work, prefer the simpler verified write-only path. If neither works,
    report the evidence and await the owner's CPU-only decision; never downgrade
    silently.
-5. These five initial probes do not yet prove Q4's full-window premise. A
-   **subsequent precommitted bounded progress/coverage confirmation**, including
-   real frame endpoints, is required before selecting production work counts.
-   Its configuration/run count must be added before execution. Fixed small
-   counts failing coverage do not prove that the mechanism itself is impossible.
-   This limitation is explicit phase-1 residual work, not a completed AC.
+5. P6/P7 implement the previously missing real-frame confirmation, but have not
+   been run. No mechanism is selected and no feasibility AC is marked complete.
+   Insufficient counts do not prove a mechanism impossible; a direct-read stall
+   may be an instrumentation limitation. The pinned-host alternative still
+   needs equivalent causal frame-coverage evidence before it could be selected.
+   Production counts require separately committed, conservative calibration.
+   The 19-bit/13-bit marker is for this short probe only; production's larger
+   frame/repetition domain requires a non-aliasing widened protocol and another
+   bounded validation before any 500,000-frame run.
 
 ## Production follow-up (not executed or enabled here)
 

@@ -2152,8 +2152,11 @@ The host-load condition (c) is outside this result and is tracked in
 v0.75.0 CQ completion gates, ordinary write-only submission, and pinned-host
 NoC access, with short diagnostic probes. No board run or mechanism selection
 is claimed by phase 1. In particular, one card-side payload witness is not
-sustained PCIe or first-through-last-frame coverage; Q4's progress/coverage
-confirmation remains a prerequisite for production counts and measurement.
+sustained PCIe or first-through-last-frame coverage. Phase 1b adds real-ring-frame
+Q4 instrumentation with consumer-clock brackets and card-issued CPU challenges;
+queued DMA cannot impersonate CPU work completed in those intervals. Actual
+Watcher/no-Watcher confirmation remains a prerequisite for production counts
+and measurement; no board evidence has been obtained.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

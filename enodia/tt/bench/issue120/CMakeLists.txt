@@ -32,7 +32,41 @@ if(NOT UMD_COORDINATE_SHA256 STREQUAL "80ad8fc434b617c13b2b58a3c5a95b740fc3d8705
     message(FATAL_ERROR "UMD coordinate header does not match the v0.75.0 dependency")
 endif()
 
-add_executable(issue120_probe issue120_probe.cpp)
+if(NOT EXISTS "${TT_METAL_SOURCE_ROOT}/tt_metal/impl/context/metal_context.hpp"
+   OR NOT EXISTS "${TT_METAL_SOURCE_ROOT}/tt_metal/llrt/tt_cluster.hpp")
+    message(FATAL_ERROR "Stage the pinned internal headers for targeted L1 observation")
+endif()
+
+# Generate the exact tag's HAL interfaces without executing any device code.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(HAL_CODEGEN "${TT_METAL_SOURCE_ROOT}/tt_metal/llrt/hal/codegen/codegen.py")
+set(HAL_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/hal/generated")
+set(HAL_NAMES dev_msgs fabric_telemetry realtime_profiler_msgs)
+set(HAL_INPUTS dev_msgs.h fabric_telemetry_msgs.h realtime_profiler_msgs.h)
+set(HAL_NAMESPACES tt::tt_metal::dev_msgs tt::tt_fabric::fabric_telemetry tt::tt_metal::realtime_profiler_msgs)
+set(HAL_HEADERS)
+foreach(index RANGE 0 2)
+    list(GET HAL_NAMES ${index} name)
+    list(GET HAL_INPUTS ${index} input)
+    list(GET HAL_NAMESPACES ${index} interface_namespace)
+    set(input_file "${TT_METAL_SOURCE_ROOT}/tt_metal/hw/inc/hostdev/${input}")
+    add_custom_command(
+        OUTPUT "${HAL_OUTPUT}/${name}.hpp" "${HAL_OUTPUT}/${name}_impl.hpp"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${HAL_OUTPUT}"
+        COMMAND "${Python3_EXECUTABLE}" "${HAL_CODEGEN}"
+            --driver_ns=::tt::tt_metal::hal_structs
+            --driver_include_path=llrt/struct_view_driver.hpp
+            "--interface_ns=${interface_namespace}"
+            "${input_file}" "${HAL_OUTPUT}/${name}.hpp" "${HAL_OUTPUT}/${name}_impl.hpp"
+        DEPENDS "${HAL_CODEGEN}" "${input_file}"
+        VERBATIM
+    )
+    list(APPEND HAL_HEADERS "${HAL_OUTPUT}/${name}.hpp" "${HAL_OUTPUT}/${name}_impl.hpp")
+endforeach()
+add_custom_target(issue120_hal_headers DEPENDS ${HAL_HEADERS})
+
+add_executable(issue120_probe issue120_probe.cpp q4_frame_probe.cpp)
+add_dependencies(issue120_probe issue120_hal_headers)
 target_compile_features(issue120_probe PRIVATE cxx_std_20)
 target_compile_definitions(issue120_probe PRIVATE
     ISSUE120_SOURCE_DIR="enodia/tt/bench/issue120"
@@ -40,7 +74,12 @@ target_compile_definitions(issue120_probe PRIVATE
     FMT_HEADER_ONLY
 )
 target_include_directories(issue120_probe PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    "${TT_METAL_SOURCE_ROOT}"
+    "${TT_METAL_SOURCE_ROOT}/tt_metal"
+    "${TT_METAL_SOURCE_ROOT}/tt_metal/api/tt-metalium"
     "${TT_METAL_SOURCE_ROOT}/tt_metal/api"
+    "${TT_METAL_SOURCE_ROOT}/tt_metal/hostdevcommon/api"
     "${TT_METAL_SOURCE_ROOT}/tt_metal/hostdevcommon"
     "${TT_METAL_SOURCE_ROOT}/tt_metal/hw/inc"
     "${TT_METAL_SOURCE_ROOT}/tt_stl"
