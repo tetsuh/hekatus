@@ -21,6 +21,17 @@ if(NOT TT_METAL_LIBRARY_SHA256 STREQUAL "daa26f51aa60299d914d7fb91fbf055394faea3
     message(FATAL_ERROR "TT_METAL_LIBRARY is not the audited library from the pinned image")
 endif()
 
+# The coordinate type is ABI-sensitive: newer UMD moves xy_pair's namespace.
+# v0.75.0 pins UMD at bc77ac2f7382ffeb9fa5430055f0854d53979489.
+set(UMD_API "${TT_METAL_SOURCE_ROOT}/tt_metal/third_party/umd/device/api")
+if(NOT EXISTS "${UMD_API}/umd/device/types/xy_pair.hpp")
+    message(FATAL_ERROR "Populate the v0.75.0 pinned UMD submodule before building")
+endif()
+file(SHA256 "${UMD_API}/umd/device/types/xy_pair.hpp" UMD_COORDINATE_SHA256)
+if(NOT UMD_COORDINATE_SHA256 STREQUAL "80ad8fc434b617c13b2b58a3c5a95b740fc3d87053715177ab9c352324608aba")
+    message(FATAL_ERROR "UMD coordinate header does not match the v0.75.0 dependency")
+endif()
+
 add_executable(issue120_probe issue120_probe.cpp)
 target_compile_features(issue120_probe PRIVATE cxx_std_20)
 target_compile_definitions(issue120_probe PRIVATE
@@ -33,6 +44,7 @@ target_include_directories(issue120_probe PRIVATE
     "${TT_METAL_SOURCE_ROOT}/tt_metal/hostdevcommon"
     "${TT_METAL_SOURCE_ROOT}/tt_metal/hw/inc"
     "${TT_METAL_SOURCE_ROOT}/tt_stl"
+    "${UMD_API}"
     ${TT_METAL_EXTRA_INCLUDE_DIRS}
 )
 target_link_directories(issue120_probe PRIVATE ${TT_METAL_EXTRA_LIBRARY_DIRS})

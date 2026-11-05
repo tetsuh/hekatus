@@ -158,6 +158,11 @@ Entry-point presence is not proof of full source/image byte equality or DMA.
 The isolated native instrument supplements Python board-free planning/validation;
 TTNN has no binding for the pinned API used here. Build against exact-tag headers,
 explicit third-party headers, and the audited pinned-image library/dependencies.
+Populate the tag's UMD submodule at
+`bc77ac2f7382ffeb9fa5430055f0854d53979489`; an archive of the parent tag alone
+omits submodules. Newer UMD coordinate headers change the ABI namespace and must
+not shadow this dependency. CMake checks the pinned coordinate-header hash and
+links the companion pinned-image `libtt_stl.so` explicitly.
 The build command does **not** run the native executable or open a device:
 
 ```bash
@@ -174,8 +179,12 @@ uv run python -m enodia.tt.bench.issue120_probe --build-only \
 Variables name externally provisioned development inputs, not published personal
 paths. Do not substitute a newer local Metalium library. Host compilation/linking
 is not device-kernel JIT validation; the latter remains the first Watcher run.
+Phase 1 verified host compilation and linking against these exact tag/UMD
+headers and pinned-image libraries, using GCC 13.3.0 with explicit third-party
+headers. The executable was never run, including for help/version output.
 The staged executable and audited library are ignored build output, not evidence
-of a board run. A board-free inventory is available with:
+of a board run. Device-kernel JIT and actual loader/device execution remain
+unverified. A board-free inventory is available with:
 
 ```bash
 uv run python -m enodia.tt.bench.issue120_probe --plan

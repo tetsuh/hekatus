@@ -349,6 +349,9 @@ def test_native_build_is_pinned_toolchain_only_and_has_no_board_free_fallback() 
     runner = (root / "enodia/tt/bench/issue120/run_issue120_probe.py").read_text()
     contract = (root / "enodia/tt/bench/issue120_probe.py").read_text()
     assert "TT_METAL_SOURCE_REVISION" in cmake
+    assert "bc77ac2f7382ffeb9fa5430055f0854d53979489" in cmake
+    assert '"${UMD_API}"' in cmake
+    assert "libtt_stl.so" in cmake
     assert "TT_METAL_LIBRARY_SHA256" in cmake
     source = (root / "enodia/tt/bench/issue120/issue120_probe.cpp").read_text()
     assert "run_fixed_cpu_work" in source
