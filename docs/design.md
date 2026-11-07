@@ -2162,9 +2162,13 @@ mesh construction returned or any kernel/card evidence was produced. The
 [immutable startup-failure record](measurements/2026-11-07-p150a-issue120-p1-launch-failure.json)
 retains fresh provenance and healthy post-run state. P2-P7 were not attempted;
 no reset, retry, mechanism selection or production run followed. Runtime-root
-and asset preflight need a separately committed correction and renewed bounded
-prediction before an owner-authorized retry. No source/image parity or
-unsupported-mechanism conclusion follows from this initialization failure.
+and asset preflight are addressed by a board-free launcher correction tracked
+in Issue #173: a fixed installed-wheel root and exact-image layout inventories
+are checked before spawning native code. The
+[renewed P1 precommit](measurements/issue120-feasibility-plan.md#runtime-root-correction-and-renewed-p1-precommit-issue-173)
+uses a separate attempt identity and retains Watcher/60-second caps. It is not
+authorization to retry. No source/image parity, hardware validation or
+unsupported-mechanism conclusion follows from this initialization correction.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

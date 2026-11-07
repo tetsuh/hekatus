@@ -18,6 +18,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from enodia.tt.bench import issue120_runtime
 from enodia.tt.bench.board_identity import normalize_board_id, normalize_pci_bus_id
 from enodia.tt.bench.issue120_coverage import (
     CPU_ROUNDS_PER_TRANSFER,
@@ -856,7 +857,13 @@ def _native_arguments(executable: Path, spec: ProbeSpec, stall: str | None) -> l
 
 
 def _runtime_environment() -> dict[str, str]:
+    try:
+        runtime_root = issue120_runtime.validate_runtime_assets()
+    except issue120_runtime.RuntimeAssetError as exc:
+        raise ProbeRecordError(str(exc)) from exc
     runtime_env = os.environ.copy()
+    runtime_env["TT_METAL_RUNTIME_ROOT"] = str(runtime_root)
+    runtime_env.pop("TT_METAL_HOME", None)
     paths = [
         "/opt/venv/lib/python3.12/site-packages/ttnn/build/lib",
         "/opt/venv/lib/python3.12/site-packages/ttnn.libs",

@@ -446,3 +446,107 @@ intervals, card completion/window semantics, cap, Watcher, status and errors.
 Sanitize to an explicit field allowlist; no hostname, username or personal path.
 Probe records set `timing_evidence=false`. Results with absent evidence remain
 blocked/diagnostic, never relabeled as production timing evidence.
+
+## Runtime-root correction and renewed P1 precommit (Issue #173)
+
+This section supplements, rather than rewrites, the original P1-P7 predictions.
+The original P1 at `b1865fe` stopped during runtime initialization; its
+[immutable failure record](2026-11-07-p150a-issue120-p1-launch-failure.json)
+is unchanged. P2-P7 remain unexecuted. This correction is board-free and does
+not authorize another hardware invocation.
+
+### Closed startup invariants and exact-image audit
+
+1. The image digest remains unchanged. The launcher supplies only the fixed
+   installed-wheel root `/opt/venv/lib/python3.12/site-packages/ttnn` through
+   `TT_METAL_RUNTIME_ROOT`. There is no runtime-root argument. An inherited
+   root is replaced, and the legacy `TT_METAL_HOME` value is removed.
+2. Before native subprocess creation, inspect the program-owned wheel root and
+   all four fixed asset trees below. Missing/wrong-kind roots, redirected roots,
+   symlinks, unsupported file types, access errors and inventory mismatches
+   reject the launch. Planning/build-only paths do not need installed assets.
+3. Inventories bind sorted relative names, directory/file kinds, file sizes and
+   executable attributes. The exact pinned trees contain no symlinks. This is
+   a complete layout/metadata check, not a content hash for every file; the
+   immutable image digest and existing Metal library SHA-256 remain the content
+   provenance boundary. Do not claim source/image byte parity.
+4. Asset inspection does not import TTNN or call accelerator APIs. Tests of
+   every rejection branch precede implementation, and native calls are mocked.
+5. Any device-free native startup diagnostic additionally hides the host's
+   hardware-discovery filesystems, runs without devices/network/capabilities,
+   and is not a successful Watcher/kernel validation or P1 attempt.
+
+The exact image was inspected using named device-free, network-disabled,
+read-only containers and stopped-container file copies. Its installed
+`ttnn/__init__.py:599-609` selects its own package directory and calls
+`SetRootDir` for an installed wheel. The `ttnn-0.75.0.dist-info/RECORD` and bundled
+files were inspected without importing the package. The wheel contains
+Blackhole core/SoC descriptors, firmware/kernel sources, LLK headers,
+precompiled firmware and runtime objects/linker scripts. SFPI is installed at
+its separate fixed image path, not in the wheel's `runtime` directory.
+The v0.75.0 source `tt_metal/jit_build/build.cpp:123-140` identifies the local
+and system SFPI search locations; source support is not JIT validation.
+
+| Fixed asset tree | Directories + files | Files | Inventory SHA-256 |
+|---|---:|---:|---|
+| wheel `tt_metal` | 3594 | 2795 | `8d85e48cca4c004fa41962846378fd06bd28bf57321ce24d7a9cafaf27a16314` |
+| wheel `runtime` | 78 | 69 | `56fe4e441edf3f309dca55bd97db56a03c3f060e8bafa6bd1db2d3f05b41ac8b` |
+| wheel `build/lib` | 6 | 6 | `06f873632238323b3891239edaca92e54eebc7e674755d0749e14c533df9c8f2` |
+| `/opt/tenstorrent/sfpi` | 1599 | 1432 | `fb5e85084358f9deda5081a6ee953c5ee3360f7ce084da84b63a42a51b18ca8b` |
+
+### Device-free startup diagnostic (not a P1 result)
+
+The original native executable was launched through the corrected Python native
+entry path in the exact image, with no device mappings, network disabled,
+read-only root/source mounts, an unprivileged UID and all capabilities dropped.
+In addition to Docker's default masks, host `/sys`, `/proc/bus` and `/proc/driver`
+were masked, and absence of TT device nodes/visible discovery trees was asserted
+before launching native code. Configuration and cleanup were checked.
+
+All four asset inventories passed. The process passed the former empty-root
+failure and stopped with exit 2 at `No chips detected in the cluster`, reporting
+empty chip/PCIe ID sets. No real board was available to discovery. This verifies
+only the library/root/startup path, not hardware initialization, JIT, DMA,
+Watcher health or any Q1-Q4 acceptance gate. No source/image parity is inferred.
+
+### New attempt identity and prediction (not executed)
+
+- Logical identity: **`p1-runtime-root-v1`**. Never reuse the first attempt's
+  output directory or run ID. The wrapper will assign a fresh collision-safe
+  run ID under `out/issue120/p1-runtime-root-v1` after owner authorization.
+- Use the clean, pushed correction revision containing this precommit, the
+  same native C++ source/build fingerprint, device 0 only, the original
+  resident-and-transfer stall group, Watcher on, native cap exactly 60 seconds
+  and outer cap exactly 60 seconds. New kernels have not yet passed Watcher.
+- Prediction: the pinned assets should pass preflight and the fixed root should
+  avoid the observed empty-root failure. Hardware discovery, initialization,
+  JIT and observer operation remain unproven. If they succeed, P1 may show
+  worker-stream gating, an inside-window witness, or missing/ambiguous card
+  evidence as originally predicted. Do not invent a transfer verdict from a
+  launcher exit code. No latency threshold is added.
+- Missing assets stop before the native process. Any abnormal exit, timeout,
+  bad Watcher report or unexpected result stops without continuation/retry.
+  Retain named-container cleanup and post-run health checks. The prior phase
+  used zero resets; this plan grants no new reset or hardware authority.
+- The renewed P1 adds one conditional 60-second outer/native cap. Together
+  with the original seven scheduled invocations, the historical-plus-planned
+  cap ledger is 480 seconds outer and 390 seconds native. Remaining P1 retry
+  plus P2-P7 total 420 seconds outer and 330 seconds native. No batch is run
+  automatically; preparation/CI/device-free diagnostics are separate.
+
+Only after renewed owner approval:
+
+```bash
+TT_METAL_WATCHER=1 HEKATUS_TT_DEVICE_NODE=/dev/tenstorrent/0 \
+  HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+  HEKATUS_TT_RUNNER=enodia/tt/bench/issue120/run_issue120_probe.py \
+  enodia/tt/bench/run_in_container.sh out/issue120/p1-runtime-root-v1 -- \
+  --execute --probe q1-cq1-completion --stall-group resident-and-transfer \
+  --first-kernel-run --cap-seconds 60
+```
+
+This is not a production-count or mechanism-selection decision. Keep the
+original failure and all future attempts separate, and preserve their named
+harness revisions without rebase/amend. Production remains gated on the
+remaining bounded evidence, widened protocol, calibration and same-session
+control in the original plan.

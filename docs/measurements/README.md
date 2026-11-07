@@ -23,6 +23,10 @@ or retry was performed, and both boards were idle at 800 MHz after cleanup.
 Q1-Q4 and mechanism selection remain unresolved; this launcher failure does not
 establish that CQ1 writes or pinned-host NoC traffic cannot work.
 See the [outcome and next precommit proposal](2026-11-07-p150a-issue120-p1-launch-failure.md).
+The subsequent [runtime-root correction precommit](issue120-feasibility-plan.md#runtime-root-correction-and-renewed-p1-precommit-issue-173)
+records exact-image wheel/SFPI asset inventories and the separate
+`p1-runtime-root-v1` identity. It adds no hardware result or retry authority;
+the original startup-failure artifacts remain unchanged.
 
 ## Issue #137 duration-bounded runner (revision 2)
 
