@@ -12,6 +12,18 @@ not full-window coverage. Phase 1b adds Q4 real-frame, same-clock CPU/DMA progre
 instrumentation and two planned bounded confirmations. The hardware coverage
 gate remains open before production integration or work-count selection.
 
+On 2026-11-07, the first authorized P1 attempt at `b1865fe` failed during
+native runtime initialization with `Root Directory is not set.` (exit 2).
+The [immutable attempt record](2026-11-07-p150a-issue120-p1-launch-failure.json)
+binds the sanitized log, fresh environment/health, container lifecycle and frozen
+startup power trace. Its eight archived files are also retained at the planned
+`out/issue120/p1` destination. No valid runner result, kernel validation or
+card-side completion/window evidence was produced. P2-P7 were not run, no reset
+or retry was performed, and both boards were idle at 800 MHz after cleanup.
+Q1-Q4 and mechanism selection remain unresolved; this launcher failure does not
+establish that CQ1 writes or pinned-host NoC traffic cannot work.
+See the [outcome and next precommit proposal](2026-11-07-p150a-issue120-p1-launch-failure.md).
+
 ## Issue #137 duration-bounded runner (revision 2)
 
 The board-free planning command prints the immutable configurations and their

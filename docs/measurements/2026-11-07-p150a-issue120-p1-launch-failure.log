@@ -1,0 +1,22 @@
+environment -> ./out/issue120/p1/env-20261107T0004174710373862212714294Z.json
+Issue #120 probe failed: TT_FATAL @ /project/tt_metal/llrt/rtoptions.cpp:347: !this->root_dir.empty()
+info:
+Root Directory is not set.
+backtrace:
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x6d6648) [0x72eb9e4e3648]
+ --- tt::llrt::RunTimeOptions::RunTimeOptions()
+ --- tt::tt_metal::MetalEnvImpl::initialize_base_objects()
+ --- tt::tt_metal::MetalEnvImpl::MetalEnvImpl(tt::tt_metal::MetalEnvDescriptor)
+ --- std::__detail::_MakeUniq<tt::tt_metal::MetalEnvImpl>::__single_object std::make_unique<tt::tt_metal::MetalEnvImpl, tt::tt_metal::MetalEnvDescriptor>(tt::tt_metal::MetalEnvDescriptor&&)
+ --- tt::tt_metal::MetalEnv::MetalEnv(tt::tt_metal::MetalEnvDescriptor)
+ --- tt::tt_metal::MetalContext::create_default_instance_implicit_locked()
+ --- tt::tt_metal::MetalContext::instance(ttsl::StrongType<int, tt::tt_metal::ContextIdTag>)
+ --- tt::tt_metal::distributed::MeshDeviceImpl::create_unit_meshes(ttsl::StrongType<int, tt::tt_metal::ContextIdTag>, std::vector<int, std::allocator<int> > const&, unsigned long, unsigned long, unsigned long, tt::tt_metal::DispatchCoreConfig const&, std::span<unsigned int const, 18446744073709551615ul>, unsigned long)
+ --- tt::tt_metal::distributed::MeshDeviceImpl::create_unit_mesh(ttsl::StrongType<int, tt::tt_metal::ContextIdTag>, int, unsigned long, unsigned long, unsigned long, tt::tt_metal::DispatchCoreConfig const&, std::span<unsigned int const, 18446744073709551615ul>, unsigned long)
+ --- tt::tt_metal::distributed::MeshDevice::create_unit_mesh(int, unsigned long, unsigned long, unsigned long, tt::tt_metal::DispatchCoreConfig const&, std::span<unsigned int const, 18446744073709551615ul>, unsigned long)
+ --- /work/out/issue120-native-build/issue120_probe(+0x3581c) [0x58700929b81c]
+ --- /work/out/issue120-native-build/issue120_probe(+0x35dde) [0x58700929bdde]
+ --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x72eb9d9461ca]
+ --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x72eb9d94628b]
+ --- /work/out/issue120-native-build/issue120_probe(+0x232c5) [0x5870092892c5]
+

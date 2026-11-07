@@ -2156,7 +2156,15 @@ sustained PCIe or first-through-last-frame coverage. Phase 1b adds real-ring-fra
 Q4 instrumentation with consumer-clock brackets and card-issued CPU challenges;
 queued DMA cannot impersonate CPU work completed in those intervals. Actual
 Watcher/no-Watcher confirmation remains a prerequisite for production counts
-and measurement; no board evidence has been obtained.
+and measurement. The first authorized P1 attempt on 2026-11-07 failed during
+native runtime initialization (`Root Directory is not set.`, exit 2), before
+mesh construction returned or any kernel/card evidence was produced. The
+[immutable startup-failure record](measurements/2026-11-07-p150a-issue120-p1-launch-failure.json)
+retains fresh provenance and healthy post-run state. P2-P7 were not attempted;
+no reset, retry, mechanism selection or production run followed. Runtime-root
+and asset preflight need a separately committed correction and renewed bounded
+prediction before an owner-authorized retry. No source/image parity or
+unsupported-mechanism conclusion follows from this initialization failure.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 
