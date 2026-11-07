@@ -1,0 +1,19 @@
+{
+  "attempt_identity": "20261107T0359467328502981186084814Z",
+  "failure_message": null,
+  "failure_type": null,
+  "native_returncode": 0,
+  "native_started": true,
+  "schema": "issue120-native-execution-v1",
+  "stderr": {
+    "byte_count": 0,
+    "file": "stderr.bin",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "byte_count": 4422,
+    "file": "stdout.bin",
+    "sha256": "7d8c12448a2c11f56e054117cbcc3b6467d0e4a31149c91e3745e5a4581cc1fb"
+  },
+  "timed_out": false
+}

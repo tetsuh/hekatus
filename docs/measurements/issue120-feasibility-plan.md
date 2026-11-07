@@ -653,3 +653,31 @@ cards returned healthy at 800 MHz with no containers. No reset/retry or
 production run occurred. P2-P7 identities remain unconsumed, with their original
 predictions unchanged. Further execution needs supervisor/owner assessment;
 this outcome does not authorize continuation or adopt a mechanism.
+
+### Owner-accepted baseline warning verification and P2-P4 continuation (#176)
+
+For the separately authorized P2-P7 scope at clean/pushed `62f388c`, all three
+known baseline warning conditions were verified **before board access** in
+`issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt`:
+NUMA membind/fallback at lines 8-9, motherboard bus-ID fallback at line 18,
+and unavailable dispatch SMC telemetry buffers at lines 22-25. Warning text
+matches apart from invocation-specific timestamp/PID/TID/device/bus values.
+The adjacent hugepage NUMA consequence belongs to condition 1, not a new class.
+Owner acceptance covers only these known baseline warnings (#176), never
+additional warnings/errors. The three attempt records retain the pre-board
+proof, source SHA-256/lines and explicit baseline decision.
+
+The [run 4 record](2026-11-07-p150a-issue120-run4.json) and
+[interpretation](2026-11-07-p150a-issue120-run4.md) retain P2 transfer-only
+inside-window completion, P3's 256 fixed write-only submissions/final drain,
+and P4's direct code-2 pinned-capacity preflight rejection. No mapping/pinned
+kernel/DMA feasibility is inferred from that rejection; actual limits were not
+logged. P5-P7 were not run. All named containers were removed and both cards
+returned healthy at 800 MHz; no timeout/reset/retry or production run occurred.
+
+Next steps are conditional proposals only: board-free #177 assessment and an
+explicit branch/remaining-feasibility approval, real-frame causal CPU/PCIe
+coverage, fixed-count calibration if needed, and widened non-aliasing protocol
+validation before any 500,000-frame same-session control/load precommit. See
+the run 4 interpretation for caps, Watcher and evidence gates; no additional
+identity or workload is authorized here.

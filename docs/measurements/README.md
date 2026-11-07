@@ -45,7 +45,14 @@ The later separately authorized
 and [interpretation](2026-11-07-p150a-issue120-p1-result-file-v1.md) retain a valid
 atomic result with bounded 16-page CQ1 completion inside the resident window.
 Execution stopped conservatively before P2 for unplanned runtime warnings,
-without reset/retry; Q2-Q4 and full-frame adoption remain unresolved.
+without reset/retry; Q2-Q4 and full-frame adoption remained unresolved then.
+The later [run 4 session](2026-11-07-p150a-issue120-run4.json) and
+[interpretation/next precommit proposal](2026-11-07-p150a-issue120-run4.md)
+retain the pre-board #146 warning verification accepted under #176,
+[P2 transfer-only overlap](2026-11-07-p150a-issue120-p2.json),
+[P3 fixed write-only completion](2026-11-07-p150a-issue120-p3.json), and
+[P4 pinned-capacity rejection](2026-11-07-p150a-issue120-p4.json).
+P5-P7 stopped without reset/retry; Q3 is blocked and Q4/adoption remain unresolved.
 
 ## Issue #137 duration-bounded runner (revision 2)
 

@@ -1,0 +1,244 @@
+{
+  "schema": "issue120-feasibility-attempt-v1",
+  "issue": 120,
+  "attempt_identity": "p4",
+  "run_id": "20261107T0400593921396061196361110Z",
+  "status": "blocked_at_pinned_capacity_preflight",
+  "timing_evidence": false,
+  "environment": {
+    "board_model": "p150a",
+    "serial": "000004033191411c",
+    "pci": "0000:06:00.0",
+    "firmware": "19.6.0.0",
+    "kmd": "2.11.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "commit": "62f388c951b5205e65eb4b63356e455ff68528b5",
+    "harness_clean": true,
+    "harness_pushed": true
+  },
+  "native_artifact": {
+    "sha256": "1ca91e17b09db83b70b1cec1e09d69e61430d00d5bab9168a283d3503f9c2b4d",
+    "libtt_metal_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "rebuilt_during_session": false,
+    "source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "source_tree_parity_with_image": "not_asserted"
+  },
+  "plan": {
+    "path": "docs/measurements/issue120-feasibility-plan.md",
+    "commit": "62f388c951b5205e65eb4b63356e455ff68528b5",
+    "order": "P4",
+    "probe": "q3-pinned-noc",
+    "native_cap_seconds": 60,
+    "outer_cap_seconds": 60,
+    "watcher_requested": true,
+    "prediction_comparison": "The planned capacity-blocking branch occurred as native nonzero preflight rejection. Stop before P5; no mapping/pinned kernel/DMA feasibility verdict."
+  },
+  "execution": {
+    "start_utc": "2026-11-07T04:00:59Z",
+    "end_utc": "2026-11-07T04:01:03Z",
+    "utc_resolution_seconds": 1,
+    "host_wrapper_start_monotonic_ns": 14613305205988,
+    "host_wrapper_end_monotonic_ns": 14617023241366,
+    "wrapper_exit_code": 2,
+    "container_exit_code": 2,
+    "native_exit_code_observed_directly": 2,
+    "timeout": false,
+    "container_name": "hekatus-bench-119636-11696",
+    "device_nodes_exposed": [
+      "/dev/tenstorrent/0"
+    ],
+    "containers_before": 0,
+    "containers_after": 0,
+    "forced_container_kills": 0,
+    "reset_count": 0,
+    "reset_reason": "No timeout; both cards idle at 800 MHz and DRAM healthy. No reset needed.",
+    "retry_count": 0,
+    "production_run_attempted": false
+  },
+  "baseline_warnings": {
+    "label": "Known baseline warnings (#176)",
+    "accepted_by_owner": true,
+    "verified_before_board_access": true,
+    "proof_sha256": "dbc2aa63f392fb5e56aa7f14f8c3ec20e7ee389ee3373f5817a6bc132cffc9ab",
+    "proof_file_mtime_unix_ns": 1794023960396779613,
+    "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+    "source_lines": {
+      "numa": [
+        8,
+        9
+      ],
+      "motherboard": [
+        18
+      ],
+      "smc": [
+        22,
+        23,
+        24,
+        25
+      ]
+    },
+    "comparison": "Same warning text apart from timestamp/PID/TID/physical-device/bus IDs. NUMA hugepage fallback detail belongs to condition 1.",
+    "observed_warning_count": 7,
+    "new_warning_count": 0,
+    "observed_warnings": [
+      "UMD | hwloc_set_area_membind(): failed for physical_device_id: 0 on NodeSet: [0] with errno: Operation not permitted (pid: 7 tid: 130542051541184) (cpuset_lib.cpp:440)",
+      "UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 0 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)",
+      "Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=0 (bus_id=0x6) \u2014 falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+    ]
+  },
+  "native_result_transport": {
+    "native_returncode": 2,
+    "attempt_identity": "20261107T0400593921396061196361110Z",
+    "result_candidates": 0,
+    "raw_streams_preserved": true,
+    "direct_execution_metadata_preserved": true,
+    "public_native_copies_byte_exact": true
+  },
+  "card_evidence": null,
+  "watcher": {
+    "requested": true,
+    "fresh_watcher_artifacts_retained": true,
+    "error_warning_assert_hang_scan_matches": 0,
+    "dump_count": 2,
+    "scope": "Runtime attach/detach and preflight only; pinned kernel was not constructed/launched."
+  },
+  "failure": {
+    "message": "Issue #120 probe failed: pinned memory capacity preflight rejects the aligned host allocation",
+    "stage": "GetMemoryPinningParameters capacity predicate before can_map_to_noc/PinnedMemory::Create/kernel construction",
+    "predicate": "max_pins < 1 || max_total_pin_size < host_buffer_bytes + host_offset",
+    "host_buffer_bytes": 12288,
+    "reported_parameters_retained": false,
+    "cause": "unknown; actual limits/offset and which predicate failed were not logged",
+    "followup_issue": 177,
+    "interpretation": "Q3 blocked, not proof of hardware feature absence or failed pinned DMA"
+  },
+  "power_trace": {
+    "sample_count": 2,
+    "frozen": true,
+    "observed_aiclk_mhz": [
+      800,
+      1350
+    ],
+    "coverage": "No full program-end coverage asserted from sparse samples; no timing conversion.",
+    "timing_evidence": false
+  },
+  "artifact_policy": {
+    "roles": {
+      "native_stdout": "2026-11-07-p150a-issue120-p4-native-stdout.bin",
+      "native_stderr": "2026-11-07-p150a-issue120-p4-native-stderr.bin",
+      "native_execution": "2026-11-07-p150a-issue120-p4-native-execution.json",
+      "wrapper_log": "2026-11-07-p150a-issue120-p4.log",
+      "environment": "2026-11-07-p150a-issue120-p4-env.json",
+      "baseline_verification": "2026-11-07-p150a-issue120-p4-baseline-verification.json",
+      "power": "2026-11-07-p150a-issue120-p4-power.csv",
+      "docker_before": "2026-11-07-p150a-issue120-p4-docker-before.txt",
+      "docker_after": "2026-11-07-p150a-issue120-p4-docker-after.txt",
+      "watcher/kernel_elf_paths.txt": "2026-11-07-p150a-issue120-p4-watcher-kernel_elf_paths.txt",
+      "watcher/kernel_names.txt": "2026-11-07-p150a-issue120-p4-watcher-kernel_names.txt",
+      "watcher/watcher.log": "2026-11-07-p150a-issue120-p4-watcher-watcher.log",
+      "inspector/kernels.yaml": "2026-11-07-p150a-issue120-p4-inspector-kernels.yaml",
+      "inspector/mesh_devices_log.yaml": "2026-11-07-p150a-issue120-p4-inspector-mesh_devices_log.yaml",
+      "inspector/mesh_workloads_log.yaml": "2026-11-07-p150a-issue120-p4-inspector-mesh_workloads_log.yaml",
+      "inspector/programs_log.yaml": "2026-11-07-p150a-issue120-p4-inspector-programs_log.yaml",
+      "inspector/startup.yaml": "2026-11-07-p150a-issue120-p4-inspector-startup.yaml",
+      "lifecycle": "2026-11-07-p150a-issue120-p4-lifecycle.json",
+      "health": "2026-11-07-p150a-issue120-p4-health.json"
+    },
+    "artifacts": {
+      "2026-11-07-p150a-issue120-p4-native-stdout.bin": {
+        "sha256": "b6fafbc918ecd362f8a5bacc2fa80aaffd57f83de9db0543d4835973dc0cc882",
+        "byte_count": 5002
+      },
+      "2026-11-07-p150a-issue120-p4-native-stderr.bin": {
+        "sha256": "4110001951288ac0eecc73a92de92e9953a2180db755eb997a71d7fe5f54e9fa",
+        "byte_count": 94
+      },
+      "2026-11-07-p150a-issue120-p4-native-execution.json": {
+        "sha256": "26727270cccba86729023ab1107a1ab4d49ec65f3bf0adce81fd0538d0022975",
+        "byte_count": 531
+      },
+      "2026-11-07-p150a-issue120-p4.log": {
+        "sha256": "c6be21bac4eb975dfad91edd867243705686d0436973582555082aef315d83c2",
+        "byte_count": 118
+      },
+      "2026-11-07-p150a-issue120-p4-env.json": {
+        "sha256": "b9345c602c133e24dd94bfce64edb39fe0e00795f7f7ce5e8f6e0585b3e8049c",
+        "byte_count": 4434
+      },
+      "2026-11-07-p150a-issue120-p4-baseline-verification.json": {
+        "sha256": "dbc2aa63f392fb5e56aa7f14f8c3ec20e7ee389ee3373f5817a6bc132cffc9ab",
+        "byte_count": 3218
+      },
+      "2026-11-07-p150a-issue120-p4-power.csv": {
+        "sha256": "2f0d8698a2318dbc27054304e1231e12db5d3c2d654cb440f928599bb8180a44",
+        "byte_count": 139
+      },
+      "2026-11-07-p150a-issue120-p4-docker-before.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p4-docker-after.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p4-watcher-kernel_elf_paths.txt": {
+        "sha256": "940e4001c2dc9b714d80d51bd135ca7a1a43757289421bf2ab9cec232a278233",
+        "byte_count": 1334
+      },
+      "2026-11-07-p150a-issue120-p4-watcher-kernel_names.txt": {
+        "sha256": "afa431afc04167e611abc177bfd0e0aeaa36114879a6b3c81301d3b7356a399c",
+        "byte_count": 473
+      },
+      "2026-11-07-p150a-issue120-p4-watcher-watcher.log": {
+        "sha256": "32565517e0059c2d5853afaecb86f692e38b532189bbed73d85cd5d2aa411c0c",
+        "byte_count": 36456
+      },
+      "2026-11-07-p150a-issue120-p4-inspector-kernels.yaml": {
+        "sha256": "5a68d61389f5de5796ee8ed1270c59bcf133c3c6f2f173c89ef74bfb3b7354cb",
+        "byte_count": 1977
+      },
+      "2026-11-07-p150a-issue120-p4-inspector-mesh_devices_log.yaml": {
+        "sha256": "f042b267e1f97535cf0c42e86c221c2f2162dc64b5170afa250bd0f934abbf28",
+        "byte_count": 480
+      },
+      "2026-11-07-p150a-issue120-p4-inspector-mesh_workloads_log.yaml": {
+        "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "byte_count": 1
+      },
+      "2026-11-07-p150a-issue120-p4-inspector-programs_log.yaml": {
+        "sha256": "b27136097fe57d7bb5433db6685a7b0b6a9d53c3b0029176443bb7f8e55660e9",
+        "byte_count": 2952
+      },
+      "2026-11-07-p150a-issue120-p4-inspector-startup.yaml": {
+        "sha256": "13be9ac8e7ccac2489a2d20c57381fd190a538e4f2cfd919bfbaa75b8e917c67",
+        "byte_count": 144
+      },
+      "2026-11-07-p150a-issue120-p4-lifecycle.json": {
+        "sha256": "f771a2f764cbc130f2ab277ef4abf751232c21620a9a86006472ac0cc55cf9d4",
+        "byte_count": 1957
+      },
+      "2026-11-07-p150a-issue120-p4-health.json": {
+        "sha256": "70d6d8db88e8336bd35b8dfff7360af1a0ce15d9d47a0ee01b5f31371a3a81c1",
+        "byte_count": 1161
+      }
+    },
+    "raw_generated_and_wrapper_sha256": {
+      "wrapper": "7faf5f8b7692607a506a42d8d05f434ab9af672ee990db22c26b1cc8ca07e31d",
+      "watcher/kernel_elf_paths.txt": "588bbe30133dfadf7fd6939083b54c4b88ea9f6a8b791836f289f760999fe804",
+      "watcher/kernel_names.txt": "afa431afc04167e611abc177bfd0e0aeaa36114879a6b3c81301d3b7356a399c",
+      "watcher/watcher.log": "a93092a73f401ebf03f0c482adc5b6e43299ae8c7adba081f7d6eaf60c0a749f",
+      "inspector/kernels.yaml": "999e347c7fdc4bd14ec3ca12ca4e85a9e3d47fdc8ee51b846e948262bfe8eda6",
+      "inspector/mesh_devices_log.yaml": "f042b267e1f97535cf0c42e86c221c2f2162dc64b5170afa250bd0f934abbf28",
+      "inspector/mesh_workloads_log.yaml": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "inspector/programs_log.yaml": "4d1641154a607bed55c2bee765c3dc5e2570efb150494301fbf6e3afcff3c136",
+      "inspector/startup.yaml": "13be9ac8e7ccac2489a2d20c57381fd190a538e4f2cfd919bfbaa75b8e917c67"
+    },
+    "sanitization": "Native streams/result/execution, wrapper result, env, CSV and baseline proof are byte-exact copies. Public generated/wrapper text derivatives replace repository/cache/hostname strings and normalize trailing line whitespace. Private originals remain unchanged; snapshots/lifecycle use explicit reduced fields."
+  },
+  "next_step": "Stop P5-P7 without retry; assess capacity evidence under #177 and obtain renewed approval before any hardware work."
+}

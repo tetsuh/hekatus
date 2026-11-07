@@ -2190,6 +2190,15 @@ SMC-buffer runtime warnings; normal exits, Watcher diagnostics and post-run
 800 MHz/DRAM health did not indicate a fatal device error. No reset or retry
 followed. Q2-Q4 and adoption remain unresolved; host final drain finishes CQ0
 before CQ1 and does not diagnose the historical CQ1-wait mechanism.
+The [next authorized continuation](measurements/2026-11-07-p150a-issue120-run4.md)
+at `62f388c` first verified all three owner-accepted baseline warnings (#176)
+against the accepted Issue #146 logs. P2 demonstrated transfer-only overlap;
+P3 completed 256 fixed unpinned writes without per-transfer host completion.
+P4 stopped at the pinned-capacity preflight before mapping/kernel execution,
+with direct code 2 and retained raw streams. It is not proof of unsupported
+hardware; returned limits were not logged (#177). P5-P7 remain unrun, with no
+reset/retry. Ordinary CQ1 is preferred but unadopted until causal real-frame
+coverage, long-run protocol validation and same-session production gates pass.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

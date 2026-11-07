@@ -1,0 +1,77 @@
+- program_created:
+    id: 0
+    timestamp_ns: 1794024061269983440
+- program_compile_started:
+    id: 0
+    timestamp_ns: 1794024061276606175
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794024061687964775
+    duration_ns: 411358600
+    watcher_kernel_id: 5
+    name: cq_dispatch_subordinate
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate/17794217689952821696/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794024061697495412
+    duration_ns: 420889237
+    watcher_kernel_id: 7
+    name: cq_dispatch_subordinate
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate/9812670975684703911/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794024061843031622
+    duration_ns: 566425447
+    watcher_kernel_id: 6
+    name: cq_dispatch_subordinate_compute
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate_compute.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794024061843045959
+    duration_ns: 566439784
+    watcher_kernel_id: 8
+    name: cq_dispatch_subordinate_compute
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate_compute.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794024062427325402
+    duration_ns: 1150719227
+    watcher_kernel_id: 4
+    name: cq_dispatch
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch/2754035003036677881/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794024062661998760
+    duration_ns: 1385392585
+    watcher_kernel_id: 2
+    name: cq_dispatch
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch/8924975106515926416/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794024062689027403
+    duration_ns: 1412421228
+    watcher_kernel_id: 3
+    name: cq_prefetch
+    path: <container-cache>/5549056967994719787/kernels/cq_prefetch/17824919121737592934/
+    source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794024062743549857
+    duration_ns: 1466943682
+    watcher_kernel_id: 1
+    name: cq_prefetch
+    path: <container-cache>/5549056967994719787/kernels/cq_prefetch/916285410441297152/
+    source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
+- program_compile_finished:
+    id: 0
+    timestamp_ns: 1794024062743604276
+    duration_ns: 1466998101
+- program_destroyed:
+    id: 0
+    timestamp_ns: 1794024062810050197
