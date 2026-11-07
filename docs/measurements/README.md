@@ -28,6 +28,15 @@ records exact-image wheel/SFPI asset inventories and the separate
 `p1-runtime-root-v1` identity. It adds no hardware result or retry authority;
 the original startup-failure artifacts remain unchanged.
 
+After renewed owner approval, `p1-runtime-root-v1` at `9d5025a` reached native
+result parsing but failed there with wrapper exit 2. The
+[separate immutable attempt](2026-11-07-p150a-issue120-p1-runtime-root-v1-failure.json)
+and [interpretation](2026-11-07-p150a-issue120-p1-runtime-root-v1-failure.md)
+retain the new environment, lifecycle, health, power, Watcher and inspector
+artifacts. P2-P7 were stopped, no reset/retry followed, and Q1-Q4 remain
+unresolved. Native streams were not retained by the failed parser; plausible
+trailing logs are not a proven diagnosis. Result framing is tracked in #175.
+
 ## Issue #137 duration-bounded runner (revision 2)
 
 The board-free planning command prints the immutable configurations and their

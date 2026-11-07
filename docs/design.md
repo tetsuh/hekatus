@@ -2169,6 +2169,12 @@ are checked before spawning native code. The
 uses a separate attempt identity and retains Watcher/60-second caps. It is not
 authorization to retry. No source/image parity, hardware validation or
 unsupported-mechanism conclusion follows from this initialization correction.
+The subsequently authorized `p1-runtime-root-v1` attempt at `9d5025a` stopped
+with a wrapper JSON-result capture failure. Its
+[separate record](measurements/2026-11-07-p150a-issue120-p1-runtime-root-v1-failure.json)
+retains Watcher/inspector diagnostics but no usable completion/window verdict.
+No reset/retry or P2-P7 followed; mechanism selection remains unresolved.
+Issue #175 tracks native output retention/framing before any future retry.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 
