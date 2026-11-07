@@ -714,7 +714,7 @@ unconditional per-device result. No host setting or kernel command line was
 changed, no capability query was executed, and source/image parity remains
 unasserted. See the linked source audit for conditions and limitations.
 
-### Issue #178 board-free startup diagnosis: root unresolved
+### Issue #178 initial startup diagnosis (superseded by the lock finding below)
 
 The [startup diagnosis and bounded diagnostic proposal](issue178-startup-diagnostic-plan.md)
 verifies the saved P6 artifacts and traces source order without claiming a
@@ -732,4 +732,38 @@ all fixed work. P7 remains gated on healthy P6 and causal frame coverage.
 These proposal identities are not runnable diagnostic builds: implementation,
 committed revision/native fingerprint, tests and renewed owner approval are
 required first. No new board invocation, directory, workload or automatic retry
-is created by this plan. Full production gates remain unmet.
+is created by that initial proposal. Full production gates remain unmet.
+
+### Confirmed shared-API-lock correction and independent semaphore diagnostic
+
+The [preserved #178 plan](issue178-startup-diagnostic-plan.md) now incorporates
+the source-confirmed lock chain and saved P6 timing/sequence evidence. One
+MeshDevice `api_mutex_` covers finish and writes across its CQs. P6's CQ0 finish
+blocked active CQ1 response enqueueing until the resident wait returned. The
+implemented order is workload enqueue -> load-thread join -> CQ0 finish -> CQ1
+finish, with executable callable-seam RED/GREEN tests. Thread start stays before
+enqueue; no cap/count/CPU/frame/budget increase is made.
+
+**Production invariant:** never finish/Synchronize on one CQ while another
+thread still enqueues on the same MeshDevice. Distinct CQ IDs and nanobind GIL
+release do not avoid that shared mutex. The #118 runner has the conflicting
+thread/synchronize order; it is a candidate for the old roughly49-second waits,
+not a retroactively established cause of every calibration.
+
+The resident host endpoint is now explicitly a post-join finish-return upper
+bound, with join time separate. Validator scope checks prevent treating it as
+exact completion, and only existing card evidence can establish coverage.
+Producer start observation remains independently unresolved. The same precommit
+adds fixed post-finish semaphore/mailbox/final-progress snapshots and target/
+address/ID/inc/exit-tick diagnostics. No per-iteration logging or load MMIO work
+is added; diagnostic reads are accounted separately.
+
+New `p6-api-lock-semaphore-v1` / `p7-api-lock-semaphore-v1` retain original fixed
+work and60-second native/outer caps; P6 Watcher on, P7 off only after healthy P6
+coverage. Predictions distinguish successful gate/frames, gate success with
+producer start1/abort, and start0/target mismatch. Fixed262144 repetitions are
+predicted to span frames at the prior post-release reference rate (~8.7 seconds
+host work versus~4.6 seconds dispatch/startup/frame span), not a real-time clock
+guarantee. A genuine early host finish yields actual not_covered, not a bug or
+permission to increase counts. Both attempts require published native fingerprint
+and renewed owner approval; no board rerun occurs in this correction.

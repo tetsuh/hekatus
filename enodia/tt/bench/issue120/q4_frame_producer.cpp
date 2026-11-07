@@ -55,6 +55,8 @@ void kernel_main() {
         clock.atomics_complete();
         ++produced;
     }
+    const uint32_t exit_start_raw = *start;
+    const uint64_t exited = clock.read();
     cb_reserve_back(0, 1);
     const uint32_t scratch = get_write_ptr(0);
     auto* result = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(scratch);
@@ -64,6 +66,11 @@ void kernel_main() {
     result[2] = overflow;
     result[3] = aborted;
     result[4] = clock.ambiguous;
+    result[5] = exit_start_raw;
+    result[6] = uint32_t(get_semaphore(start_id));
+    result[7] = uint32_t(opened); result[8] = uint32_t(opened >> 32);
+    result[9] = uint32_t(exited); result[10] = uint32_t(exited >> 32);
+    result[11] = uint32_t(get_semaphore(0));
     noc_async_write_page(0, stats, scratch);
     clock.writes_complete();
     cb_push_back(0, 1);

@@ -2,6 +2,8 @@
 // Q4 uses real ring frames and independently running fixed CPU/H2D work.
 #include "q4_frame_probe.hpp"
 #include "q4_protocol.hpp"
+#include "q4_host_sequence.hpp"
+#include "distributed/mesh_workload_impl.hpp"
 #include <tt-metalium/distributed.hpp>
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/mesh_buffer.hpp>
@@ -99,10 +101,13 @@ void scratch(Program& program, CoreCoord core, uint32_t pages) {
         CircularBufferConfig(pages * page_bytes, {{0, tt::DataFormat::UInt32}}).set_page_size(0, page_bytes));
 }
 
-MeshWorkload workload(MeshDevice& mesh, const Resources& buffers, uint32_t repeats) {
+MeshWorkload workload(MeshDevice& mesh, const Resources& buffers, uint32_t repeats,
+                      std::array<uint32_t, 4>& semaphore_ids) {
     Program program = CreateProgram();
     const CoreRangeSet pair({CoreRange{producer_core, consumer_core}});
-    for (uint32_t index = 0; index < 4; ++index) { CreateSemaphore(program, pair, 0); }
+    for (uint32_t index = 0; index < semaphore_ids.size(); ++index) {
+        semaphore_ids[index] = CreateSemaphore(program, pair, 0);
+    }
     scratch(program, producer_core, 1);
     scratch(program, consumer_core, 2);
     std::vector<uint32_t> producer_args;
@@ -138,12 +143,15 @@ struct HostLoad {
     std::exception_ptr error;
 };
 
-void read_challenge(IDevice* device, uint32_t mailbox, std::span<uint8_t> destination) {
-    // The mailbox is device-owned and fenced by its writer. No device-wide
-    // host-write flush or CQ completion is needed for this targeted read.
-    const auto core = device->virtual_core_from_logical_core(consumer_core, tt::CoreType::WORKER);
+void read_l1(IDevice* device, CoreCoord logical, uint32_t address, std::span<uint8_t> destination) {
+    const auto core = device->virtual_core_from_logical_core(logical, tt::CoreType::WORKER);
     tt::tt_metal::MetalContext::instance().get_cluster().read_core(
-        destination.data(), uint32_t(destination.size()), tt_cxy_pair(device->id(), core), mailbox);
+        destination.data(), uint32_t(destination.size()), tt_cxy_pair(device->id(), core), address);
+}
+
+void read_challenge(IDevice* device, uint32_t mailbox, std::span<uint8_t> destination) {
+    // Targeted read: no CQ finish and no device-wide host-write flush.
+    read_l1(device, consumer_core, mailbox, destination);
 }
 
 void traffic(MeshCommandQueue& queue, const std::shared_ptr<MeshBuffer>& progress,
@@ -192,6 +200,68 @@ uint64_t ticks(const uint32_t* words, uint32_t index) {
     return uint64_t(words[index]) | (uint64_t(words[index + 1]) << 32);
 }
 
+Json startup_diagnostics(MeshDevice& mesh, MeshWorkload& program, const Resources& buffers,
+                         const std::vector<uint32_t>& producer, const std::vector<uint32_t>& consumer,
+                         const std::array<uint32_t, 4>& semaphore_ids) {
+    auto* device = mesh.get_devices().at(0);
+    auto shared_mesh = mesh.shared_from_this();
+    const auto& hal = MetalContext::instance().hal();
+    const uint32_t alignment = hal.get_alignment(HalMemType::L1);
+    // In v0.75 this is a relocated kernel-config base plus program sem_offset,
+    // not a static HAL SEMAPHORE address. Query the workload's actual CQ slot.
+    const uint32_t base = program.impl().get_sem_base_addr(shared_mesh, producer_core, tt::CoreType::WORKER);
+    uint32_t reads = 0;
+    auto word = [&](CoreCoord core, uint32_t address) {
+        uint32_t value = 0;
+        read_l1(device, core, address, std::span<uint8_t>(reinterpret_cast<uint8_t*>(&value), sizeof(value)));
+        ++reads;
+        return value;
+    };
+    const auto producer_words = issue120_q4_host::semaphore_words(base, alignment,
+        [&](uint32_t address) { return word(producer_core, address); });
+    const auto consumer_words = issue120_q4_host::semaphore_words(base, alignment,
+        [&](uint32_t address) { return word(consumer_core, address); });
+    const uint32_t mailbox = word(consumer_core, uint32_t(buffers.mailbox->address()));
+    const auto core = device->virtual_core_from_logical_core(producer_core, tt::CoreType::WORKER);
+    const uint64_t expected = issue120_q4_host::start_target(core.x, core.y, base, alignment);
+    const uint64_t emitted = ticks(consumer.data(), 18);
+    const uint64_t l1_base = hal.get_dev_addr(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::BASE);
+    const uint64_t l1_size = hal.get_dev_size(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::BASE);
+    const bool reported_valid = producer[6] >= l1_base && uint64_t(producer[6]) + 4 <= l1_base + l1_size;
+    Json reported_word = nullptr;
+    if (reported_valid) {
+        reported_word = producer[6] == base + 2 * alignment ? producer_words[2] : word(producer_core, producer[6]);
+    }
+    const auto final_progress = download(mesh.mesh_command_queue(1), buffers.progress, 1);
+    const uint32_t encoded = final_progress[0];
+    bool valid = protocol::unpack_sequence(encoded) > 0;
+    for (uint32_t i = 1; i < page_words; ++i) { valid &= final_progress[i] == protocol::word(encoded, i); }
+    return {
+        {"schema", "issue178-startup-diagnostics-v1"}, {"scope", "post_join_and_both_finishes_not_coverage"},
+        {"semaphore_ids", semaphore_ids}, {"kernel_assumed_ids", {0, 1, 2, 3}},
+        {"hal_kernel_config_base", hal.get_dev_addr(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::KERNEL_CONFIG)},
+        {"resolved_semaphore_base", base}, {"l1_alignment", alignment},
+        {"producer_virtual_core", {core.x, core.y}},
+        {"expected_start_target", expected}, {"consumer_emitted_start_target", emitted},
+        {"start_target_matches", expected == emitted},
+        {"bank_coordinate_matches", (expected & issue120_q4_host::coordinate_mask) == (emitted & issue120_q4_host::coordinate_mask)},
+        {"producer_semaphores", producer_words}, {"consumer_semaphores", consumer_words},
+        {"producer_exit_start_raw", producer[5]}, {"producer_start_address", producer[6]},
+        {"producer_start_address_matches", producer[6] == base + 2 * alignment},
+        {"producer_reported_address_valid", reported_valid}, {"producer_reported_start_post_finish", reported_word},
+        {"producer_opened_ticks", ticks(producer.data(), 7)}, {"producer_exit_ticks", ticks(producer.data(), 9)},
+        {"producer_semaphore_base", producer[11]}, {"producer_abort", producer[3]},
+        {"consumer_semaphore_base", consumer[22]}, {"consumer_abort", consumer[14]},
+        {"consumer_start_inc_ticks", ticks(consumer.data(), 20)},
+        {"consumer_mailbox_address", consumer[23]}, {"consumer_exit_mailbox_readback", consumer[24]},
+        {"mailbox_post_finish", mailbox}, {"mailbox_expected", 2},
+        {"progress_post_drain", {{"sequence", protocol::unpack_sequence(encoded)},
+                                 {"challenge", protocol::unpack_challenge(encoded)}, {"valid", valid}}},
+        {"diagnostic_mmio_reads", reads}, {"diagnostic_mmio_bytes", 4 * reads},
+        {"diagnostic_progress_read_bytes", page_bytes},
+        {"interpretation", "post-finish 1 means present, not proof of arrival time; compare exit value/ticks; 0 requires target comparison, not a guessed cause"}};
+}
+
 Json frame_rows(const std::vector<uint32_t>& words, uint32_t consumed) {
     if (consumed > frame_count) { throw std::runtime_error("invalid consumer frame count"); }
     Json rows = Json::array();
@@ -216,7 +286,8 @@ nlohmann::json run_frame_coverage_probe(
     }
     partition(mesh);
     auto buffers = resources(mesh);
-    auto program = workload(mesh, buffers, repeats);
+    std::array<uint32_t, 4> semaphore_ids{};
+    auto program = workload(mesh, buffers, repeats, semaphore_ids);
     auto& cq0 = mesh.mesh_command_queue(0);
     auto& cq1 = mesh.mesh_command_queue(1);
     std::vector<uint32_t> payload(page_words, 0);
@@ -229,19 +300,17 @@ nlohmann::json run_frame_coverage_probe(
     std::jthread load_thread([&] {
         traffic(cq1, buffers.progress, physical_device, uint32_t(buffers.mailbox->address()), repeats, payload, load);
     });
-    const uint64_t submitted = now_ns();
-    EnqueueMeshWorkload(cq0, program, false);
     const std::array<SubDeviceId, 1> resident_ids{SubDeviceId{0}};
-    cq0.finish(ttsl::Span<const SubDeviceId>(resident_ids));
-    const uint64_t resident_finished = now_ns();
-    load_thread.join();
-    if (load.error) { std::rethrow_exception(load.error); }
-    const uint64_t drain_started = now_ns();
     const std::array<SubDeviceId, 1> transfer_ids{SubDeviceId{1}};
-    cq1.finish(ttsl::Span<const SubDeviceId>(transfer_ids));
-    const uint64_t drained = now_ns();
+    const auto schedule = issue120_q4_host::execute_sequence(
+        [&] { EnqueueMeshWorkload(cq0, program, false); },
+        [&] { load_thread.join(); if (load.error) { std::rethrow_exception(load.error); } },
+        [&] { cq0.finish(ttsl::Span<const SubDeviceId>(resident_ids)); },
+        [&] { cq1.finish(ttsl::Span<const SubDeviceId>(transfer_ids)); },
+        now_ns);
     const auto producer = download(cq0, buffers.producer_stats, 1);
     const auto consumer = download(cq0, buffers.consumer_stats, 1);
+    const auto diagnostics = startup_diagnostics(mesh, program, buffers, producer, consumer, semaphore_ids);
     const auto raw_frames = download(cq0, buffers.frames, frame_count);
     const Json rows = frame_rows(raw_frames, consumer[0]);
     Json evidence = {
@@ -265,9 +334,13 @@ nlohmann::json run_frame_coverage_probe(
         {"probe_id", "q4-frame-coverage"}, {"status", "not_evaluable"},
         {"not_evaluable_reason", "card-side frame coverage requires validation"}, {"errors", Json::array()},
         {"resident_interval", {{"start_ticks", first}, {"end_ticks", last}, {"clock", "consumer_low32_wrap_tracked"}}},
-        {"resident_host_interval", {{"start_ns", submitted}, {"end_ns", resident_finished}}},
+        {"resident_host_interval", {{"start_ns", schedule.submitted}, {"end_ns", schedule.resident_finished},
+                                    {"scope", "enqueue_to_post_join_finish_return_upper_bound"}}},
+        {"host_scheduling", {{"policy", "join_before_any_finish"}, {"load_join_completed_ns", schedule.joined},
+                             {"resident_finish_returned_ns", schedule.resident_finished}}},
+        {"startup_diagnostics", diagnostics},
         {"host_interval", {{"start_ns", load.start_ns}, {"end_ns", load.end_ns}}},
-        {"final_drain_interval", {{"start_ns", drain_started}, {"end_ns", drained}}},
+        {"final_drain_interval", {{"start_ns", schedule.drain_started}, {"end_ns", schedule.drained}}},
         {"work", {{"repeat_count", repeats}, {"transfer_count", repeats},
                   {"bytes_per_transfer", page_bytes}, {"bytes_total", uint64_t(repeats) * page_bytes},
                   {"host_mmio_reads", repeats}, {"host_mmio_payload_bytes", uint64_t(repeats) * sizeof(uint32_t)},

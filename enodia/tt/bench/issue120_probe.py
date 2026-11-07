@@ -621,7 +621,26 @@ def _validate_legacy_q4(record: dict[str, Any]) -> None:
         raise ProbeRecordError("Q4 cannot claim full-window coverage from one payload witness")
 
 
+def _validate_frame_host_scope(record: dict[str, Any]) -> None:
+    program = record.get("resident_host_interval", {})
+    scheduling = record.get("host_scheduling")
+    if not isinstance(program, dict):
+        raise ProbeRecordError("Q4 host scope metadata must be an object")
+    if scheduling is None and "scope" not in program:
+        return  # Historical records retain their original host metadata.
+    if not isinstance(scheduling, dict) or scheduling.get("policy") != "join_before_any_finish":
+        raise ProbeRecordError("Q4 post-join host scope requires explicit scheduling semantics")
+    if program.get("scope") != "enqueue_to_post_join_finish_return_upper_bound":
+        raise ProbeRecordError("Q4 post-join host scope is an upper bound, not resident completion")
+    times = [program.get("start_ns"), scheduling.get("load_join_completed_ns"), program.get("end_ns")]
+    if not all(type(value) is int and value >= 0 for value in times) or times != sorted(times):
+        raise ProbeRecordError("Q4 post-join host scope timestamps are invalid")
+    if scheduling.get("resident_finish_returned_ns") != program["end_ns"]:
+        raise ProbeRecordError("Q4 post-join host scope endpoint differs from finish return")
+
+
 def _validate_frame_probe(record: dict[str, Any]) -> None:
+    _validate_frame_host_scope(record)
     evidence = record.get("frame_coverage", {})
     if not isinstance(evidence, dict):
         raise ProbeRecordError("Q4 frame evidence must be an object")

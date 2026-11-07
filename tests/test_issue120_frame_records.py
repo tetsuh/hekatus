@@ -71,6 +71,28 @@ def valid_record():
     }
 
 
+def test_post_join_host_scope_cannot_claim_exact_resident_completion(valid_record):
+    value = copy.deepcopy(valid_record)
+    value["host_scheduling"] = {"policy": "join_before_any_finish", "load_join_completed_ns": 8,
+                                "resident_finish_returned_ns": 10}
+    value["resident_host_interval"] = {"start_ns": 1, "end_ns": 10, "scope": "exact_resident_completion"}
+    with pytest.raises(probe.ProbeRecordError, match="host.*scope"):
+        probe.validate_probe_record(value)
+
+
+def test_optional_diagnostics_and_upper_bound_cannot_replace_card_coverage(valid_record):
+    value = copy.deepcopy(valid_record)
+    value["host_scheduling"] = {"policy": "join_before_any_finish", "load_join_completed_ns": 8,
+                                "resident_finish_returned_ns": 10}
+    value["resident_host_interval"] = {"start_ns": 1, "end_ns": 10,
+                                       "scope": "enqueue_to_post_join_finish_return_upper_bound"}
+    value["startup_diagnostics"] = {"mailbox_post_finish": 2, "producer_semaphores": [0, 0, 1, 0]}
+    assert probe.validate_probe_record(value) == []
+    value["frame_coverage"]["frames"][0]["response_challenge"] = 0
+    with pytest.raises(probe.ProbeRecordError, match="coverage"):
+        probe.validate_probe_record(value)
+
+
 def test_full_record_requires_all_frames_and_ignores_host_envelope(valid_record):
     assert probe.validate_probe_record(valid_record) == []
     value = copy.deepcopy(valid_record)

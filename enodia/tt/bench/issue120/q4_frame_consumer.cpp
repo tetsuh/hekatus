@@ -106,7 +106,9 @@ void kernel_main() {
     const uint64_t load_start = left.start;
     uint32_t token = 2;
     uint64_t challenge_issued = issue_challenge(mailbox, token, clock);
-    noc_semaphore_inc(producer | get_semaphore(start_id), 1);
+    const uint64_t start_target = producer | get_semaphore(start_id);
+    const uint64_t start_inc_ticks = clock.read();
+    noc_semaphore_inc(start_target, 1);
     clock.atomics_complete();
     uint32_t consumed = 0;
     uint32_t aborted = 0;
@@ -172,6 +174,11 @@ void kernel_main() {
     row[15] = startup.challenge;
     row[16] = token;
     row[17] = tail.challenge;
+    row[18] = uint32_t(start_target); row[19] = uint32_t(start_target >> 32);
+    row[20] = uint32_t(start_inc_ticks); row[21] = uint32_t(start_inc_ticks >> 32);
+    row[22] = uint32_t(get_semaphore(0));
+    row[23] = uint32_t(get_arg_val<uint32_t>(11));
+    row[24] = *mailbox;
     noc_async_write_page(0, stats, record_address);
     clock.writes_complete();
     cb_push_back(0, 2);

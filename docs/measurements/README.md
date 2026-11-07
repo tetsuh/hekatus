@@ -64,7 +64,12 @@ The later [board-free #178 diagnosis and diagnostic proposal](issue178-startup-d
 traces initialization/publication/read order and the two abort flags without
 claiming a causal root or modifying records. CPU-only host-loop replay is
 characterization, not device validation. Proposed new startup-trace identities
-remain non-executable until diagnostic implementation and renewed approval.
+were non-executable until diagnostic implementation and renewed approval.
+That preserved plan now records the confirmed per-MeshDevice API-lock starvation
+fix (join before finish) and the independent semaphore observation diagnostics.
+New API-lock/semaphore P6/P7 precommits retain60-second caps/P6 Watcher, strict
+coverage and fixed work. They remain unexecuted pending renewed owner approval;
+no historical measurement bytes are changed.
 
 ## Issue #137 duration-bounded runner (revision 2)
 

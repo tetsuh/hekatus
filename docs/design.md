@@ -2209,8 +2209,8 @@ Q4 and adoption remain unresolved (#178). Board-free #177 source evidence
 shows that effective identity/passthrough IOMMU groups (or non-DMA/unreadable
 group type) lead to a zero capability tuple; the boot token alone is not the
 per-device condition. No host configuration or kernel command line was changed.
-The [board-free #178 diagnosis/proposal](measurements/issue178-startup-diagnostic-plan.md)
-subsequently verified the saved P6 bytes and source ordering. Abort total 2 is
+The initial [board-free #178 diagnosis/proposal](measurements/issue178-startup-diagnostic-plan.md)
+at `bba8502` verified the saved P6 bytes and source ordering. Abort total 2 is
 two binary wait-budget flags, not one stage code. Initial zero host responses
 are possible before workload enqueue; saved responses do not record all raw
 mailbox reads. No causal root was established from the retained fields. CPU-only
@@ -2219,7 +2219,22 @@ but shows why zero echoes alone cannot identify publication versus target/other
 visibility paths. Production startup/validator/counts/caps remain unchanged.
 The proposed bounded stage/mailbox trace and new conditional P6/P7 identities
 are not implemented probes or execution authorization; diagnosis/diagnostic
-implementation and owner approval are additional gates before any retry.
+implementation and owner approval were additional gates before any retry.
+That unresolved-root assessment was subsequently corrected: v0.75.0 holds one
+MeshDevice API mutex across CQ0 finish and CQ1 buffer writes. P6's main-thread
+finish therefore starved its active load thread for the resident wait, explaining
+the stationary response stream. Production must never finish/Synchronize a CQ
+while another thread still enqueues on the same MeshDevice; another CQ or a
+released Python GIL does not remove that mutex. Q4 now uses a callable enqueue/
+join/finish sequence. Its host envelope is explicitly a post-join finish-return
+upper bound, not a resident completion timestamp; coverage remains card-only.
+Producer start observation is an independent open item. Fixed post-finish
+semaphore/mailbox/progress snapshots, emitted/expected/polled addresses, actual
+IDs and split abort/tick fields are added without changing work or validator
+gates. The preserved plan precommits `p6-api-lock-semaphore-v1` / P7 counterpart
+at60 seconds (P6 Watcher on), conditional on renewed owner approval. #118's
+actual runner also synchronizes CQ0 before joining its host thread, a source-
+backed candidate for historical waits, not retrospective proof for each run.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

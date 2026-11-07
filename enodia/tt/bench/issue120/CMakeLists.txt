@@ -33,7 +33,8 @@ if(NOT UMD_COORDINATE_SHA256 STREQUAL "80ad8fc434b617c13b2b58a3c5a95b740fc3d8705
 endif()
 
 if(NOT EXISTS "${TT_METAL_SOURCE_ROOT}/tt_metal/impl/context/metal_context.hpp"
-   OR NOT EXISTS "${TT_METAL_SOURCE_ROOT}/tt_metal/llrt/tt_cluster.hpp")
+   OR NOT EXISTS "${TT_METAL_SOURCE_ROOT}/tt_metal/llrt/tt_cluster.hpp"
+   OR NOT EXISTS "${TT_METAL_SOURCE_ROOT}/tt_metal/distributed/mesh_workload_impl.hpp")
     message(FATAL_ERROR "Stage the pinned internal headers for targeted L1 observation")
 endif()
 
@@ -77,6 +78,7 @@ target_include_directories(issue120_probe PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/generated"
     "${TT_METAL_SOURCE_ROOT}"
     "${TT_METAL_SOURCE_ROOT}/tt_metal"
+    "${TT_METAL_SOURCE_ROOT}/tt_metal/impl"
     "${TT_METAL_SOURCE_ROOT}/tt_metal/api/tt-metalium"
     "${TT_METAL_SOURCE_ROOT}/tt_metal/api"
     "${TT_METAL_SOURCE_ROOT}/tt_metal/hostdevcommon/api"
