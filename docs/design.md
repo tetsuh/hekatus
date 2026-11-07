@@ -2199,6 +2199,16 @@ with direct code 2 and retained raw streams. It is not proof of unsupported
 hardware; returned limits were not logged (#177). P5-P7 remain unrun, with no
 reset/retry. Ordinary CQ1 is preferred but unadopted until causal real-frame
 coverage, long-run protocol validation and same-session production gates pass.
+The [separately authorized ordinary-CQ1 continuation](measurements/2026-11-07-p150a-issue120-run5.md)
+at `2eefe9a` left P4 untouched. P5 detected the predicted insufficient-work
+falsifier and continued under the explicit exception. P6 then returned
+not_evaluable with startup challenge response 0, abort 2 and zero frames,
+despite normal process exits and clean Watcher diagnostics. P7's healthy-P6
+gate was unmet, so it and production were not run; reset/retry remained zero.
+Q4 and adoption remain unresolved (#178). Board-free #177 source evidence
+shows that effective identity/passthrough IOMMU groups (or non-DMA/unreadable
+group type) lead to a zero capability tuple; the boot token alone is not the
+per-device condition. No host configuration or kernel command line was changed.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

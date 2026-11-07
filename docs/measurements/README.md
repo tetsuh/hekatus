@@ -52,7 +52,14 @@ retain the pre-board #146 warning verification accepted under #176,
 [P2 transfer-only overlap](2026-11-07-p150a-issue120-p2.json),
 [P3 fixed write-only completion](2026-11-07-p150a-issue120-p3.json), and
 [P4 pinned-capacity rejection](2026-11-07-p150a-issue120-p4.json).
-P5-P7 stopped without reset/retry; Q3 is blocked and Q4/adoption remain unresolved.
+P5-P7 stopped without reset/retry; Q3 was blocked and Q4/adoption unresolved.
+The later [run 5 record](2026-11-07-p150a-issue120-run5.json) and
+[interpretation/conditional production precommit proposal](2026-11-07-p150a-issue120-run5.md)
+retain [P5's predicted falsifier](2026-11-07-p150a-issue120-p5.json) and
+[P6's not-evaluable startup gate](2026-11-07-p150a-issue120-p6.json).
+P7 was not run; no reset/retry/P4 rerun followed. Q4 and production adoption
+remain blocked. The [#177 source audit](2026-11-07-p150a-issue120-run5-pinning-source-audit.md)
+records conditional passthrough/zero-capability behavior without host changes.
 
 ## Issue #137 duration-bounded runner (revision 2)
 

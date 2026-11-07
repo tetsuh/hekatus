@@ -681,3 +681,35 @@ coverage, fixed-count calibration if needed, and widened non-aliasing protocol
 validation before any 500,000-frame same-session control/load precommit. See
 the run 4 interpretation for caps, Watcher and evidence gates; no additional
 identity or workload is authorized here.
+
+### Ordinary-CQ1 P5/P6 continuation and unmet startup gate
+
+The owner separately authorized unchanged P5-P7 at clean/pushed `2eefe9a`,
+selecting ordinary unpinned CQ1 for feasibility and explicitly excluding a P4
+retry. The [run 5 result](2026-11-07-p150a-issue120-run5.json) and
+[interpretation](2026-11-07-p150a-issue120-run5.md) preserve the exact work and
+predictions. P5 returned the predicted `not_covered` insufficient-work falsifier;
+under the explicit exception, this did not stop P6.
+
+P6's native/wrapper/container exits were 0, but startup response challenge was
+0, the producer gate was false, `aborted=2`, and no frames were produced,
+consumed or attempted. Coverage is not_evaluable, not successful coverage or
+evidence that merely increasing fixed work will help. P7 requires a healthy
+P6 instrument and therefore was not run. Watcher anomaly scans and new-warning
+checks were clean, both cards returned healthy at 800 MHz and no containers
+remained. No reset, retry, P4 rerun or production run occurred.
+
+Q4 diagnosis is tracked in #178. Any corrected startup validation needs closed
+invariants/RED tests and a newly precommitted bounded attempt after diagnosis;
+this plan does not create one or authorize hardware access. Production still
+requires real-frame causal coverage, a functional no-Watcher comparison,
+non-aliasing long-run protocol validation and same-session control/load gates.
+The run 5 interpretation specifies the conditional 500000-frame/600-second
+proposal and missing gates.
+
+After all physical work ended, #177 was evaluated from exact tag/gitlinked UMD
+source: effective identity/passthrough or unreadable/non-DMA group type causes
+false IOMMU detection and early `{0,0,false}`; global `iommu=pt` alone is not an
+unconditional per-device result. No host setting or kernel command line was
+changed, no capability query was executed, and source/image parity remains
+unasserted. See the linked source audit for conditions and limitations.
