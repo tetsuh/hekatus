@@ -2,8 +2,41 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <stdexcept>
+#include <vector>
+#include "q4_runtime_args.hpp"
 
 namespace issue120_q4_host {
+struct CoreXY { uint32_t x; uint32_t y; };
+struct PeerCoordinates { CoreXY producer; CoreXY consumer; };
+
+template <typename Translate>
+PeerCoordinates resolve_peer_coordinates(CoreXY producer, CoreXY consumer, Translate translate) {
+    return {translate(producer), translate(consumer)};
+}
+
+constexpr uint32_t pack_coordinate(CoreXY core) {
+    return ((core.x & 0xff) << 8) | (core.y & 0xff);
+}
+
+constexpr const char* coordinate_classification(uint32_t kernel_word, CoreXY accessor, CoreXY expected) {
+    if (kernel_word != pack_coordinate(expected)) { return "C"; }
+    return accessor.x == expected.x && accessor.y == expected.y ? "A" : "B";
+}
+
+template <typename Resolve>
+PeerCoordinates append_peer_runtime_args(std::vector<uint32_t>& producer, std::vector<uint32_t>& consumer,
+                                         Resolve resolve) {
+    using namespace issue120_q4_args;
+    if (producer.size() != Producer::peer_x || consumer.size() != Consumer::peer_x) {
+        throw std::invalid_argument("Q4 runtime argument prefix changed");
+    }
+    const auto coordinates = resolve();
+    producer.insert(producer.end(), {coordinates.consumer.x, coordinates.consumer.y});
+    consumer.insert(consumer.end(), {coordinates.producer.x, coordinates.producer.y});
+    return coordinates;
+}
+
 struct SequenceTimes {
     uint64_t submitted;
     uint64_t joined;

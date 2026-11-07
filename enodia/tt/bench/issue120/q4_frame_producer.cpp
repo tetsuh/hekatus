@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Actual fixed-size frames, paced independently of the transfer progress path.
 #include "q4_clock.hpp"
+#include "q4_runtime_args.hpp"
 
 using namespace issue120_q4;
 
@@ -16,7 +17,9 @@ void kernel_main() {
     constexpr auto stats_args = TensorAccessorArgs<ring_args.next_compile_time_args_offset()>();
     const auto ring = TensorAccessor(ring_args, ring_address);
     const auto stats = TensorAccessor(stats_args, stats_address);
-    const uint64_t consumer = ring.get_noc_addr(0) & coordinate_mask;
+    const uint32_t peer_x = get_arg_val<uint32_t>(issue120_q4_args::Producer::peer_x);
+    const uint32_t peer_y = get_arg_val<uint32_t>(issue120_q4_args::Producer::peer_y);
+    const uint64_t ready_target = get_noc_addr(peer_x, peer_y, get_semaphore(ready_id));
     auto* start = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(get_semaphore(start_id));
     auto* freed = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(get_semaphore(free_id));
     Clock clock;
@@ -46,12 +49,13 @@ void kernel_main() {
         for (uint32_t word = 0; word < page_words; ++word) {
             payload[word] = frame_word(frame, word);
         }
-        noc_async_write_page(produced % ring_pages, ring, scratch);
+        noc_async_write(scratch,
+            get_noc_addr(peer_x, peer_y, ring_address + (produced % ring_pages) * page_bytes), page_bytes);
         clock.writes_complete();
         cb_push_back(0, 1);
         cb_wait_front(0, 1);
         cb_pop_front(0, 1);
-        noc_semaphore_inc(consumer | get_semaphore(ready_id), 1);
+        noc_semaphore_inc(ready_target, 1);
         clock.atomics_complete();
         ++produced;
     }
@@ -71,11 +75,22 @@ void kernel_main() {
     result[7] = uint32_t(opened); result[8] = uint32_t(opened >> 32);
     result[9] = uint32_t(exited); result[10] = uint32_t(exited >> 32);
     result[11] = uint32_t(get_semaphore(0));
+    // Snapshot only: accessor coordinates never determine a peer destination.
+    constexpr auto coordinate_offset = issue120_q4_args::producer_coordinate_stats;
+    const uint64_t accessor_raw = ring.get_noc_addr(0);
+    result[coordinate_offset] = ring_args.BankCoordsCTAOffset;
+    result[coordinate_offset + 1] = get_compile_time_arg_val(ring_args.BankCoordsCTAOffset);
+    result[coordinate_offset + 2] = uint32_t(accessor_raw);
+    result[coordinate_offset + 3] = uint32_t(accessor_raw >> 32);
+    result[coordinate_offset + 4] = my_x[0]; result[coordinate_offset + 5] = my_y[0];
+    result[coordinate_offset + 6] = peer_x; result[coordinate_offset + 7] = peer_y;
+    result[coordinate_offset + 8] = uint32_t(ready_target);
+    result[coordinate_offset + 9] = uint32_t(ready_target >> 32);
     noc_async_write_page(0, stats, scratch);
     clock.writes_complete();
     cb_push_back(0, 1);
     cb_wait_front(0, 1);
     cb_pop_front(0, 1);
-    noc_semaphore_inc(consumer | get_semaphore(done_id), 1);
+    noc_semaphore_inc(get_noc_addr(peer_x, peer_y, get_semaphore(done_id)), 1);
     clock.atomics_complete();
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Real ring-frame work and transfer observation share this low-word-only clock.
 #include "q4_clock.hpp"
+#include "q4_runtime_args.hpp"
 
 using namespace issue120_q4;
 
@@ -69,7 +70,8 @@ void kernel_main() {
     const uint32_t period = get_arg_val<uint32_t>(6);
     const uint32_t ring_pages = get_arg_val<uint32_t>(7);
     const uint32_t repeat_count = get_arg_val<uint32_t>(8);
-    auto* mailbox = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(get_arg_val<uint32_t>(11));
+    auto* mailbox = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(
+        get_arg_val<uint32_t>(issue120_q4_args::Consumer::mailbox));
     const uint64_t budget = uint64_t(get_arg_val<uint32_t>(9)) |
         (uint64_t(get_arg_val<uint32_t>(10)) << 32);
     constexpr auto ring_args = TensorAccessorArgs<0>();
@@ -81,7 +83,8 @@ void kernel_main() {
     const auto progress = TensorAccessor(progress_args, progress_address);
     const auto frames = TensorAccessor(frames_args, frames_address);
     const auto stats = TensorAccessor(stats_args, stats_address);
-    const uint64_t producer = anchor.get_noc_addr(0) & coordinate_mask;
+    const uint32_t peer_x = get_arg_val<uint32_t>(issue120_q4_args::Consumer::peer_x);
+    const uint32_t peer_y = get_arg_val<uint32_t>(issue120_q4_args::Consumer::peer_y);
     auto* ready = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(get_semaphore(ready_id));
     auto* done = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(get_semaphore(done_id));
     cb_reserve_back(0, 2);
@@ -106,7 +109,7 @@ void kernel_main() {
     const uint64_t load_start = left.start;
     uint32_t token = 2;
     uint64_t challenge_issued = issue_challenge(mailbox, token, clock);
-    const uint64_t start_target = producer | get_semaphore(start_id);
+    const uint64_t start_target = get_noc_addr(peer_x, peer_y, get_semaphore(start_id));
     const uint64_t start_inc_ticks = clock.read();
     noc_semaphore_inc(start_target, 1);
     clock.atomics_complete();
@@ -148,7 +151,7 @@ void kernel_main() {
         row[17] = right.challenge;
         noc_async_write_page(consumed, frames, record_address);
         clock.writes_complete();
-        noc_semaphore_inc(producer | get_semaphore(free_id), 1);
+        noc_semaphore_inc(get_noc_addr(peer_x, peer_y, get_semaphore(free_id)), 1);
         clock.atomics_complete();
         // Observe the old generation, then issue a fresh CPU challenge after
         // this frame endpoint. A matching later response proves CPU work and
@@ -177,8 +180,19 @@ void kernel_main() {
     row[18] = uint32_t(start_target); row[19] = uint32_t(start_target >> 32);
     row[20] = uint32_t(start_inc_ticks); row[21] = uint32_t(start_inc_ticks >> 32);
     row[22] = uint32_t(get_semaphore(0));
-    row[23] = uint32_t(get_arg_val<uint32_t>(11));
+    row[23] = uint32_t(get_arg_val<uint32_t>(issue120_q4_args::Consumer::mailbox));
     row[24] = *mailbox;
+    // One final-row snapshot; no accessor coordinate is used for NoC traffic.
+    constexpr auto coordinate_offset = issue120_q4_args::consumer_coordinate_stats;
+    const uint64_t accessor_raw = anchor.get_noc_addr(0);
+    row[coordinate_offset] = anchor_args.BankCoordsCTAOffset;
+    row[coordinate_offset + 1] = get_compile_time_arg_val(anchor_args.BankCoordsCTAOffset);
+    row[coordinate_offset + 2] = uint32_t(accessor_raw);
+    row[coordinate_offset + 3] = uint32_t(accessor_raw >> 32);
+    row[coordinate_offset + 4] = my_x[0]; row[coordinate_offset + 5] = my_y[0];
+    row[coordinate_offset + 6] = peer_x; row[coordinate_offset + 7] = peer_y;
+    row[coordinate_offset + 8] = uint32_t(start_target);
+    row[coordinate_offset + 9] = uint32_t(start_target >> 32);
     noc_async_write_page(0, stats, record_address);
     clock.writes_complete();
     cb_push_back(0, 2);

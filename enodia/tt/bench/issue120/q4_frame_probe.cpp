@@ -91,8 +91,28 @@ Resources resources(MeshDevice& mesh) {
             l1(mesh, consumer_core, 1), dram(mesh, frame_count), dram(mesh, 1), dram(mesh, 1)};
 }
 
-void append_accessor(std::vector<uint32_t>& args, const std::shared_ptr<MeshBuffer>& buffer) {
+struct RoutingRecord {
+    issue120_q4_host::PeerCoordinates passed;
+    std::vector<uint32_t> producer_ring_compile_args;
+    std::vector<uint32_t> consumer_anchor_compile_args;
+    uint32_t consumer_anchor_bank_slot = 0;
+};
+
+issue120_q4_host::PeerCoordinates peer_coordinates(IDevice* device) {
+    using issue120_q4_host::CoreXY;
+    return issue120_q4_host::resolve_peer_coordinates(
+        CoreXY{producer_core.x, producer_core.y}, CoreXY{consumer_core.x, consumer_core.y},
+        [device](CoreXY logical) {
+            const auto core = device->virtual_core_from_logical_core({logical.x, logical.y}, tt::CoreType::WORKER);
+            return CoreXY{core.x, core.y};
+        });
+}
+
+void append_accessor(std::vector<uint32_t>& args, const std::shared_ptr<MeshBuffer>& buffer,
+                     std::vector<uint32_t>* captured = nullptr) {
     const auto extra = TensorAccessorArgs(*buffer).get_compile_time_args();
+    if (extra.empty()) { throw std::runtime_error("empty Q4 accessor compile arguments"); }
+    if (captured != nullptr) { *captured = extra; }
     args.insert(args.end(), extra.begin(), extra.end());
 }
 
@@ -102,7 +122,7 @@ void scratch(Program& program, CoreCoord core, uint32_t pages) {
 }
 
 MeshWorkload workload(MeshDevice& mesh, const Resources& buffers, uint32_t repeats,
-                      std::array<uint32_t, 4>& semaphore_ids) {
+                      std::array<uint32_t, 4>& semaphore_ids, RoutingRecord& routing) {
     Program program = CreateProgram();
     const CoreRangeSet pair({CoreRange{producer_core, consumer_core}});
     for (uint32_t index = 0; index < semaphore_ids.size(); ++index) {
@@ -111,10 +131,13 @@ MeshWorkload workload(MeshDevice& mesh, const Resources& buffers, uint32_t repea
     scratch(program, producer_core, 1);
     scratch(program, consumer_core, 2);
     std::vector<uint32_t> producer_args;
-    append_accessor(producer_args, buffers.ring);
+    append_accessor(producer_args, buffers.ring, &routing.producer_ring_compile_args);
     append_accessor(producer_args, buffers.producer_stats);
     std::vector<uint32_t> consumer_args;
-    for (const auto& buffer : {buffers.ring, buffers.anchor, buffers.progress, buffers.frames, buffers.consumer_stats}) {
+    append_accessor(consumer_args, buffers.ring);
+    append_accessor(consumer_args, buffers.anchor, &routing.consumer_anchor_compile_args);
+    routing.consumer_anchor_bank_slot = uint32_t(consumer_args.size() - 1);
+    for (const auto& buffer : {buffers.progress, buffers.frames, buffers.consumer_stats}) {
         append_accessor(consumer_args, buffer);
     }
     const auto producer = CreateKernel(program, source("q4_frame_producer.cpp"), producer_core,
@@ -123,14 +146,18 @@ MeshWorkload workload(MeshDevice& mesh, const Resources& buffers, uint32_t repea
     const auto consumer = CreateKernel(program, source("q4_frame_consumer.cpp"), consumer_core,
         DataMovementConfig{.processor = DataMovementProcessor::RISCV_0,
             .noc = NOC::RISCV_0_default, .compile_args = consumer_args});
-    SetRuntimeArgs(program, producer, producer_core,
-        {uint32_t(buffers.ring->address()), uint32_t(buffers.producer_stats->address()),
-         frame_count, frame_period, ring_pages, uint32_t(run_budget), uint32_t(run_budget >> 32)});
-    SetRuntimeArgs(program, consumer, consumer_core,
-        {uint32_t(buffers.ring->address()), uint32_t(buffers.anchor->address()),
-         uint32_t(buffers.progress->address()), uint32_t(buffers.frames->address()),
-         uint32_t(buffers.consumer_stats->address()), frame_count, frame_period, ring_pages,
-         repeats, uint32_t(run_budget), uint32_t(run_budget >> 32), uint32_t(buffers.mailbox->address())});
+    std::vector<uint32_t> producer_runtime{
+        uint32_t(buffers.ring->address()), uint32_t(buffers.producer_stats->address()),
+        frame_count, frame_period, ring_pages, uint32_t(run_budget), uint32_t(run_budget >> 32)};
+    std::vector<uint32_t> consumer_runtime{
+        uint32_t(buffers.ring->address()), uint32_t(buffers.anchor->address()),
+        uint32_t(buffers.progress->address()), uint32_t(buffers.frames->address()),
+        uint32_t(buffers.consumer_stats->address()), frame_count, frame_period, ring_pages,
+        repeats, uint32_t(run_budget), uint32_t(run_budget >> 32), uint32_t(buffers.mailbox->address())};
+    routing.passed = issue120_q4_host::append_peer_runtime_args(producer_runtime, consumer_runtime,
+        [&] { return peer_coordinates(mesh.get_devices().at(0)); });
+    SetRuntimeArgs(program, producer, producer_core, producer_runtime);
+    SetRuntimeArgs(program, consumer, consumer_core, consumer_runtime);
     MeshWorkload result;
     result.add_program(MeshCoordinateRange(mesh.shape()), std::move(program));
     return result;
@@ -200,9 +227,50 @@ uint64_t ticks(const uint32_t* words, uint32_t index) {
     return uint64_t(words[index]) | (uint64_t(words[index + 1]) << 32);
 }
 
+struct CoordinateExpectation {
+    issue120_q4_host::CoreXY self;
+    issue120_q4_host::CoreXY peer;
+    issue120_q4_host::CoreXY passed;
+    const std::vector<uint32_t>& host_cta;
+    uint32_t host_bank_slot;
+};
+
+Json coordinate_direction(const std::vector<uint32_t>& stats, uint32_t offset,
+                          const CoordinateExpectation& expected) {
+    const uint32_t packed = issue120_q4_host::pack_coordinate(expected.peer);
+    const uint64_t accessor = ticks(stats.data(), offset + 2);
+    const std::array<uint32_t, 2> peer{expected.peer.x, expected.peer.y};
+    const std::array<uint32_t, 2> passed{expected.passed.x, expected.passed.y};
+    const std::array<uint32_t, 2> runtime{stats[offset + 6], stats[offset + 7]};
+    const std::array<uint32_t, 2> accessor_xy{uint32_t((accessor >> 36) & 63), uint32_t((accessor >> 42) & 63)};
+    const uint64_t target = ticks(stats.data(), offset + 8);
+    const std::array<uint32_t, 2> target_xy{uint32_t((target >> 36) & 63), uint32_t((target >> 42) & 63)};
+    const bool word_matches = stats[offset + 1] == packed;
+    return {
+        {"host_expected_peer_virtual", peer}, {"host_passed_peer_runtime", passed},
+        {"host_expected_packed_word", packed}, {"host_accessor_compile_args", expected.host_cta},
+        {"host_actual_bank_word", expected.host_cta.back()}, {"host_global_bank_cta_slot", expected.host_bank_slot},
+        {"kernel_bank_cta_slot", stats[offset]}, {"kernel_bank_word", stats[offset + 1]},
+        {"kernel_word_matches_host_expected_pack", word_matches},
+        {"host_actual_word_matches_expected_pack", expected.host_cta.back() == packed},
+        {"kernel_word_matches_actual_host_cta", stats[offset + 1] == expected.host_cta.back()},
+        {"kernel_cta_slot_matches_host", stats[offset] == expected.host_bank_slot},
+        {"accessor_raw_noc_address", accessor}, {"accessor_coordinate", accessor_xy},
+        {"accessor_matches_virtual", accessor_xy == peer},
+        {"kernel_self_noc0", {stats[offset + 4], stats[offset + 5]}},
+        {"host_expected_self_virtual", {expected.self.x, expected.self.y}},
+        {"self_matches_virtual", stats[offset + 4] == expected.self.x && stats[offset + 5] == expected.self.y},
+        {"kernel_peer_runtime", runtime}, {"runtime_matches_virtual", runtime == peer},
+        {"runtime_matches_passed", runtime == passed}, {"passed_matches_diagnostic_virtual", passed == peer},
+        {"actual_target", target}, {"actual_target_coordinate", target_xy},
+        {"target_coordinate_matches_virtual", target_xy == peer},
+        {"accessor_diagnostic_branch", issue120_q4_host::coordinate_classification(
+            stats[offset + 1], {accessor_xy[0], accessor_xy[1]}, expected.peer)}};
+}
+
 Json startup_diagnostics(MeshDevice& mesh, MeshWorkload& program, const Resources& buffers,
                          const std::vector<uint32_t>& producer, const std::vector<uint32_t>& consumer,
-                         const std::array<uint32_t, 4>& semaphore_ids) {
+                         const std::array<uint32_t, 4>& semaphore_ids, const RoutingRecord& routing) {
     auto* device = mesh.get_devices().at(0);
     auto shared_mesh = mesh.shared_from_this();
     const auto& hal = MetalContext::instance().hal();
@@ -222,7 +290,8 @@ Json startup_diagnostics(MeshDevice& mesh, MeshWorkload& program, const Resource
     const auto consumer_words = issue120_q4_host::semaphore_words(base, alignment,
         [&](uint32_t address) { return word(consumer_core, address); });
     const uint32_t mailbox = word(consumer_core, uint32_t(buffers.mailbox->address()));
-    const auto core = device->virtual_core_from_logical_core(producer_core, tt::CoreType::WORKER);
+    const auto diagnostic_coordinates = peer_coordinates(device);
+    const auto core = diagnostic_coordinates.producer;
     const uint64_t expected = issue120_q4_host::start_target(core.x, core.y, base, alignment);
     const uint64_t emitted = ticks(consumer.data(), 18);
     const uint64_t l1_base = hal.get_dev_addr(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::BASE);
@@ -238,6 +307,17 @@ Json startup_diagnostics(MeshDevice& mesh, MeshWorkload& program, const Resource
     for (uint32_t i = 1; i < page_words; ++i) { valid &= final_progress[i] == protocol::word(encoded, i); }
     return {
         {"schema", "issue178-startup-diagnostics-v1"}, {"scope", "post_join_and_both_finishes_not_coverage"},
+        {"coordinate_diagnostics", {
+            {"schema", "issue178-coordinate-diagnostics-v2"}, {"scope", "final_stats_only_not_coverage"},
+            {"consumer_to_producer", coordinate_direction(consumer, issue120_q4_args::consumer_coordinate_stats,
+                {diagnostic_coordinates.consumer, diagnostic_coordinates.producer, routing.passed.producer,
+                 routing.consumer_anchor_compile_args, routing.consumer_anchor_bank_slot})},
+            {"producer_to_consumer", coordinate_direction(producer, issue120_q4_args::producer_coordinate_stats,
+                {diagnostic_coordinates.producer, diagnostic_coordinates.consumer, routing.passed.consumer,
+                 routing.producer_ring_compile_args, uint32_t(routing.producer_ring_compile_args.size() - 1)})},
+            {"producer_ready_target_used", producer[1] > 0},
+            {"runtime_arg_indices", {{"producer_peer", {issue120_q4_args::Producer::peer_x, issue120_q4_args::Producer::peer_y}},
+                                     {"consumer_peer", {issue120_q4_args::Consumer::peer_x, issue120_q4_args::Consumer::peer_y}}}}}},
         {"semaphore_ids", semaphore_ids}, {"kernel_assumed_ids", {0, 1, 2, 3}},
         {"hal_kernel_config_base", hal.get_dev_addr(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::KERNEL_CONFIG)},
         {"resolved_semaphore_base", base}, {"l1_alignment", alignment},
@@ -287,7 +367,8 @@ nlohmann::json run_frame_coverage_probe(
     partition(mesh);
     auto buffers = resources(mesh);
     std::array<uint32_t, 4> semaphore_ids{};
-    auto program = workload(mesh, buffers, repeats, semaphore_ids);
+    RoutingRecord routing{};
+    auto program = workload(mesh, buffers, repeats, semaphore_ids, routing);
     auto& cq0 = mesh.mesh_command_queue(0);
     auto& cq1 = mesh.mesh_command_queue(1);
     std::vector<uint32_t> payload(page_words, 0);
@@ -310,7 +391,7 @@ nlohmann::json run_frame_coverage_probe(
         now_ns);
     const auto producer = download(cq0, buffers.producer_stats, 1);
     const auto consumer = download(cq0, buffers.consumer_stats, 1);
-    const auto diagnostics = startup_diagnostics(mesh, program, buffers, producer, consumer, semaphore_ids);
+    const auto diagnostics = startup_diagnostics(mesh, program, buffers, producer, consumer, semaphore_ids, routing);
     const auto raw_frames = download(cq0, buffers.frames, frame_count);
     const Json rows = frame_rows(raw_frames, consumer[0]);
     Json evidence = {

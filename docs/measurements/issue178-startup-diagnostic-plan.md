@@ -287,3 +287,128 @@ Production remains blocked on resolving/validating the independent semaphore
 item, healthy bounded real-frame Watcher/no-Watcher causal coverage, fixed-work
 calibration if needed, non-aliasing long-run protocol, production control/load
 integration and 500000-frame/600-second/same-session-control precommit/approval.
+
+## V2: explicit runtime peer coordinates and one-shot provenance diagnostics
+
+The operator conveyed owner approval for this bounded correction/precommit,
+then `p6-api-lock-semaphore-v2` and conditional `p7-api-lock-semaphore-v2`.
+This does not authorize production, retries, changed work or bypassed gates.
+Run6 at `af5db15` was branch3: emitted `(1,5)` versus intended producer `(1,2)`,
+raw start0 and frames0. The operator identified virtual `(1,5)` as logical
+`(0,3)`, an inactive core. Both directions had used sharded accessor coordinates;
+return ready/done and frame data needed the same correction, not only start.
+
+### Frozen invariants, RED and implementation
+
+1. Consumer start/free and producer ready/done/ring writes use only peer virtual
+   coordinates supplied by host runtime args and `get_noc_addr(x,y,local)`.
+   Accessor-derived coordinates are diagnostic-only; no masked bank is a route.
+2. Shared `q4_runtime_args.hpp`: producer peer x/y at7/8 after its old0-6;
+   consumer peer x/y at12/13 after old0-11, mailbox stays11. No old index moves.
+3. Both setup and post-finish diagnostics call the same `peer_coordinates` helper
+   with the same IDevice, invoking `virtual_core_from_logical_core(...,WORKER)`.
+   Record passed and independently recalculated coordinates, plus device echoes.
+4. Diagnostic fields occupy fixed unused words of each final stats page, once
+   only. No per-frame log, progress/CPU loop growth, or coverage inference.
+5. Preserve counts, CPU work, ring size, budgets, unconditional start, caps,
+   join-before-any-finish and strict card validator. New fields remain optional;
+   all previous evidence bytes stay unchanged.
+
+RED: `uv run pytest -q tests/test_issue178_runtime_coordinates.py` failed before
+implementation (missing runtime-coordinate seam/shared constants;1 failed).
+Afterward the actual host seam executes under CPU-only fake translation,
+asserting both peer coordinates at shared indices, unchanged prefixes/mailbox,
+returned-versus-diagnostic coordinates and refusal to append twice. It also
+executes A/B/C classification. This is not a cpp grep or a device reproduction.
+
+`BankCoordsCTAOffset` is public static constexpr in v0.75's
+`hw/inc/api/tensor/tensor_accessor_args.h:102`, before its private section.
+It is also present in the header extracted from the exact pinned image using a
+never-started container. The six relevant staged tensor headers/host packer
+match tag `d9a68815f5fcf08a5bfbffb6f1f811823fba8edd`. Runtime host-library
+packing remains something to observe, not source/image equivalence assumed.
+
+### Fixed diagnostic layout and comparisons
+
+Consumer final stats append: actual anchor BankCoordsCTAOffset, raw CTA word
+at that slot, full unmasked `anchor.get_noc_addr(0)` (lo/hi), `my_x[0]/my_y[0]`,
+runtime producer x/y and actual start target. Producer appends the same ring
+fields, runtime consumer x/y and ready target. Ready target has a separate
+used flag; if no frame was produced it was computed but not sent. Original
+start raw/address/ticks, sem IDs/base, both four-word readouts, mailbox and
+final progress reads remain. No additional per-frame diagnostic work is added.
+
+Host retains the per-accessor actual CTA vectors supplied to CreateKernel,
+their global bank-slot positions, expected `(x&255)<<8 | (y&255)` from virtual
+coordinates, and compares kernel raw word to both expected and actual host
+words. It also compares accessor xy, self xy, runtime echoes, passed coordinates,
+post-finish recalculation and actual target xy. These are nested optional
+coordinate diagnostics under the existing startup diagnostic object, never
+coverage input. Producer's new frame data path uses consumer runtime xy and
+`ring_address + page_index*4096` directly; no accessor supplies that destination.
+
+### Coordinate prediction A/B/C (independent of run branch)
+
+Evaluate separately for consumer anchor/producer peer `(1,2)` (expected word
+`0x102`) and producer ring/consumer peer `(2,2)` (expected word `0x202`):
+
+- **A**: kernel raw word equals expected host virtual-coordinate pack and
+  accessor coordinate matches the intended peer. Run6's mismatching accessor
+  observation is not reproduced; record that instead of forcing an old cause.
+- **B**: raw word matches but accessor coordinate differs: device-side
+  decode/address construction becomes the focus.
+- **C**: raw word differs from the expected host pack: investigate host packing/
+  handoff. Actual host CTA vectors and kernel slot/word additionally distinguish
+  a host-generated wrong word from a discrepancy after a correct host vector;
+  do not infer that sub-cause from the C label alone.
+
+In every case actual cross-core routes use runtime xy, not the accessor result.
+If runtime echoes/targets unexpectedly differ, stop rather than trust diagnostics
+or invent coverage. Old run5/run6 native and inspector bytes were checked: they
+retain no raw CTA word or actual host CTA vectors. Run6's accessor-derived
+`(1,5)` target is a similar symptom, but cannot retrospectively select B or C;
+run5 has no target readout at all. Their bytes and conclusions are not rewritten.
+
+### Run identities, work, caps and branch gates
+
+| Attempt | Output | Native / outer cap | Watcher |
+|---|---|---|---|
+| `p6-api-lock-semaphore-v2` | `out/issue120/p6-api-lock-semaphore-v2` | 60 s / 60 s | on |
+| `p7-api-lock-semaphore-v2` | `out/issue120/p7-api-lock-semaphore-v2` | 60 s / 60 s | off |
+
+Same4096 frames,1350000 ticks/period,262144 transfers,32x1024 CPU operations per
+transfer (8589934592 total),1GiB H2D/1MiB load MMIO and fixed bounded buffers.
+The runtime-route correction is predicted to enable real frames; sustained
+causal coverage is still a measurement question. Run6 fixed work took6.110s
+versus the earlier8.7s estimate; neither is a stopping/adaptation target. If
+actual host work ends before the last frame, record genuine not_covered and do
+not increase counts/caps. Sparse power samples are not an independent clock.
+
+Run branch definitions follow this V2 brief:
+
+1. Producer observes start, the full intact fixed frame stream flows and the
+   unchanged coverage evaluator can evaluate it. Record covered/not_covered
+   honestly; neither labels diagnostics as coverage. This branch, healthy
+   Watcher and no unexpected warning/error permit identical-work P7 without
+   Watcher. Invalid frame identity/checksum/work or ambiguous clock is not a
+   healthy branch1 prerequisite.
+2. Start was observed (producer exit start>=1 or attempted>=1) but frame stream
+   is incomplete. Retain all diagnostics and stop before P7.
+3. Start stays0 and no attempt. Compare runtime/actual targets, IDs/base and
+   coordinate diagnostics; stop before P7 without a retry.
+
+Failed gate/not_evaluable, unexpected errors/warnings or unplanned diagnostics
+also stop. Only #176's three accepted baseline conditions are allowed. Require
+clean pushed precommit head, published new native SHA-256, full tests/ruff,
+pinned compile/link, isolated device-free startup and matching-head CI/Sonar
+before board preflight. Then freshly verify zero containers, both cards800MHz,
+serial411c/device0 mapping, environment and no heavy host work. Named containers,
+60-second outer caps and post-run zero-container/800MHz checks are unchanged.
+Reset only on timeout/abnormal exit, at most once across V2; no automatic retry.
+Production remains forbidden. Native fingerprint and verification are recorded
+in the V2 precommit publication before either attempt.
+
+V2 pinned native host compile/link passed. Native SHA-256:
+`7b9baa12d3adfd6d4f54496f5d0e50463a16af81285827849e74c6cad619fb5a`.
+This fingerprint replaces neither V1's measured binary identity nor its records.
+Device kernel JIT/behavior is still unverified before the approved P6 V2.
