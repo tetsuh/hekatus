@@ -713,3 +713,23 @@ false IOMMU detection and early `{0,0,false}`; global `iommu=pt` alone is not an
 unconditional per-device result. No host setting or kernel command line was
 changed, no capability query was executed, and source/image parity remains
 unasserted. See the linked source audit for conditions and limitations.
+
+### Issue #178 board-free startup diagnosis: root unresolved
+
+The [startup diagnosis and bounded diagnostic proposal](issue178-startup-diagnostic-plan.md)
+verifies the saved P6 artifacts and traces source order without claiming a
+physical cause from response 0. Abort total 2 combines two binary flags; raw
+mailbox read history and individual wait stages were not retained. The actual
+host traffic body was exercised in a CPU-only mock: supplied challenges are
+encoded correctly, while never-published and wrong-target models both yield
+zero responses. This is characterization, not a reproduced hardware defect.
+
+No production startup/validator/count/cap change is made. The proposal defines
+bounded stage, mailbox and response-path observations, no extra host MMIO reads,
+and no per-iteration log growth. Proposed `p6-startup-trace-v1` (Watcher on) and
+`p7-startup-trace-v1` (Watcher off) both retain native/outer 60-second caps and
+all fixed work. P7 remains gated on healthy P6 and causal frame coverage.
+These proposal identities are not runnable diagnostic builds: implementation,
+committed revision/native fingerprint, tests and renewed owner approval are
+required first. No new board invocation, directory, workload or automatic retry
+is created by this plan. Full production gates remain unmet.

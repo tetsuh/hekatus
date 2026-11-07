@@ -2209,6 +2209,17 @@ Q4 and adoption remain unresolved (#178). Board-free #177 source evidence
 shows that effective identity/passthrough IOMMU groups (or non-DMA/unreadable
 group type) lead to a zero capability tuple; the boot token alone is not the
 per-device condition. No host configuration or kernel command line was changed.
+The [board-free #178 diagnosis/proposal](measurements/issue178-startup-diagnostic-plan.md)
+subsequently verified the saved P6 bytes and source ordering. Abort total 2 is
+two binary wait-budget flags, not one stage code. Initial zero host responses
+are possible before workload enqueue; saved responses do not record all raw
+mailbox reads. No causal root was established from the retained fields. CPU-only
+replay of the actual host traffic body distinguishes supplied values correctly
+but shows why zero echoes alone cannot identify publication versus target/other
+visibility paths. Production startup/validator/counts/caps remain unchanged.
+The proposed bounded stage/mailbox trace and new conditional P6/P7 identities
+are not implemented probes or execution authorization; diagnosis/diagnostic
+implementation and owner approval are additional gates before any retry.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

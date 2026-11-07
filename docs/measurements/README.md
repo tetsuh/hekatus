@@ -60,6 +60,11 @@ retain [P5's predicted falsifier](2026-11-07-p150a-issue120-p5.json) and
 P7 was not run; no reset/retry/P4 rerun followed. Q4 and production adoption
 remain blocked. The [#177 source audit](2026-11-07-p150a-issue120-run5-pinning-source-audit.md)
 records conditional passthrough/zero-capability behavior without host changes.
+The later [board-free #178 diagnosis and diagnostic proposal](issue178-startup-diagnostic-plan.md)
+traces initialization/publication/read order and the two abort flags without
+claiming a causal root or modifying records. CPU-only host-loop replay is
+characterization, not device validation. Proposed new startup-trace identities
+remain non-executable until diagnostic implementation and renewed approval.
 
 ## Issue #137 duration-bounded runner (revision 2)
 
