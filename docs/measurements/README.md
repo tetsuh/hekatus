@@ -68,8 +68,15 @@ were non-executable until diagnostic implementation and renewed approval.
 That preserved plan now records the confirmed per-MeshDevice API-lock starvation
 fix (join before finish) and the independent semaphore observation diagnostics.
 New API-lock/semaphore P6/P7 precommits retain60-second caps/P6 Watcher, strict
-coverage and fixed work. They remain unexecuted pending renewed owner approval;
-no historical measurement bytes are changed.
+coverage and fixed work; the precommit itself granted no hardware approval.
+The subsequently authorized [run6](2026-11-07-p150a-issue120-run6.md) at `af5db15`
+stopped at [P6 branch3](2026-11-07-p150a-issue120-p6-api-lock-semaphore-v1.md):
+startup gate passed, but zero frames and raw start0 at exit/post-finish. Recorded
+emitted NoC coordinate `(1,5)` differs from intended producer `(1,2)` at the same
+local word `0x9f60`; IDs/base/poll address agree. This narrows board-free address/
+coordinate investigation, not physical routing or complete causal coverage.
+P7/production were not run. Only baseline warnings, clean Watcher, healthy
+800-MHz postchecks and zero resets; prior measurement bytes stay unchanged.
 
 ## Issue #137 duration-bounded runner (revision 2)
 

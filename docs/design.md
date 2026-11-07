@@ -2235,6 +2235,19 @@ gates. The preserved plan precommits `p6-api-lock-semaphore-v1` / P7 counterpart
 at60 seconds (P6 Watcher on), conditional on renewed owner approval. #118's
 actual runner also synchronizes CQ0 before joining its host thread, a source-
 backed candidate for historical waits, not retrospective proof for each run.
+The [subsequently authorized run6](measurements/2026-11-07-p150a-issue120-run6.md)
+at `af5db15` passed startup challenge1 and showed advancing challenge2 responses,
+but stopped under precommitted branch3: producer start0 at exit and post-finish,
+zero attempted/produced/consumed frames, and not_evaluable coverage. The emitted
+start target encodes `(1,5)` versus intended producer `(1,2)`, at the same local
+word0x9f60; actual IDs0-3, relocated base0x9f40 and local poll address agree.
+The recorded mismatch narrows coordinate provenance/routing interpretation;
+physical alias/delivery and the complete fix remain unproven. Audit anchor/ring
+TensorAccessor versus virtual/NoC addressing before another tested precommit.
+Diagnostic snapshots cannot establish coverage. P7/production were not run,
+only accepted warnings occurred, Watcher had no anomaly, both cards returned
+800MHz/DRAM healthy and reset/retry remained zero. Ordinary CQ1 stays preferred
+but unadopted until healthy causal frame and long-run production gates pass.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

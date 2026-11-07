@@ -766,4 +766,20 @@ predicted to span frames at the prior post-release reference rate (~8.7 seconds
 host work versus~4.6 seconds dispatch/startup/frame span), not a real-time clock
 guarantee. A genuine early host finish yields actual not_covered, not a bug or
 permission to increase counts. Both attempts require published native fingerprint
-and renewed owner approval; no board rerun occurs in this correction.
+and renewed owner approval; no board rerun occurs in that correction.
+
+### Authorized P6 API-lock/semaphore outcome: branch 3, stop before P7
+
+The [run6 interpretation](2026-11-07-p150a-issue120-run6.md) and
+[P6 record](2026-11-07-p150a-issue120-p6-api-lock-semaphore-v1.json) retain the
+single subsequently authorized attempt at `af5db15`/native `600d02ac...`.
+After the unrelated host test ended, fresh preflight passed. The startup gate
+now passed challenge1, and the tail advanced18845->262144 with challenge2. But
+producer start was0 at exit and after finish, frames0 and abort2; branch3 stopped
+P7 without retry/production/reset. The emitted target0x141000009f60 encodes(1,5)
+versus intended(1,2)/0x81000009f60. IDs0-3, sem base0x9f40 and poll0x9f60 agree.
+This records an address/coordinate mismatch, not a proven physical alias or
+completed code diagnosis. Trace anchor/ring TensorAccessor coordinate generation
+and routing interpretation board-free before any tested correction/new precommit
+and renewed hardware approval. Diagnostics do not create coverage. Original
+fixed work/caps remain unchanged; Q4/adoption/full production gates stay unmet.
