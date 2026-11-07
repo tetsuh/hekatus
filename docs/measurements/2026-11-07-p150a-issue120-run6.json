@@ -1,0 +1,32 @@
+{
+  "schema": "issue120-feasibility-session-v1",
+  "issue": 120,
+  "session": "run6",
+  "harness_commit": "af5db15ad92a6b6d432cf82837dbc74a5272fd64",
+  "probes": [
+    {
+      "order": "P6",
+      "identity": "p6-api-lock-semaphore-v1",
+      "record": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v1.json",
+      "prediction_branch": 3,
+      "status": "stopped_at_branch3_start_target_mismatch"
+    },
+    {
+      "order": "P7",
+      "identity": "p7-api-lock-semaphore-v1",
+      "status": "not_run",
+      "reason": "P6 did not satisfy branch1 full-frame causal coverage prerequisite."
+    }
+  ],
+  "Q4": "Startup CPU-response gate now passes; incomplete zero-frame stream leaves full-window coverage not_evaluable.",
+  "mechanism_selection": {
+    "first_candidate": "ordinary unpinned CQ1 with direct-L1 CPU challenge observation",
+    "production_adopted": false,
+    "cpu_only_fallback_selected": false,
+    "reason": "Independent start-target coordinate mismatch remains; no healthy real-frame or no-Watcher coverage."
+  },
+  "reset_count": 0,
+  "retry_count": 0,
+  "production_run_attempted": false,
+  "next_step": "Stop hardware work; board-free coordinate/address provenance assessment under #178, tests-first correction if established, and fresh precommit plus renewed owner authorization before any retry. No P7 or production."
+}

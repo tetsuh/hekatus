@@ -2147,7 +2147,107 @@ and conversion audit are tracked separately in
 [Issue #122](https://github.com/tetsuh/hekatus/issues/122).
 
 The host-load condition (c) is outside this result and is tracked in
-[Issue #120](https://github.com/tetsuh/hekatus/issues/120).
+[Issue #120](https://github.com/tetsuh/hekatus/issues/120). Its
+[board-free feasibility plan](measurements/issue120-feasibility-plan.md) audits
+v0.75.0 CQ completion gates, ordinary write-only submission, and pinned-host
+NoC access, with short diagnostic probes. No board run or mechanism selection
+is claimed by phase 1. In particular, one card-side payload witness is not
+sustained PCIe or first-through-last-frame coverage. Phase 1b adds real-ring-frame
+Q4 instrumentation with consumer-clock brackets and card-issued CPU challenges;
+queued DMA cannot impersonate CPU work completed in those intervals. Actual
+Watcher/no-Watcher confirmation remains a prerequisite for production counts
+and measurement. The first authorized P1 attempt on 2026-11-07 failed during
+native runtime initialization (`Root Directory is not set.`, exit 2), before
+mesh construction returned or any kernel/card evidence was produced. The
+[immutable startup-failure record](measurements/2026-11-07-p150a-issue120-p1-launch-failure.json)
+retains fresh provenance and healthy post-run state. P2-P7 were not attempted;
+no reset, retry, mechanism selection or production run followed. Runtime-root
+and asset preflight are addressed by a board-free launcher correction tracked
+in Issue #173: a fixed installed-wheel root and exact-image layout inventories
+are checked before spawning native code. The
+[renewed P1 precommit](measurements/issue120-feasibility-plan.md#runtime-root-correction-and-renewed-p1-precommit-issue-173)
+uses a separate attempt identity and retains Watcher/60-second caps. It is not
+authorization to retry. No source/image parity, hardware validation or
+unsupported-mechanism conclusion follows from this initialization correction.
+The subsequently authorized `p1-runtime-root-v1` attempt at `9d5025a` stopped
+with a wrapper JSON-result capture failure. Its
+[separate record](measurements/2026-11-07-p150a-issue120-p1-runtime-root-v1-failure.json)
+retains Watcher/inspector diagnostics but no usable completion/window verdict.
+No reset/retry or P2-P7 followed; mechanism selection remains unresolved.
+Issue #175 corrects native output retention/framing in this PR before any
+future retry. [ADR-0018](adr/0018-issue120-native-result-file.md) makes an
+attempt-bound atomic file the result channel, retains raw diagnostic streams
+and direct exit status, and rejects ambiguous or stale results. The new
+`p1-result-file-v1` precommit is not hardware authorization; no previous missing
+native evidence is reconstructed or promoted.
+The subsequently authorized
+[`p1-result-file-v1` attempt](measurements/2026-11-07-p150a-issue120-p1-result-file-v1.json)
+at `75be8ec` returned a valid atomic result and a 16-page completion bracket
+strictly inside the resident window with both sub-devices in the stall group.
+This partially answers bounded CQ1/CQ0 overlap, not sustained frame coverage.
+Execution conservatively stopped before P2 for unplanned NUMA-binding and
+SMC-buffer runtime warnings; normal exits, Watcher diagnostics and post-run
+800 MHz/DRAM health did not indicate a fatal device error. No reset or retry
+followed. Q2-Q4 and adoption remain unresolved; host final drain finishes CQ0
+before CQ1 and does not diagnose the historical CQ1-wait mechanism.
+The [next authorized continuation](measurements/2026-11-07-p150a-issue120-run4.md)
+at `62f388c` first verified all three owner-accepted baseline warnings (#176)
+against the accepted Issue #146 logs. P2 demonstrated transfer-only overlap;
+P3 completed 256 fixed unpinned writes without per-transfer host completion.
+P4 stopped at the pinned-capacity preflight before mapping/kernel execution,
+with direct code 2 and retained raw streams. It is not proof of unsupported
+hardware; returned limits were not logged (#177). P5-P7 remain unrun, with no
+reset/retry. Ordinary CQ1 is preferred but unadopted until causal real-frame
+coverage, long-run protocol validation and same-session production gates pass.
+The [separately authorized ordinary-CQ1 continuation](measurements/2026-11-07-p150a-issue120-run5.md)
+at `2eefe9a` left P4 untouched. P5 detected the predicted insufficient-work
+falsifier and continued under the explicit exception. P6 then returned
+not_evaluable with startup challenge response 0, abort 2 and zero frames,
+despite normal process exits and clean Watcher diagnostics. P7's healthy-P6
+gate was unmet, so it and production were not run; reset/retry remained zero.
+Q4 and adoption remain unresolved (#178). Board-free #177 source evidence
+shows that effective identity/passthrough IOMMU groups (or non-DMA/unreadable
+group type) lead to a zero capability tuple; the boot token alone is not the
+per-device condition. No host configuration or kernel command line was changed.
+The initial [board-free #178 diagnosis/proposal](measurements/issue178-startup-diagnostic-plan.md)
+at `bba8502` verified the saved P6 bytes and source ordering. Abort total 2 is
+two binary wait-budget flags, not one stage code. Initial zero host responses
+are possible before workload enqueue; saved responses do not record all raw
+mailbox reads. No causal root was established from the retained fields. CPU-only
+replay of the actual host traffic body distinguishes supplied values correctly
+but shows why zero echoes alone cannot identify publication versus target/other
+visibility paths. Production startup/validator/counts/caps remain unchanged.
+The proposed bounded stage/mailbox trace and new conditional P6/P7 identities
+are not implemented probes or execution authorization; diagnosis/diagnostic
+implementation and owner approval were additional gates before any retry.
+That unresolved-root assessment was subsequently corrected: v0.75.0 holds one
+MeshDevice API mutex across CQ0 finish and CQ1 buffer writes. P6's main-thread
+finish therefore starved its active load thread for the resident wait, explaining
+the stationary response stream. Production must never finish/Synchronize a CQ
+while another thread still enqueues on the same MeshDevice; another CQ or a
+released Python GIL does not remove that mutex. Q4 now uses a callable enqueue/
+join/finish sequence. Its host envelope is explicitly a post-join finish-return
+upper bound, not a resident completion timestamp; coverage remains card-only.
+Producer start observation is an independent open item. Fixed post-finish
+semaphore/mailbox/progress snapshots, emitted/expected/polled addresses, actual
+IDs and split abort/tick fields are added without changing work or validator
+gates. The preserved plan precommits `p6-api-lock-semaphore-v1` / P7 counterpart
+at60 seconds (P6 Watcher on), conditional on renewed owner approval. #118's
+actual runner also synchronizes CQ0 before joining its host thread, a source-
+backed candidate for historical waits, not retrospective proof for each run.
+The [subsequently authorized run6](measurements/2026-11-07-p150a-issue120-run6.md)
+at `af5db15` passed startup challenge1 and showed advancing challenge2 responses,
+but stopped under precommitted branch3: producer start0 at exit and post-finish,
+zero attempted/produced/consumed frames, and not_evaluable coverage. The emitted
+start target encodes `(1,5)` versus intended producer `(1,2)`, at the same local
+word0x9f60; actual IDs0-3, relocated base0x9f40 and local poll address agree.
+The recorded mismatch narrows coordinate provenance/routing interpretation;
+physical alias/delivery and the complete fix remain unproven. Audit anchor/ring
+TensorAccessor versus virtual/NoC addressing before another tested precommit.
+Diagnostic snapshots cannot establish coverage. P7/production were not run,
+only accepted warnings occurred, Watcher had no anomaly, both cards returned
+800MHz/DRAM healthy and reset/retry remained zero. Ordinary CQ1 stays preferred
+but unadopted until healthy causal frame and long-run production gates pass.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

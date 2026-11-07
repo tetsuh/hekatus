@@ -2217,6 +2217,29 @@ def _follow_up_section(
     return lines
 
 
+def _non_mapping_json_analysis(
+    path: Path, value: Any,
+) -> tuple[RecordAnalysis, Mapping[str, Any]]:
+    """Keep opaque companions visible without inferring measurement provenance."""
+    kind = {
+        list: "array", str: "string", int: "number", float: "number",
+        bool: "boolean", type(None): "null",
+    }[type(value)]
+    status = f"non-record JSON companion ({kind})"
+    # This is audit metadata only; the original companion bytes are never changed.
+    metadata = {"status": status, "audit_json_root_type": kind}
+    analysis = RecordAnalysis(
+        path=path, issue=_issue_label(path, {}), status=status,
+        resolution=TraceResolution(None, "not applicable: non-record JSON", None, None),
+        trace=None, classification=None, interval=None,
+        evidence="excluded: non-mapping JSON; no measurement association inferred",
+        minimum_mhz=None, maximum_mhz=None, weighted_mhz=None,
+        weighted_is_exact=False, timing_fields=False, conversion_fields=False,
+        source_tag="non-record JSON companion",
+    )
+    return analysis, metadata
+
+
 def _report_input_data(
     root: Path,
 ) -> tuple[
@@ -2241,8 +2264,12 @@ def _report_input_data(
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             record = {"status": f"unreadable: {type(exc).__name__}"}
+        if isinstance(record, Mapping):
+            analysis = _record_analysis(root, path, record, hash_index, trace_cache)
+        else:
+            analysis, record = _non_mapping_json_analysis(path, record)
         records[path] = record
-        analyses.append(_record_analysis(root, path, record, hash_index, trace_cache))
+        analyses.append(analysis)
     return json_paths, csv_paths, trace_cache, analyses, records
 
 
@@ -2262,7 +2289,7 @@ def _report_header(root: Path, json_paths: Sequence[Path], csv_paths: Sequence[P
         "",
         f"- Input root: `{root.as_posix()}`",
         "- Generation command: `python3 tools/audit_issue122_aiclk.py`",
-        "- JSON records: " + str(len(json_paths)),
+        "- JSON files (records and companions): " + str(len(json_paths)),
         "- CSV files: " + str(len(csv_paths)),
         (
             "- Interval policy: valid timestamped rows are left-held until the next row; "
@@ -2286,6 +2313,12 @@ def _append_json_inventory(lines: list[str], analyses: Sequence[RecordAnalysis])
         [
             "",
             "## JSON record inventory",
+            "",
+            (
+                "Non-record JSON companion rows are type-only diagnostics. Their contents "
+                "cannot select a CSV, interval or conversion; no primary-record association "
+                "is inferred from that classification."
+            ),
             "",
             "| record | issue | status | trace reference/provenance | resolved CSV | pairing | rows valid/CSV | unique AICLK (MHz) | classification | min/max (MHz) | min intermediate (MHz) | position | interval evidence | weighted AICLK (MHz) |",
             "|---|---|---|---|---|---|---:|---|---|---:|---:|---|---|---:|",
