@@ -40,6 +40,12 @@ this PR under #175 and [ADR-0018](../adr/0018-issue120-native-result-file.md).
 The [new result-file precommit](issue120-feasibility-plan.md#result-file-correction-and-new-p1-precommit-issue-175)
 uses `p1-result-file-v1`, atomic attempt-bound JSON and retained binary streams;
 it neither rewrites these records nor authorizes a hardware retry.
+The later separately authorized
+[`p1-result-file-v1` result](2026-11-07-p150a-issue120-p1-result-file-v1.json)
+and [interpretation](2026-11-07-p150a-issue120-p1-result-file-v1.md) retain a valid
+atomic result with bounded 16-page CQ1 completion inside the resident window.
+Execution stopped conservatively before P2 for unplanned runtime warnings,
+without reset/retry; Q2-Q4 and full-frame adoption remain unresolved.
 
 ## Issue #137 duration-bounded runner (revision 2)
 

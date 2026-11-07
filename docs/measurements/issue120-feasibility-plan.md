@@ -636,3 +636,20 @@ TT_METAL_WATCHER=1 HEKATUS_TT_DEVICE_NODE=/dev/tenstorrent/0 \
   --execute --probe q1-cq1-completion --stall-group resident-and-transfer \
   --first-kernel-run --cap-seconds 60
 ```
+
+### Authorized result-file attempt outcome
+
+The separately authorized `p1-result-file-v1` at clean/pushed `75be8ec`
+completed with native/wrapper/container code 0 and a matching atomic envelope.
+Its [immutable result](2026-11-07-p150a-issue120-p1-result-file-v1.json) and
+[interpretation](2026-11-07-p150a-issue120-p1-result-file-v1.md) show all sixteen
+payload pages completing inside the resident window, the predicted witness
+branch. Host final drain finishes CQ0 before CQ1; it does not explain the
+historical CQ1-wait observation.
+
+Execution stopped conservatively before P2 for NUMA-binding/SMC-buffer runtime
+warnings not pre-cleared in this plan. Watcher had no anomaly matches; both
+cards returned healthy at 800 MHz with no containers. No reset/retry or
+production run occurred. P2-P7 identities remain unconsumed, with their original
+predictions unchanged. Further execution needs supervisor/owner assessment;
+this outcome does not authorize continuation or adopt a mechanism.

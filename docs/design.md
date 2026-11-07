@@ -2180,6 +2180,16 @@ attempt-bound atomic file the result channel, retains raw diagnostic streams
 and direct exit status, and rejects ambiguous or stale results. The new
 `p1-result-file-v1` precommit is not hardware authorization; no previous missing
 native evidence is reconstructed or promoted.
+The subsequently authorized
+[`p1-result-file-v1` attempt](measurements/2026-11-07-p150a-issue120-p1-result-file-v1.json)
+at `75be8ec` returned a valid atomic result and a 16-page completion bracket
+strictly inside the resident window with both sub-devices in the stall group.
+This partially answers bounded CQ1/CQ0 overlap, not sustained frame coverage.
+Execution conservatively stopped before P2 for unplanned NUMA-binding and
+SMC-buffer runtime warnings; normal exits, Watcher diagnostics and post-run
+800 MHz/DRAM health did not indicate a fatal device error. No reset or retry
+followed. Q2-Q4 and adoption remain unresolved; host final drain finishes CQ0
+before CQ1 and does not diagnose the historical CQ1-wait mechanism.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 
