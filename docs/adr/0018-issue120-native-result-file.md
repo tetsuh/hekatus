@@ -2,15 +2,17 @@
 
 - Status: **Accepted** — 2026-11-07
 - Date: 2026-11-07
-- Owner decision: explicit result-file and byte-retention requirements for Issue #175
+- Implementation direction: decided in PR #172 task instructions as the correction strategy for Issue #175
 
 ## Context
 
 The `p1-runtime-root-v1` attempt reached the wrapper's last-stdout-line JSON
 parser, but no result could be recovered. The native streams were not retained.
 Cleanup output after JSON is plausible, not confirmed by the lost streams.
-The owner requires this prerequisite to be fixed within PR #172 before another
-P1, without touching the board or rewriting either failed attempt.
+The supervising operator's PR #172 task instructions require this prerequisite
+to be fixed as the Issue #175 correction before another P1, without touching
+the board or rewriting either failed attempt. This implementation instruction
+is not an owner architecture-acceptance decision.
 
 This decision concerns only the experimental native/wrapper instrumentation.
 It does not change the production data plane, frame timing or coverage rules.
@@ -22,7 +24,7 @@ It does not change the production data plane, frame timing or coverage rules.
 - Search stdout for a JSON-looking line: rejected; stale, multiple or diagnostic
   JSON could be selected ambiguously, and raw bytes would still need retention.
 - Use a wrapper-owned fresh attempt directory with atomic native publication:
-  selected by the owner's explicit instruction.
+  decided in the PR #172 task instructions as the Issue #175 correction strategy.
 
 ## Decision
 
@@ -74,6 +76,14 @@ It does not change the production data plane, frame timing or coverage rules.
 
 ## Status history
 
-- 2026-11-07: Accepted by explicit owner instruction for Issue #175; the
-  implementation and board-free evidence are reviewed in draft PR #172.
-  Hardware retry and merge remain separately owner-controlled.
+- 2026-11-07: Recorded the correction strategy determined by the supervising
+  operator's PR #172 task instructions for Issue #175, not an owner decision.
+  Corrected the earlier attribution to the owner. Owner acceptance through
+  PR merge remains pending.
+- 2026-11-07: The settled header marker is retained only because the existing
+  `adr-status-guard` checks PR heads and rejects Proposed as well as unsettled
+  statuses. The operator requested Proposed until owner merge if allowed; an
+  in-memory Proposed trial returned `Proposed is not settled; Proposed never
+  reaches main`. No guard/process change is made here, and the retained marker
+  must not be read as evidence of owner approval. Hardware authorization and
+  merge remain separately owner-controlled.
