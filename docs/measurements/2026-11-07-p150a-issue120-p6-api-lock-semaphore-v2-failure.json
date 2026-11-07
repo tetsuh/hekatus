@@ -1,0 +1,263 @@
+{
+  "schema": "issue120-feasibility-attempt-v1",
+  "issue": 120,
+  "attempt_identity": "p6-api-lock-semaphore-v2",
+  "run_id": "20261107T13470287614960910822743978Z",
+  "status": "stopped_before_run_branch_jit_compile_failure",
+  "timing_evidence": false,
+  "environment": {
+    "board_model": "p150a",
+    "serial": "000004033191411c",
+    "pci": "0000:06:00.0",
+    "firmware": "19.6.0.0",
+    "kmd": "2.11.0",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "commit": "49743efb848d33fa9ef856dd9429db9bfc8ba400",
+    "harness_clean": true,
+    "harness_pushed": true
+  },
+  "native_artifact": {
+    "sha256": "7b9baa12d3adfd6d4f54496f5d0e50463a16af81285827849e74c6cad619fb5a",
+    "libtt_metal_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "rebuilt_during_hardware_phase": false,
+    "source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "source_tree_parity_with_image": "not_asserted"
+  },
+  "plan": {
+    "path": "docs/measurements/issue178-startup-diagnostic-plan.md",
+    "commit": "49743efb848d33fa9ef856dd9429db9bfc8ba400",
+    "order": "P6 V2",
+    "probe": "q4-frame-coverage",
+    "native_cap_seconds": 60,
+    "outer_cap_seconds": 60,
+    "watcher_requested": true,
+    "workload_changed": false,
+    "prediction_branch": null,
+    "coordinate_diagnostic_branches": null,
+    "prediction_comparison": "Unplanned pre-branch JIT failure, not run branch1/2/3 or coordinate A/B/C: producer requested CTA index4 from the actual four-word compiler vector0,4096,2,4096. Stop without retry/P7; no kernel diagnostic or coverage result exists."
+  },
+  "precommit_verification": {
+    "native_host_compile_link": "passed",
+    "device_kernel_jit": "not covered by host compile/link or no-chip startup",
+    "full_local_tests": 6118,
+    "skipped": 1057,
+    "subtests": 8,
+    "ruff_diff_adr_guard": "passed",
+    "strict_device_free_startup": "direct code2 at No chips detected, raw streams retained, no result accepted",
+    "matching_head_ci": "success",
+    "matching_head_ci_run": 42377369907,
+    "public_sonar": {
+      "unresolved": 0,
+      "hotspots": 0,
+      "gate": "OK"
+    },
+    "validated_before_hardware": true
+  },
+  "execution": {
+    "start_utc": "2026-11-07T13:47:02Z",
+    "end_utc": "2026-11-07T13:47:12Z",
+    "utc_resolution_seconds": 1,
+    "host_wrapper_start_monotonic_ns": 49776790033686,
+    "host_wrapper_end_monotonic_ns": 49786421033234,
+    "wrapper_exit_code": 2,
+    "container_exit_code": 2,
+    "native_exit_code_observed_directly": 2,
+    "timeout": false,
+    "container_name": "hekatus-bench-1082274-27476",
+    "device_nodes_exposed": [
+      "/dev/tenstorrent/0"
+    ],
+    "containers_before": 0,
+    "containers_after": 0,
+    "forced_container_kills": 0,
+    "reset_count": 0,
+    "reset_reason": "Identified software JIT compile error, no timeout or surviving workload, both cards healthy/idle at800MHz. Reset is permitted only for timeout/abnormal exit, not mandatory; no hardware recovery was needed.",
+    "retry_count": 0,
+    "production_run_attempted": false,
+    "agent_heavy_work_overlap": false,
+    "host_process_preflight": "No heavy process observed; snapshot retained privately."
+  },
+  "baseline_warnings": {
+    "label": "Known baseline warnings (#176)",
+    "previously_verified_and_accepted_by_owner": true,
+    "proof_sha256": "52ba424f79ae564c6d4ad6f754ec9e1a889c9606f49a8608024c6217b4948348",
+    "observed_warning_count": 7,
+    "new_warning_count": 0,
+    "new_error_condition": "RISC-V producer JIT compile failure; hard stop",
+    "new_logger_error_critical_count": 3
+  },
+  "native_result_transport": {
+    "attempt_identity": "20261107T13470287614960910822743978Z",
+    "result_candidates": 0,
+    "native_result_present": false,
+    "wrapper_result_present": false,
+    "raw_streams_preserved": true,
+    "direct_execution_metadata_preserved": true,
+    "public_native_copies_byte_exact": true
+  },
+  "failure_evidence": {
+    "stage": "producer kernel JIT compilation before resident workload dispatch",
+    "kernel": "q4_frame_producer",
+    "processor": "brisc",
+    "requested_compile_time_arg_index": 4,
+    "actual_compiler_cta": [
+      0,
+      4096,
+      2,
+      4096
+    ],
+    "actual_compiler_cta_count": 4,
+    "compiler_error": "static assertion failed: Index out of range; comparison (4 < 4)",
+    "source_location": "enodia/tt/bench/issue120/q4_frame_producer.cpp:82",
+    "source_contract_interpretation": "Under checked v0.75 ArgsConfig,0 is unsharded L1 and2 is DRAM; the two accessors provide only config/page pairs, not a bank-coordinate word. A public BankCoordsCTAOffset does not guarantee that slot exists.",
+    "root_scope": "The new unconditional diagnostic bank-word read cannot compile for this observed layout. Why the runtime produced an unsharded ring accessor despite intended sharding remains unproven. Actual host captured vectors were not persisted because no final result was produced.",
+    "run_branch": null,
+    "coordinate_diagnostic_branch": null,
+    "semaphore_or_coordinate_readouts_available": false,
+    "frame_coverage_result_available": false,
+    "fixed_work_completion_proven": false,
+    "coverage_inferred_from_diagnostics": false
+  },
+  "watcher": {
+    "requested": true,
+    "fresh_watcher_artifacts_retained": true,
+    "dump_count": 8,
+    "error_warning_assert_hang_scan_matches": 0,
+    "scope": "Attached/detached device0; diagnostics are not evidence of successfully compiled/launched resident kernels."
+  },
+  "card_evidence": {
+    "status": "unavailable",
+    "reason": "No native result after pre-dispatch JIT failure; no semaphore, coordinate or real-frame readouts were returned."
+  },
+  "stop": {
+    "reason": "Unplanned pre-branch JIT failure, not run branch1/2/3 or coordinate A/B/C: producer requested CTA index4 from the actual four-word compiler vector0,4096,2,4096. Stop without retry/P7; no kernel diagnostic or coverage result exists.",
+    "followup_issue": 178,
+    "p7_run": false,
+    "automatic_fix_or_retry": false
+  },
+  "power_trace": {
+    "sample_count": 4,
+    "frozen": true,
+    "observed_aiclk_mhz": [
+      800,
+      1350
+    ],
+    "timing_evidence": false,
+    "coverage": "Startup/cleanup samples only; no launched resident frame stream or full-window coverage."
+  },
+  "artifact_policy": {
+    "roles": {
+      "native_stdout": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-native-stdout.bin",
+      "native_stderr": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-native-stderr.bin",
+      "native_execution": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-native-execution.json",
+      "environment": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-env.json",
+      "wrapper_log": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure.log",
+      "baseline_verification": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-baseline-verification.json",
+      "power": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-power.csv",
+      "docker_before": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-docker-before.txt",
+      "docker_after": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-docker-after.txt",
+      "watcher/kernel_elf_paths.txt": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-watcher-kernel_elf_paths.txt",
+      "watcher/kernel_names.txt": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-watcher-kernel_names.txt",
+      "watcher/watcher.log": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-watcher-watcher.log",
+      "inspector/kernels.yaml": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-kernels.yaml",
+      "inspector/mesh_devices_log.yaml": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-mesh_devices_log.yaml",
+      "inspector/mesh_workloads_log.yaml": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-mesh_workloads_log.yaml",
+      "inspector/programs_log.yaml": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-programs_log.yaml",
+      "inspector/startup.yaml": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-startup.yaml",
+      "lifecycle": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-lifecycle.json",
+      "health": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-health.json"
+    },
+    "artifacts": {
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-native-stdout.bin": {
+        "sha256": "863a735dd51ed07927fbddf33af02eed74c8d19af3cc770918c03348141a6199",
+        "byte_count": 12398
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-native-stderr.bin": {
+        "sha256": "ad6e2f774bb97099f0e5cb5a6990d16145e48bd3170d5d0f1d9749b30c341c1e",
+        "byte_count": 4394
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-native-execution.json": {
+        "sha256": "9b34f7db90d5cf83d0caa6758efb7afed7bca8d0ca1dd3b902300ad6be485fda",
+        "byte_count": 535
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-env.json": {
+        "sha256": "547cae10636cadbdd507b78abe8c2cd9f5fc4a7acd60295c4dad3741ed8f26f7",
+        "byte_count": 4435
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure.log": {
+        "sha256": "cee28cf251abc3ee8b3f7224deba1c68b4c761f1d91a3e1039fde04a5b4c632c",
+        "byte_count": 141
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-baseline-verification.json": {
+        "sha256": "52ba424f79ae564c6d4ad6f754ec9e1a889c9606f49a8608024c6217b4948348",
+        "byte_count": 3222
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-power.csv": {
+        "sha256": "dea799bbb4c093a0b9ffd5d671dab3a3786365d10af984d800ac602f570417bc",
+        "byte_count": 235
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-docker-before.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-docker-after.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-watcher-kernel_elf_paths.txt": {
+        "sha256": "f177af6e1908fb389732724e38e04f5b79167a5aed406a13a9abb97aba2923fa",
+        "byte_count": 1440
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-watcher-kernel_names.txt": {
+        "sha256": "e8f2073d3783b4f4eaef20883877b63f5102d70415651d22087f9a3bbbe0ba13",
+        "byte_count": 586
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-watcher-watcher.log": {
+        "sha256": "932acda6e9fa57ebe6c1a6e9b2a203a4c564c7176d4ce73ab394f5d08307a37a",
+        "byte_count": 147576
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-kernels.yaml": {
+        "sha256": "e0d6c3fb8b189e2ff9f23a2195dac0a0e954ef13768dae8ec6baa27b0b017857",
+        "byte_count": 2220
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-mesh_devices_log.yaml": {
+        "sha256": "09cf37552e8a059f92909ace54e4c823e92267dd0634ba40d37f71bb004211bc",
+        "byte_count": 480
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-mesh_workloads_log.yaml": {
+        "sha256": "39f52b82376479be544e56e2d0282b1a747b02f446a61cfba7fd2e622d364782",
+        "byte_count": 317
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-programs_log.yaml": {
+        "sha256": "c9819e67c6f8ffadd16854d9b1640e97bf9b95e071d8765a4954669c23d9fdc6",
+        "byte_count": 3624
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-inspector-startup.yaml": {
+        "sha256": "522bec88fdfe3ec8080147943dc991803fd030faa352385e86fa39dc532e5f82",
+        "byte_count": 144
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-lifecycle.json": {
+        "sha256": "cfcc314d0cdaced3a42cb1dd32a18de56b5b34a0c000d765c8c02ef063c2c7a3",
+        "byte_count": 1962
+      },
+      "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-health.json": {
+        "sha256": "e950a7185d387f6219381e8bc8e455172fd632d4c8d8d124842e421316bf50e0",
+        "byte_count": 863
+      }
+    },
+    "raw_generated_and_wrapper_sha256": {
+      "wrapper": "ed208314dc82de09b0c7d89481eae0a0aa65ed313138882156e3c00565a5badd",
+      "watcher/kernel_elf_paths.txt": "943a5ea93b4878e749f90857017c07bbdbfe70107fa4cc1760b4276396e24549",
+      "watcher/kernel_names.txt": "e8f2073d3783b4f4eaef20883877b63f5102d70415651d22087f9a3bbbe0ba13",
+      "watcher/watcher.log": "b8c266594b133b0cb007551170750250b4a6d7c83f4be867bc0e0dbc565e945f",
+      "inspector/kernels.yaml": "06645a11d27bab3634d9f70c7938cbd8c717262096afef5760c9464a694dfad2",
+      "inspector/mesh_devices_log.yaml": "09cf37552e8a059f92909ace54e4c823e92267dd0634ba40d37f71bb004211bc",
+      "inspector/mesh_workloads_log.yaml": "39f52b82376479be544e56e2d0282b1a747b02f446a61cfba7fd2e622d364782",
+      "inspector/programs_log.yaml": "38f8a6f349ef6cc40984239c4d0e60c42e09c5e8a719cc22c9411057f22a5ec8",
+      "inspector/startup.yaml": "522bec88fdfe3ec8080147943dc991803fd030faa352385e86fa39dc532e5f82"
+    },
+    "sanitization": "Native streams/execution,env,power and baseline proof are byte-exact. Public generated/wrapper text is redacted/whitespace-normalized with original hashes retained. Native/wrapper result files are absent, never reconstructed. Lifecycle/health use reduced fields."
+  },
+  "next_step": "End hardware work. Board-free check actual buffer/sharding/CTA layout and fail-closed diagnostic applicability, tests-first correction and fresh precommit/owner approval before any new probe; no P7 or production."
+}

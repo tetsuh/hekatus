@@ -77,6 +77,15 @@ local word `0x9f60`; IDs/base/poll address agree. This narrows board-free addres
 coordinate investigation, not physical routing or complete causal coverage.
 P7/production were not run. Only baseline warnings, clean Watcher, healthy
 800-MHz postchecks and zero resets; prior measurement bytes stay unchanged.
+The [subsequent V2 run7](2026-11-07-p150a-issue120-run7.md) at `49743ef` stopped
+with [producer device JIT failure](2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure.md)
+before run or coordinate branches could be evaluated. Compiler args were
+`[0,4096,2,4096]`; the new unconditional bank-slot4 diagnostic hit `4 < 4`.
+Native code2/raw streams survived but native/wrapper results did not exist.
+No fabricated start0/C or coverage, no P7/retry/production, reset0 and healthy
+800-MHz postchecks. Actual sharding/CTA layout and safe diagnostic applicability
+remain board-free follow-up gates; host compile/no-chip/CI were not device JIT
+validation.
 
 ## Issue #137 duration-bounded runner (revision 2)
 

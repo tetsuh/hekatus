@@ -783,3 +783,17 @@ completed code diagnosis. Trace anchor/ring TensorAccessor coordinate generation
 and routing interpretation board-free before any tested correction/new precommit
 and renewed hardware approval. Diagnostics do not create coverage. Original
 fixed work/caps remain unchanged; Q4/adoption/full production gates stay unmet.
+
+### V2 outcome: producer JIT compile failure before branch evaluation
+
+The [V2 precommit](issue178-startup-diagnostic-plan.md#v2-explicit-runtime-peer-coordinates-and-one-shot-provenance-diagnostics)
+at `49743ef`/native `7b9baa12...` passed full host/board-free/CI/Sonar checks and
+fresh preflight. The [single authorized P6 V2](2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure.json)
+then failed before dispatch: compiler CTA `[0,4096,2,4096]`, requested bank slot4,
+static assertion `4 < 4`. This actual unsharded config/page layout lacks the
+assumed bank word. Raw streams/direct native2 are retained; no result/final stats
+was produced. Branches1/2/3 and A/B/C are not evaluable, never labeled start0/C.
+Stop without P7/retry/production. Healthy800MHz postchecks, containers0, reset0.
+No runtime-route or Q4 coverage validation follows. Actual buffer/sharding/CTA
+layout and fail-closed diagnostic applicability/retention need board-free tests
+and a new correction/precommit/owner approval; all prior gates remain.

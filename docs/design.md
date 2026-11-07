@@ -2248,6 +2248,19 @@ Diagnostic snapshots cannot establish coverage. P7/production were not run,
 only accepted warnings occurred, Watcher had no anomaly, both cards returned
 800MHz/DRAM healthy and reset/retry remained zero. Ordinary CQ1 stays preferred
 but unadopted until healthy causal frame and long-run production gates pass.
+The [subsequently authorized V2 run7](measurements/2026-11-07-p150a-issue120-run7.md)
+at `49743ef` routed both peers through shared-index runtime xy and added raw CTA
+provenance snapshots. Full host/board-free/CI checks passed, but producer device
+JIT then failed before dispatch: actual compiler args `[0,4096,2,4096]` contain
+only unsharded-L1/DRAM config-page pairs, whereas the diagnostic requested bank
+slot4 (`4 < 4` failed). A public constexpr offset is not proof that the actual
+accessor carries that slot. No native result or branch1/2/3/A/B/C readout exists;
+no zero/C classification or route/coverage validation follows. Diagnose actual
+buffer/sharding/CTA layout and diagnostic applicability board-free before a new
+tested precommit/approval. P7/production/retry remained unrun, both cards healthy
+at800MHz, no container survivor, reset0; no production fix is bundled into the
+failure archive. The first candidate and outstanding coverage/long-run gates
+are unchanged.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

@@ -411,4 +411,20 @@ in the V2 precommit publication before either attempt.
 V2 pinned native host compile/link passed. Native SHA-256:
 `7b9baa12d3adfd6d4f54496f5d0e50463a16af81285827849e74c6cad619fb5a`.
 This fingerprint replaces neither V1's measured binary identity nor its records.
-Device kernel JIT/behavior is still unverified before the approved P6 V2.
+Device kernel JIT/behavior was still unverified before the approved P6 V2.
+
+### V2 execution outcome: pre-branch JIT failure, no retry
+
+The [authorized run7](2026-11-07-p150a-issue120-run7.md) at `49743ef` stopped
+before resident dispatch: producer compiler CTA was `[0,4096,2,4096]`, while the
+new diagnostic unconditionally requested BankCoordsCTAOffset4. Static assertion
+`4 < 4` failed. The checked source interprets that layout as unsharded L1 and
+DRAM config/page pairs, not the assumed sharded bank-coordinate input. Public
+availability of the constexpr offset was insufficient to guarantee a valid slot.
+No final stats/native result exists, so run branches1/2/3 and coordinate A/B/C
+are unavailable, not inferred zeros/C. Actual host vector copies were not
+persisted before the failure. Follow-up must establish actual buffer/sharding/
+CTA generation and safe diagnostic applicability/retention tests board-free.
+Runtime routing remains hardware-unvalidated. New JIT error triggered stop;
+P7/retry/production were not run, no timeout/container survivor, both cards
+800MHz/DRAM healthy, reset0. New correction/identity requires renewed approval.
