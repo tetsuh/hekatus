@@ -2174,7 +2174,12 @@ with a wrapper JSON-result capture failure. Its
 [separate record](measurements/2026-11-07-p150a-issue120-p1-runtime-root-v1-failure.json)
 retains Watcher/inspector diagnostics but no usable completion/window verdict.
 No reset/retry or P2-P7 followed; mechanism selection remains unresolved.
-Issue #175 tracks native output retention/framing before any future retry.
+Issue #175 corrects native output retention/framing in this PR before any
+future retry. [ADR-0018](adr/0018-issue120-native-result-file.md) makes an
+attempt-bound atomic file the result channel, retains raw diagnostic streams
+and direct exit status, and rejects ambiguous or stale results. The new
+`p1-result-file-v1` precommit is not hardware authorization; no previous missing
+native evidence is reconstructed or promoted.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

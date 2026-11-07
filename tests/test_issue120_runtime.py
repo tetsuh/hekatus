@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -22,6 +21,10 @@ def assets(tmp_path, monkeypatch):
     root = tmp_path / "wheel"
     root.mkdir()
     monkeypatch.setattr(runtime, "PINNED_RUNTIME_ROOT", root)
+    output = tmp_path / "out"
+    output.mkdir()
+    monkeypatch.setattr(probe.issue120_results, "OUTPUT_ROOT", output)
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "runtime-unit")
     row = [{"path": "asset", "kind": "file", "size": 7, "executable": False}]
     digest = hashlib.sha256(json.dumps(row, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     trees = []
@@ -45,7 +48,7 @@ def execute(monkeypatch):
 
 
 def forbid_native(monkeypatch):
-    monkeypatch.setattr(probe.subprocess, "run", lambda *_a, **_k: pytest.fail("native subprocess executed"))
+    monkeypatch.setattr(probe.subprocess, "Popen", lambda *_a, **_k: pytest.fail("native subprocess executed"))
 
 
 def test_program_owned_paths_and_audited_fingerprints():
@@ -67,11 +70,15 @@ def test_valid_assets_pass_fixed_root_to_native_and_override_ambient_root(assets
     monkeypatch.setenv("TT_METAL_HOME", "/external/legacy")
     captured = {}
 
-    def run(command, **kwargs):
-        captured.update(command=command, **kwargs)
-        return subprocess.CompletedProcess(command, 0, "{}", "")
+    class Process:
+        def __init__(self, command, **kwargs):
+            captured.update(command=command, **kwargs)
 
-    monkeypatch.setattr(probe.subprocess, "run", run)
+        def wait(self, timeout):
+            captured["timeout"] = timeout
+            return 0
+
+    monkeypatch.setattr(probe.subprocess, "Popen", Process)
     assert execute(monkeypatch).returncode == 0
     assert captured["env"]["TT_METAL_RUNTIME_ROOT"] == str(root)
     assert "TT_METAL_HOME" not in captured["env"]

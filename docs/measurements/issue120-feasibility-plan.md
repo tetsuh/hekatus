@@ -550,3 +550,89 @@ original failure and all future attempts separate, and preserve their named
 harness revisions without rebase/amend. Production remains gated on the
 remaining bounded evidence, widened protocol, calibration and same-session
 control in the original plan.
+
+## Result-file correction and new P1 precommit (Issue #175)
+
+The authorized `p1-runtime-root-v1` stopped at wrapper stdout parsing. Its
+[immutable attempt](2026-11-07-p150a-issue120-p1-runtime-root-v1-failure.json)
+and the original startup-failure record remain unchanged. No native stream can
+be reconstructed retrospectively. This prerequisite is corrected in PR #172,
+not deferred outside that PR, under [ADR-0018](../adr/0018-issue120-native-result-file.md).
+
+### Native/wrapper result contract
+
+- The wrapper's fresh `HEKATUS_TT_RUN_ID` is the transport attempt identity.
+  It exclusively creates `/out/native-<run-id>/result`. The only accepted native
+  result is its `result.json`; stdout/stderr are never result inputs.
+- Native argv receives only that program-owned path and validated identity.
+  Before mesh creation, native checks the exact derived path, canonical roots
+  and empty slot. It writes `result.json.tmp` exclusively, fsyncs/closes it,
+  atomically renames without replacement, and syncs the directory.
+- The envelope has exactly `schema: issue120-native-result-v1`, matching
+  `attempt_identity`, and object-valued `result`. The wrapper then applies the
+  existing probe record/provenance/coverage validator. Atomic publication is
+  not a substitute for those gates.
+- `stdout.bin` and `stderr.bin` in the capture directory receive raw bytes
+  directly from spawn. `execution.json` records schema
+  `issue120-native-execution-v1`, identity, the direct wait return code,
+  started/timeout state, error, stream counts and SHA-256. Preflight/spawn
+  failure has no native exit code. No parse outcome deletes these artifacts.
+- Exactly one entry must occupy the result slot. Missing/multiple entries,
+  leftover temporary files, symlinks, malformed/oversized or duplicate-key JSON,
+  schema/identity/type mismatch and nonzero/timeout execution all reject success.
+  Cleanup logs can follow arbitrarily without changing result selection.
+- An externally killed observer cannot guarantee its own final execution
+  metadata; raw bytes already written survive in the output mount. Missing
+  final metadata is incomplete evidence, never assumed success. Raw stream
+  publication requires a separate identified redacted derivative if sensitive
+  text exists; the raw bytes are not edited in place.
+
+### Board-free verification of the new file channel
+
+Host compile/link against the pinned dependencies succeeded. The rebuilt native
+binary SHA-256 is
+`1ca91e17b09db83b70b1cec1e09d69e61430d00d5bab9168a283d3503f9c2b4d`.
+CPU-only publisher tests verify successful schema/identity publication and
+no-overwrite behavior without linking Metalium.
+
+A named, device-free, network-disabled, non-root/capability-dropped container
+with read-only source/root and masked host discovery paths ran the corrected
+native entry path. `No chips detected` ended with directly waited native code 2.
+Both raw files survived: stdout 768 bytes and stderr 2282 bytes, with SHA-256
+matching execution metadata. The result slot was empty and failure was refused.
+No real device was visible, and this is not hardware/kernel/Watcher acceptance.
+The two prior attempt archives remain byte-identical.
+
+### New identity and prediction (not executed)
+
+- Logical attempt: **`p1-result-file-v1`**, under the never-reused output
+  directory `out/issue120/p1-result-file-v1`. The wrapper separately generates a
+  new collision-safe transport run ID. Prior attempt directories are not reused.
+- Use the clean/pushed correction revision, newly rebuilt native fingerprint,
+  original resident-and-transfer setup, device 0 only, Watcher on, native cap
+  exactly 60 seconds and outer cap exactly 60 seconds. Kernels have not yet
+  passed an accepted P1 Watcher/result gate.
+- Prediction: a clean native completion should publish exactly one matching
+  envelope regardless of later diagnostics. Failure should retain both raw
+  streams and direct execution status, not fabricate a record. If valid P1
+  evidence is returned, interpret the original possible gating/inside-window/
+  missing-observation hypotheses from card timestamps only. No new latency
+  threshold or mechanism-selection claim is introduced.
+- Any abnormal exit, invalid/missing result, timeout, Watcher anomaly or
+  unexpected observation stops without retry or P2 continuation. Owner must
+  separately authorize the real run; this fix and device-free diagnostic do not.
+- One more conditional 60-second P1 adds to the historical cap ledger:
+  original seven plus two separate retries total 540 seconds outer and
+  450 seconds native. Remaining new P1 plus P2-P7 still total 420 seconds
+  outer and 330 seconds native. No automatic batch or reset is authorized.
+
+Only after renewed owner approval:
+
+```bash
+TT_METAL_WATCHER=1 HEKATUS_TT_DEVICE_NODE=/dev/tenstorrent/0 \
+  HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+  HEKATUS_TT_RUNNER=enodia/tt/bench/issue120/run_issue120_probe.py \
+  enodia/tt/bench/run_in_container.sh out/issue120/p1-result-file-v1 -- \
+  --execute --probe q1-cq1-completion --stall-group resident-and-transfer \
+  --first-kernel-run --cap-seconds 60
+```

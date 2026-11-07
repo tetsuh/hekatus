@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Probe-only native host runner for Issue #120, pinned to tt-metalium v0.75.0.
 #include "q4_frame_probe.hpp"
+#include "native_result_io.hpp"
 #include <tt-metalium/distributed.hpp>
 #include <tt-metalium/experimental/pinned_memory.hpp>
 #include <tt-metalium/host_api.hpp>
@@ -60,6 +61,8 @@ std::string kernel_source(const char* name) {
 struct Arguments {
     std::string probe;
     std::string stall_group;
+    std::string result_file;
+    std::string attempt_identity;
     uint32_t repeat_count = 256;
     uint32_t cap_seconds = normal_cap_seconds;
     bool execute = false;
@@ -104,6 +107,10 @@ Arguments parse_args(int argc, char** argv) {
             result.probe = value();
         } else if (name == "--stall-group") {
             result.stall_group = value();
+        } else if (name == "--result-file") {
+            result.result_file = value();
+        } else if (name == "--attempt-identity") {
+            result.attempt_identity = value();
         } else if (name == "--repeat-count") {
             result.repeat_count = static_cast<uint32_t>(std::stoul(value()));
         } else if (name == "--cap-seconds") {
@@ -629,8 +636,11 @@ int main(int argc, char** argv) {
         if (watcher_enabled != args.watcher) {
             throw std::invalid_argument("Watcher CLI and environment must agree");
         }
+        const std::filesystem::path output_root{"/out"};
+        issue120::validate_result_target(output_root, args.result_file, args.attempt_identity);
         const Json result = run_probe(args);
-        std::cout << result.dump() << std::endl;
+        issue120::publish_result(output_root, args.result_file, args.attempt_identity, result.dump());
+        std::cout << "Issue #120 native result committed" << std::endl;
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "Issue #120 probe failed: " << error.what() << std::endl;

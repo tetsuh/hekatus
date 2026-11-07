@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from enodia.tt.bench import issue120_runtime
+from enodia.tt.bench import issue120_results, issue120_runtime
 from enodia.tt.bench.board_identity import normalize_board_id, normalize_pci_bus_id
 from enodia.tt.bench.issue120_coverage import (
     CPU_ROUNDS_PER_TRANSFER,
@@ -843,13 +843,14 @@ def _result_destination(value: str | Path | None) -> Path:
     return destination
 
 
-def _native_arguments(executable: Path, spec: ProbeSpec, stall: str | None) -> list[str]:
+def _native_arguments(executable: Path, spec: ProbeSpec, stall: str | None, attempt: issue120_results.NativeAttempt) -> list[str]:
     canonical = _PROBE_BY_ID[spec.probe_id].probe_id
     command = [
         str(executable), "--execute", "--probe", canonical,
         "--repeat-count", str(int(spec.repeat_count)),
         "--cap-seconds", str(int(spec.outer_cap_seconds)),
         "--watcher", "1" if spec.watcher else "0",
+        "--result-file", str(attempt.result_file), "--attempt-identity", attempt.identity,
     ]
     if stall is not None:
         command.extend(("--stall-group", stall))
@@ -874,24 +875,31 @@ def _runtime_environment() -> dict[str, str]:
     return runtime_env
 
 
-def _execute_native(executable: Path, spec: ProbeSpec, stall: str | None) -> subprocess.CompletedProcess:
+def _execute_native(executable: Path, spec: ProbeSpec, stall: str | None, attempt: issue120_results.NativeAttempt | None = None) -> subprocess.CompletedProcess:
     if (os.environ.get("TT_METAL_WATCHER") == "1") != spec.watcher:
         raise ProbeRecordError("first-kernel Watcher mode does not match the environment")
-    command = _native_arguments(executable, spec, stall)
     try:
-        return subprocess.run(
-            command, check=False, capture_output=True, text=True,
-            timeout=spec.outer_cap_seconds, env=_runtime_environment(), cwd=REPOSITORY_ROOT,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ProbeRecordError(f"native {spec.probe_id} exceeded its bounded probe cap") from exc
+        if attempt is None:
+            attempt = issue120_results.create_attempt(os.environ.get("HEKATUS_TT_RUN_ID"))
+        command = _native_arguments(executable, spec, stall, attempt)
+        return issue120_results.execute(command, attempt, spec.outer_cap_seconds, _runtime_environment, REPOSITORY_ROOT)
+    except issue120_results.NativeResultError as exc:
+        raise ProbeRecordError(str(exc)) from exc
 
 
-def _record_native_result(completed: subprocess.CompletedProcess, spec: ProbeSpec, environment: dict[str, str], library_hash: str, first: bool) -> dict[str, Any]:
+def _record_native_result(completed: subprocess.CompletedProcess, spec: ProbeSpec, environment: dict[str, str], library_hash: str, first: bool, attempt: issue120_results.NativeAttempt) -> dict[str, Any]:
     try:
-        result = json.loads(completed.stdout.splitlines()[-1])
-    except (IndexError, json.JSONDecodeError) as exc:
-        raise ProbeRecordError("native runner did not return one JSON result") from exc
+        if completed.returncode != 0:
+            raise issue120_results.NativeResultError("native exit does not permit a result")
+        result = issue120_results.read_result(attempt)
+    except issue120_results.NativeResultError as exc:
+        raise ProbeRecordError(str(exc)) from exc
+    result["native_capture"] = {
+        "attempt_identity": attempt.identity,
+        "directory": attempt.directory.relative_to(issue120_results.OUTPUT_ROOT).as_posix(),
+        "execution_file": "execution.json", "stdout_file": "stdout.bin", "stderr_file": "stderr.bin",
+        "result_file": "result/result.json", "native_returncode": completed.returncode,
+    }
     result.update(schema=PROBE_SCHEMA, environment=environment)
     result["source"] = {
         "tt_metal_tag": "v0.75.0", "tt_metal_commit": PINNED_SOURCE_REVISION,
@@ -924,11 +932,15 @@ def _run_native_probe(args: argparse.Namespace) -> int:
     library_hash = hashlib.sha256(library.read_bytes()).hexdigest()
     if library_hash != PINNED_LIBRARY_HASH:
         raise ProbeRecordError("staged libtt_metal.so does not match the audited pinned image library")
-    completed = _execute_native(executable, spec, stall)
+    try:
+        attempt = issue120_results.create_attempt(os.environ.get("HEKATUS_TT_RUN_ID"))
+    except issue120_results.NativeResultError as exc:
+        raise ProbeRecordError(str(exc)) from exc
+    completed = _execute_native(executable, spec, stall, attempt)
     if completed.returncode != 0:
-        sys.stderr.write(completed.stderr)
+        print(f"native exit {completed.returncode}; raw diagnostics retained", file=sys.stderr)
         return completed.returncode
-    result = _record_native_result(completed, spec, environment, library_hash, args.first_kernel_run)
+    result = _record_native_result(completed, spec, environment, library_hash, args.first_kernel_run, attempt)
     with destination.open("x", encoding="utf-8") as output:
         output.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, sort_keys=True))
