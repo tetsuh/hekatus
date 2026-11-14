@@ -2,6 +2,101 @@
 
 Raw results kept as data, each with the reproducibility information that
 produced it.
+Three byte-exact raw evidence paths have `.gitattributes` whitespace exceptions;
+reformatting them would change their manifest SHA-256 values.
+
+## Issue #120 board-free feasibility preparation
+
+The [feasibility plan](issue120-feasibility-plan.md) records the v0.75.0 source
+audit, bounded experimental probes, predictions and mechanism-selection gates.
+Phase 1 performs no board run and adds no timing result. A payload witness is
+not full-window coverage. Phase 1b adds Q4 real-frame, same-clock CPU/DMA progress
+instrumentation and two planned bounded confirmations. The hardware coverage
+gate remains open before production integration or work-count selection.
+
+On 2026-11-07, the first authorized P1 attempt at `b1865fe` failed during
+native runtime initialization with `Root Directory is not set.` (exit 2).
+The [immutable attempt record](2026-11-07-p150a-issue120-p1-launch-failure.json)
+binds the sanitized log, fresh environment/health, container lifecycle and frozen
+startup power trace. Its eight archived files are also retained at the planned
+`out/issue120/p1` destination. No valid runner result, kernel validation or
+card-side completion/window evidence was produced. P2-P7 were not run, no reset
+or retry was performed, and both boards were idle at 800 MHz after cleanup.
+Q1-Q4 and mechanism selection remain unresolved; this launcher failure does not
+establish that CQ1 writes or pinned-host NoC traffic cannot work.
+See the [outcome and next precommit proposal](2026-11-07-p150a-issue120-p1-launch-failure.md).
+The subsequent [runtime-root correction precommit](issue120-feasibility-plan.md#runtime-root-correction-and-renewed-p1-precommit-issue-173)
+records exact-image wheel/SFPI asset inventories and the separate
+`p1-runtime-root-v1` identity. It adds no hardware result or retry authority;
+the original startup-failure artifacts remain unchanged.
+
+After renewed owner approval, `p1-runtime-root-v1` at `9d5025a` reached native
+result parsing but failed there with wrapper exit 2. The
+[separate immutable attempt](2026-11-07-p150a-issue120-p1-runtime-root-v1-failure.json)
+and [interpretation](2026-11-07-p150a-issue120-p1-runtime-root-v1-failure.md)
+retain the new environment, lifecycle, health, power, Watcher and inspector
+artifacts. P2-P7 were stopped, no reset/retry followed, and Q1-Q4 remain
+unresolved. Native streams were not retained by the failed parser; plausible
+trailing logs are not a proven diagnosis. Result framing is corrected within
+this PR under #175 and [ADR-0018](../adr/0018-issue120-native-result-file.md).
+The [new result-file precommit](issue120-feasibility-plan.md#result-file-correction-and-new-p1-precommit-issue-175)
+uses `p1-result-file-v1`, atomic attempt-bound JSON and retained binary streams;
+it neither rewrites these records nor authorizes a hardware retry.
+The later separately authorized
+[`p1-result-file-v1` result](2026-11-07-p150a-issue120-p1-result-file-v1.json)
+and [interpretation](2026-11-07-p150a-issue120-p1-result-file-v1.md) retain a valid
+atomic result with bounded 16-page CQ1 completion inside the resident window.
+Execution stopped conservatively before P2 for unplanned runtime warnings,
+without reset/retry; Q2-Q4 and full-frame adoption remained unresolved then.
+The later [run 4 session](2026-11-07-p150a-issue120-run4.json) and
+[interpretation/next precommit proposal](2026-11-07-p150a-issue120-run4.md)
+retain the pre-board #146 warning verification accepted under #176,
+[P2 transfer-only overlap](2026-11-07-p150a-issue120-p2.json),
+[P3 fixed write-only completion](2026-11-07-p150a-issue120-p3.json), and
+[P4 pinned-capacity rejection](2026-11-07-p150a-issue120-p4.json).
+P5-P7 stopped without reset/retry; Q3 was blocked and Q4/adoption unresolved.
+The later [run 5 record](2026-11-07-p150a-issue120-run5.json) and
+[interpretation/conditional production precommit proposal](2026-11-07-p150a-issue120-run5.md)
+retain [P5's predicted falsifier](2026-11-07-p150a-issue120-p5.json) and
+[P6's not-evaluable startup gate](2026-11-07-p150a-issue120-p6.json).
+P7 was not run; no reset/retry/P4 rerun followed. Q4 and production adoption
+remain blocked. The [#177 source audit](2026-11-07-p150a-issue120-run5-pinning-source-audit.md)
+records conditional passthrough/zero-capability behavior without host changes.
+The later [board-free #178 diagnosis and diagnostic proposal](issue178-startup-diagnostic-plan.md)
+traces initialization/publication/read order and the two abort flags without
+claiming a causal root or modifying records. CPU-only host-loop replay is
+characterization, not device validation. Proposed new startup-trace identities
+were non-executable until diagnostic implementation and renewed approval.
+That preserved plan now records the confirmed per-MeshDevice API-lock starvation
+fix (join before finish) and the independent semaphore observation diagnostics.
+New API-lock/semaphore P6/P7 precommits retain60-second caps/P6 Watcher, strict
+coverage and fixed work; the precommit itself granted no hardware approval.
+The subsequently authorized [run6](2026-11-07-p150a-issue120-run6.md) at `af5db15`
+stopped at [P6 branch3](2026-11-07-p150a-issue120-p6-api-lock-semaphore-v1.md):
+startup gate passed, but zero frames and raw start0 at exit/post-finish. Recorded
+emitted NoC coordinate `(1,5)` differs from intended producer `(1,2)` at the same
+local word `0x9f60`; IDs/base/poll address agree. This narrows board-free address/
+coordinate investigation, not physical routing or complete causal coverage.
+P7/production were not run. Only baseline warnings, clean Watcher, healthy
+800-MHz postchecks and zero resets; prior measurement bytes stay unchanged.
+The [subsequent V2 run7](2026-11-07-p150a-issue120-run7.md) at `49743ef` stopped
+with [producer device JIT failure](2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure.md)
+before run or coordinate branches could be evaluated. Compiler args were
+`[0,4096,2,4096]`; the new unconditional bank-slot4 diagnostic hit `4 < 4`.
+Native code2/raw streams survived but native/wrapper results did not exist.
+No fabricated start0/C or coverage, no P7/retry/production, reset0 and healthy
+800-MHz postchecks. Actual sharding/CTA layout and safe diagnostic applicability
+remain board-free follow-up gates; host compile/no-chip/CI were not device JIT
+validation.
+The [V3 run8](2026-11-14-p150a-issue120-run8.md) subsequently passed bounded Q4:
+[P6 Watcher](2026-11-14-p150a-issue120-p6-api-lock-semaphore-v3.json) and
+[P7 no-Watcher](2026-11-14-p150a-issue120-p7-api-lock-semaphore-v3.json) both
+branch1/covered,4096 frames,0 abort/overflow, matching config1/bank258/514 and
+runtime/accessor/host xy. Explicit distribution and guarded diagnostics passed
+8 offline RISC-V cases before hardware. Ordinary CQ1/direct-L1 is selected for
+short feasibility, not production. Only baseline warnings, healthy postchecks,
+no reset/retry/production; previous bytes unchanged. See run8 for the remaining
+long-run/control gates and #179's legacy expected2 label caveat (actual4098).
 
 ## Issue #137 duration-bounded runner (revision 2)
 

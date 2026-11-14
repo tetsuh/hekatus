@@ -1,0 +1,45 @@
+{
+  "before": [
+    {
+      "device_node": "/dev/tenstorrent/0",
+      "serial": "000004033191411c",
+      "pci": "0000:06:00.0",
+      "board_model": "p150a",
+      "aiclk_mhz": 800,
+      "dram_healthy": true,
+      "firmware": "19.6.0.0"
+    },
+    {
+      "device_node": "/dev/tenstorrent/1",
+      "serial": "0000040331914124",
+      "pci": "0000:09:00.0",
+      "board_model": "p150a",
+      "aiclk_mhz": 800,
+      "dram_healthy": true,
+      "firmware": "19.6.0.0"
+    }
+  ],
+  "after": [
+    {
+      "device_node": "/dev/tenstorrent/0",
+      "serial": "000004033191411c",
+      "pci": "0000:06:00.0",
+      "board_model": "p150a",
+      "aiclk_mhz": 800,
+      "dram_healthy": true,
+      "firmware": "19.6.0.0"
+    },
+    {
+      "device_node": "/dev/tenstorrent/1",
+      "serial": "0000040331914124",
+      "pci": "0000:09:00.0",
+      "board_model": "p150a",
+      "aiclk_mhz": 800,
+      "dram_healthy": true,
+      "firmware": "19.6.0.0"
+    }
+  ],
+  "before_source": "fresh session preflight",
+  "compute_device": 0,
+  "other_device_use": "requested telemetry only; never exposed to compute container"
+}

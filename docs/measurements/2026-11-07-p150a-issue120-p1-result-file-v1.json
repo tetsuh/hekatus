@@ -1,0 +1,370 @@
+{
+  "schema": "issue120-feasibility-attempt-v1",
+  "issue": 120,
+  "attempt_identity": "p1-result-file-v1",
+  "run_id": "20261107T020924035107897674672052Z",
+  "status": "stopped_after_successful_p1_with_unplanned_runtime_warnings",
+  "timing_evidence": false,
+  "environment": {
+    "board_model": "p150a",
+    "commit": "75be8ec573a0af9cbed02b139b683c6d366a09a9",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "firmware": "19.6.0.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "kmd": "2.11.0",
+    "pci": "0000:06:00.0",
+    "serial": "000004033191411c",
+    "harness_clean": true,
+    "harness_pushed": true
+  },
+  "native_artifact": {
+    "sha256": "1ca91e17b09db83b70b1cec1e09d69e61430d00d5bab9168a283d3503f9c2b4d",
+    "libtt_metal_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "rebuilt_during_this_attempt": false,
+    "source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "source_tree_parity_with_image": "not_asserted"
+  },
+  "plan": {
+    "path": "docs/measurements/issue120-feasibility-plan.md",
+    "commit": "75be8ec573a0af9cbed02b139b683c6d366a09a9",
+    "logical_identity": "p1-result-file-v1",
+    "stall_group": "resident-and-transfer",
+    "prediction": "Clean native completion should publish one matching atomic result independent of trailing logs; original possible gating/inside-window/missing-observation branches remain card-evidence-only."
+  },
+  "execution": {
+    "start_utc": "2026-11-07T02:09:24Z",
+    "end_utc": "2026-11-07T02:09:32Z",
+    "utc_resolution_seconds": 1,
+    "host_wrapper_start_monotonic_ns": 7917947768937,
+    "host_wrapper_end_monotonic_ns": 7925991749926,
+    "wrapper_exit_code": 0,
+    "container_exit_code": 0,
+    "native_exit_code_observed_directly": 0,
+    "timeout": false,
+    "container_name": "hekatus-bench-67467-885",
+    "device_nodes_exposed": [
+      "/dev/tenstorrent/0"
+    ],
+    "containers_before": 0,
+    "containers_after": 0,
+    "forced_container_kills": 0,
+    "reset_count": 0,
+    "reset_reason": "Normal exits; both cards idle at 800 MHz and DRAM healthy. No reset allowed or needed.",
+    "retry_count": 0,
+    "production_run_attempted": false
+  },
+  "native_result_transport": {
+    "schema": "issue120-native-result-v1",
+    "attempt_identity": "20261107T020924035107897674672052Z",
+    "result_candidates": 1,
+    "raw_stdout_stderr_preserved": true,
+    "public_stream_copies_byte_exact": true,
+    "direct_execution_metadata_preserved": true,
+    "trailing_cleanup_logs_do_not_select_result": true
+  },
+  "stop": {
+    "reason": "Conservative application of unplanned-condition rule to runtime warning conditions not pre-cleared in the plan. Native/wrapper completion and card bracket are valid; warnings are not inferred Watcher corruption or failed DMA.",
+    "warnings": [
+      "UMD | hwloc_set_area_membind(): failed for physical_device_id: 0 on NodeSet: [0] with errno: Operation not permitted (pid: 7 tid: 126218644684992) (cpuset_lib.cpp:440)",
+      "UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 0 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)",
+      "Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=0 (bus_id=0x6) \u2014 falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+    ],
+    "unexpected_conditions": [
+      "NUMA memory binding failed with Operation not permitted; runtime warns of possible device-to-host performance impact.",
+      "Unknown motherboard fell back to bus ID; target serial/PCI remained verified.",
+      "Dispatch telemetry SMC buffer unavailable; do not assume dispatch-telemetry coverage."
+    ],
+    "next_run_forbidden_without_assessment": true
+  },
+  "p1_card_evidence": {
+    "status": "complete",
+    "stall_group": "resident-and-transfer",
+    "resident_interval": {
+      "clock": "resident_observer_low32_wrap_tracked",
+      "end_ticks": 4342099876,
+      "start_ticks": 1641510863
+    },
+    "resident_program_interval": {
+      "clock": "resident_observer_low32_wrap_tracked",
+      "observer_end_ticks": 7042425355,
+      "start_ticks": 1641494303
+    },
+    "clock_gap_ambiguous": false,
+    "transfer_completion_relation": "inside_resident_window",
+    "transfer_program_relation": "resident_program_active",
+    "transfer_completion_lower_ticks": 1911527229,
+    "transfer_completion_upper_ticks": 2046823242,
+    "transfer_payload_pages_verified": 16,
+    "transfer_payload_visible": true,
+    "work": {
+      "bytes_per_transfer": 65536,
+      "bytes_total": 65536,
+      "observer_page_reads": 57,
+      "payload_pages": 16,
+      "payload_words_per_page": 1024,
+      "queue_id": 1,
+      "repeat_count": 1,
+      "transfer_count": 1
+    },
+    "memory": {
+      "allocated_bytes": 339968,
+      "auxiliary_bytes": 12288,
+      "buffer_pool_size": 4,
+      "device_buffer_bytes": 262144,
+      "host_payload_bytes": 65536,
+      "host_payload_immutable": true,
+      "host_payload_pinned": false,
+      "max_outstanding_transfers": 1,
+      "observer_l1_scratch_bytes": 8192,
+      "outstanding_bound": "one fixed CQ1 payload submission"
+    },
+    "host_interval": {
+      "end_ns": 7921934855955,
+      "scope": "submission_and_fixed_host_work_only",
+      "start_ns": 7921304406480
+    },
+    "final_drain_interval": {
+      "end_ns": 7925685653254,
+      "start_ns": 7921934856075
+    },
+    "resident_host_interval": {
+      "end_ns": 7925685557682,
+      "start_ns": 7921304405975
+    }
+  },
+  "watcher": {
+    "requested": true,
+    "retained_device": "device 0",
+    "dump_count": 12,
+    "detach_observed": true,
+    "error_warning_assert_hang_scan_matches": 0,
+    "kernel_names_include": [
+      "resident_observer.cpp",
+      "resident_producer.cpp"
+    ],
+    "scope": "P1 observer/producer only; no full-frame or pinned-kernel health claim"
+  },
+  "probes": [
+    {
+      "order": "P1",
+      "probe": "q1-cq1-completion",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": true,
+      "status": "completed_then_stopped_for_runtime_warnings",
+      "prediction_comparison": "Matching atomic result retained; full-payload bracket is inside the resident window, an explicitly predicted branch. Runtime NUMA/SMC warnings were not pre-cleared; conservatively stop under the unplanned-condition rule."
+    },
+    {
+      "order": "P2",
+      "probe": "q1-cq1-completion",
+      "native_cap_seconds": 30,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 runtime warnings; original precommitted identity remains unused."
+    },
+    {
+      "order": "P3",
+      "probe": "q2-h2d-write-only",
+      "native_cap_seconds": 30,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 runtime warnings; original precommitted identity remains unused."
+    },
+    {
+      "order": "P4",
+      "probe": "q3-pinned-noc",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": true,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 runtime warnings; original precommitted identity remains unused."
+    },
+    {
+      "order": "P5",
+      "probe": "q4-fixed-window",
+      "native_cap_seconds": 30,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 runtime warnings; original precommitted identity remains unused."
+    },
+    {
+      "order": "P6",
+      "probe": "q4-frame-coverage",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": true,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 runtime warnings; original precommitted identity remains unused."
+    },
+    {
+      "order": "P7",
+      "probe": "q4-frame-coverage",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 runtime warnings; original precommitted identity remains unused."
+    }
+  ],
+  "questions": {
+    "Q1": {
+      "judgment": "partially_answered",
+      "reason": "A complete 16-page CQ1 payload bracket is strictly inside the CQ0 resident window with both sub-devices in the stall group. This proves this bounded overlap, not the transfer-only comparison or cause of historical completion-wait stalls."
+    },
+    "Q2": {
+      "judgment": "unresolved",
+      "reason": "P3 was not run; no sustained write-only progress/backpressure judgment."
+    },
+    "Q3": {
+      "judgment": "unresolved",
+      "reason": "P4 was not run; pinned-host NoC feasibility untested."
+    },
+    "Q4": {
+      "judgment": "unresolved",
+      "reason": "P5-P7 were not run; no real-frame full-window CPU/PCIe coverage."
+    }
+  },
+  "mechanism_selection": {
+    "decision": "not_adopted",
+    "first_candidate": "ordinary unpinned CQ1 bulk writes with direct-L1 challenge observation",
+    "prospect": "Short bounded CQ1 overlap now supported; sustained coverage and causal CPU challenge evidence remain absent.",
+    "adoption_gate": "not_met",
+    "no_cpu_only_fallback": true
+  },
+  "power_trace": {
+    "sample_count": 4,
+    "frozen": true,
+    "observed_aiclk_mhz": [
+      800,
+      1350
+    ],
+    "coverage": "no full program-end coverage asserted from four sparse samples",
+    "timing_evidence": false
+  },
+  "artifact_policy": {
+    "roles": {
+      "native_stdout": "2026-11-07-p150a-issue120-p1-result-file-v1-native-stdout.bin",
+      "native_stderr": "2026-11-07-p150a-issue120-p1-result-file-v1-native-stderr.bin",
+      "native_execution": "2026-11-07-p150a-issue120-p1-result-file-v1-native-execution.json",
+      "native_result": "2026-11-07-p150a-issue120-p1-result-file-v1-native-result.json",
+      "wrapper_result": "2026-11-07-p150a-issue120-p1-result-file-v1-wrapper-result.json",
+      "wrapper_log": "2026-11-07-p150a-issue120-p1-result-file-v1.log",
+      "environment": "2026-11-07-p150a-issue120-p1-result-file-v1-env.json",
+      "power": "2026-11-07-p150a-issue120-p1-result-file-v1-power.csv",
+      "docker_before": "2026-11-07-p150a-issue120-p1-result-file-v1-docker-before.txt",
+      "docker_after": "2026-11-07-p150a-issue120-p1-result-file-v1-docker-after.txt",
+      "watcher/kernel_elf_paths.txt": "2026-11-07-p150a-issue120-p1-result-file-v1-watcher-kernel_elf_paths.txt",
+      "watcher/kernel_names.txt": "2026-11-07-p150a-issue120-p1-result-file-v1-watcher-kernel_names.txt",
+      "watcher/watcher.log": "2026-11-07-p150a-issue120-p1-result-file-v1-watcher-watcher.log",
+      "inspector/kernels.yaml": "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-kernels.yaml",
+      "inspector/mesh_devices_log.yaml": "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-mesh_devices_log.yaml",
+      "inspector/mesh_workloads_log.yaml": "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-mesh_workloads_log.yaml",
+      "inspector/programs_log.yaml": "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-programs_log.yaml",
+      "inspector/startup.yaml": "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-startup.yaml",
+      "lifecycle": "2026-11-07-p150a-issue120-p1-result-file-v1-lifecycle.json",
+      "health": "2026-11-07-p150a-issue120-p1-result-file-v1-health.json"
+    },
+    "artifacts": {
+      "2026-11-07-p150a-issue120-p1-result-file-v1-native-stdout.bin": {
+        "sha256": "8f3243428ba2708dd0614aeb41f2d2e2e436dbd10c0b4829dcaecd4d3c5774ed",
+        "byte_count": 5489
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-native-stderr.bin": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "byte_count": 0
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-native-execution.json": {
+        "sha256": "6ae6889ac0fa0063a79d93220653ffd14d04866ed25a6b0c746a60c28c6c1af6",
+        "byte_count": 529
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-native-result.json": {
+        "sha256": "9cef7f941a145ec1bc6c15ae988feb98e3b2a8f9bc469b12d871b8861fb8d32e",
+        "byte_count": 2003
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-wrapper-result.json": {
+        "sha256": "dcefd94932e41408edefa411a7ae001a6e0c77557652c38164732cd3f5c6e5f9",
+        "byte_count": 4165
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1.log": {
+        "sha256": "24b6786ff03202b6043cb3dc859688f87a1e0774818ec736e7ed24729c9d5356",
+        "byte_count": 3951
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-env.json": {
+        "sha256": "88346dbdf02d86012146e48565672b2badbf82e0cfe58690c820eb4c935e9125",
+        "byte_count": 4433
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-power.csv": {
+        "sha256": "e965d04eba06bc77a7bac164206c01c4a5e02175ece2fa68a318fb988ae56af1",
+        "byte_count": 235
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-docker-before.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-docker-after.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-watcher-kernel_elf_paths.txt": {
+        "sha256": "b568ea9f59044893e38e2a86dd38fadad35ef2aae4034dde79218b6092bbd7dd",
+        "byte_count": 1544
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-watcher-kernel_names.txt": {
+        "sha256": "10c3fb015405ef8922d1c5e81c59c3ef68215ca154b690afe7f0e2d9760019f7",
+        "byte_count": 586
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-watcher-watcher.log": {
+        "sha256": "b0bbebe27f004816a460d0ef8f9349c3ee839ad9970580ca0c5a297af7fee672",
+        "byte_count": 111048
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-kernels.yaml": {
+        "sha256": "1ef3b5a7c1f28fd999f9c603b45796eade648851f6c10e52cddd0c6b249ea5bd",
+        "byte_count": 2461
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-mesh_devices_log.yaml": {
+        "sha256": "fdd9e74d9d41dae136a260830d74bde438adae18dbeb50b86dd0e0209182e222",
+        "byte_count": 480
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-mesh_workloads_log.yaml": {
+        "sha256": "3500c9fd5f02b894da2c6f0749ae3eb10faee87538c2a4a91fa45b7324fbc0cc",
+        "byte_count": 600
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-programs_log.yaml": {
+        "sha256": "230192a68b1a2467f1153db4d5a88dc6e00d1aa822ae9e728a049411f39e0bd0",
+        "byte_count": 4050
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-inspector-startup.yaml": {
+        "sha256": "5e56ea889f216cdd9d53d471dde189396b16cb09da68f35821f626a47ee99327",
+        "byte_count": 144
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-lifecycle.json": {
+        "sha256": "1865920749fa43b8554b836d44f8e5dc58e9504b4a61deba1b7dff57c7c78155",
+        "byte_count": 1942
+      },
+      "2026-11-07-p150a-issue120-p1-result-file-v1-health.json": {
+        "sha256": "04bb96353d1921b9647d56ed27adc55feeb0bfb681a97de3fb0d070eb6f0ec84",
+        "byte_count": 1156
+      }
+    },
+    "raw_generated_and_wrapper_sha256": {
+      "wrapper": "be1f0da8a0f0688c86c536e6bb311b372364d7e436e6f99e07c4995fa7bd5a51",
+      "watcher/kernel_elf_paths.txt": "08f1a63f2a7cfc204f3a4fd27537bc0183df0152bd21937d5c534fe0f074ea07",
+      "watcher/kernel_names.txt": "10c3fb015405ef8922d1c5e81c59c3ef68215ca154b690afe7f0e2d9760019f7",
+      "watcher/watcher.log": "f419a760a4dc1ab72187691d177d97f658392d35bc24bf44b0531cf5c0486673",
+      "inspector/kernels.yaml": "d0b232e027101cd73751f0abb58e6947255ce16b7baca26fd375c8d0065b31b8",
+      "inspector/mesh_devices_log.yaml": "fdd9e74d9d41dae136a260830d74bde438adae18dbeb50b86dd0e0209182e222",
+      "inspector/mesh_workloads_log.yaml": "3500c9fd5f02b894da2c6f0749ae3eb10faee87538c2a4a91fa45b7324fbc0cc",
+      "inspector/programs_log.yaml": "ca0330b522ef0c11d1118bd3785bd5933b96d3ba91f4e8d6879686854f6226f8",
+      "inspector/startup.yaml": "5e56ea889f216cdd9d53d471dde189396b16cb09da68f35821f626a47ee99327"
+    },
+    "sanitization": "Native streams, native result/execution, wrapper result, env and CSV are byte-exact copies. Public generated/wrapper text derivatives replace repository/cache/hostname strings and normalize trailing line whitespace; private originals remain untouched. Snapshots/lifecycle use explicit reduced fields."
+  },
+  "next_step": "Supervisor/owner assessment of runtime warning conditions before any remaining planned probes. No automatic retry, new identity or production run."
+}

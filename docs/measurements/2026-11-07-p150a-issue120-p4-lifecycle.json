@@ -1,0 +1,42 @@
+[
+  {
+    "action": "create",
+    "container_id": "a92e5b8125d1bc3b7f4945c9cba7b37b0cea8437d9b45de1ee2b80953e551e70",
+    "container_name": "hekatus-bench-119636-11696",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "time_unix_ns": 1794024059864543873,
+    "exit_code": null
+  },
+  {
+    "action": "attach",
+    "container_id": "a92e5b8125d1bc3b7f4945c9cba7b37b0cea8437d9b45de1ee2b80953e551e70",
+    "container_name": "hekatus-bench-119636-11696",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "time_unix_ns": 1794024059865163182,
+    "exit_code": null
+  },
+  {
+    "action": "start",
+    "container_id": "a92e5b8125d1bc3b7f4945c9cba7b37b0cea8437d9b45de1ee2b80953e551e70",
+    "container_name": "hekatus-bench-119636-11696",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "time_unix_ns": 1794024059956739486,
+    "exit_code": null
+  },
+  {
+    "action": "die",
+    "container_id": "a92e5b8125d1bc3b7f4945c9cba7b37b0cea8437d9b45de1ee2b80953e551e70",
+    "container_name": "hekatus-bench-119636-11696",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "time_unix_ns": 1794024063061149973,
+    "exit_code": 2
+  },
+  {
+    "action": "destroy",
+    "container_id": "a92e5b8125d1bc3b7f4945c9cba7b37b0cea8437d9b45de1ee2b80953e551e70",
+    "container_name": "hekatus-bench-119636-11696",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "time_unix_ns": 1794024063069234509,
+    "exit_code": null
+  }
+]

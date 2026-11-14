@@ -1,0 +1,210 @@
+{
+  "schema": "issue120-feasibility-attempt-v1",
+  "issue": 120,
+  "status": "stopped_after_startup_failure",
+  "timing_evidence": false,
+  "run_id": "20261107T0004174710373862212714294Z",
+  "environment": {
+    "board_model": "p150a",
+    "serial": "000004033191411c",
+    "pci": "0000:06:00.0",
+    "firmware": "19.6.0.0",
+    "kmd": "2.11.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "commit": "b1865feced7b53c1116a0431a115198f6636c7e3",
+    "harness_clean": true,
+    "harness_pushed": true
+  },
+  "plan": {
+    "path": "docs/measurements/issue120-feasibility-plan.md",
+    "commit": "b1865feced7b53c1116a0431a115198f6636c7e3",
+    "prediction": "Possible worker-stream gating; card witness or explicit missing/ambiguous observation."
+  },
+  "native_artifact": {
+    "sha256": "63e7bb4dbf5c21dc151bbcf7e75fa3a9abf4bc0f744dac19e73c50d90ba686d5",
+    "verification": "Matches the successful phase-1b host-build fingerprint recorded for the harness commit before reboot.",
+    "rebuilt": false,
+    "libtt_metal_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "source_tag": "v0.75.0",
+    "source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "umd_commit": "bc77ac2f7382ffeb9fa5430055f0854d53979489",
+    "source_tree_parity_with_image": "not_asserted"
+  },
+  "execution": {
+    "command": "TT_METAL_WATCHER=1 HEKATUS_TT_DEVICE_NODE=/dev/tenstorrent/0 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 HEKATUS_TT_RUNNER=enodia/tt/bench/issue120/run_issue120_probe.py enodia/tt/bench/run_in_container.sh out/issue120/p1 -- --execute --probe q1-cq1-completion --stall-group resident-and-transfer --first-kernel-run --cap-seconds 60",
+    "started_utc": "2026-11-07T00:04:17Z",
+    "ended_utc": "2026-11-07T00:04:18Z",
+    "utc_resolution_seconds": 1,
+    "wrapper_exit_code": 2,
+    "container_exit_code": 2,
+    "timeout": false,
+    "container_name": "hekatus-bench-22127-8259",
+    "device_nodes_exposed": [
+      "/dev/tenstorrent/0"
+    ],
+    "containers_before": 0,
+    "containers_after": 0,
+    "leftovers": [],
+    "forced_container_kills": 0,
+    "reset_count": 0,
+    "reset_reason": "Not needed: startup prerequisite failure, no timeout, fresh post-run health shows idle 800 MHz and healthy DRAM.",
+    "production_run_attempted": false
+  },
+  "failure": {
+    "message": "Root Directory is not set.",
+    "stage": "RunTimeOptions construction during default MetalEnv initialization; create_unit_mesh did not return",
+    "runner_result_emitted": false,
+    "kernel_validation_performed": false,
+    "watcher_validation": "not_reached; enabled setting alone is not validation",
+    "card_evidence": null,
+    "card_completion_ticks": null,
+    "resident_window": null,
+    "during_window_transfer_count": null,
+    "coverage": "not_evaluable_startup_failure"
+  },
+  "probes": [
+    {
+      "order": "P1",
+      "probe": "q1-cq1-completion",
+      "stall_group": "resident-and-transfer",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": true,
+      "status": "launch_failed",
+      "exit_code": 2,
+      "prediction_comparison": "Observer evidence was never reached: missing runtime-root prerequisite failed before mesh construction returned. This is not evidence for or against CQ1 overlap."
+    },
+    {
+      "order": "P2",
+      "probe": "q1-cq1-completion",
+      "stall_group": "transfer-only",
+      "native_cap_seconds": 30,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "reason": "Stopped after P1 abnormal exit; no retry or continuation authorized by the stop rule.",
+      "prediction_comparison": "Not tested; precommitted prediction retained unchanged."
+    },
+    {
+      "order": "P3",
+      "probe": "q2-h2d-write-only",
+      "native_cap_seconds": 30,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "reason": "Stopped after P1 abnormal exit; no retry or continuation authorized by the stop rule.",
+      "prediction_comparison": "Not tested; precommitted prediction retained unchanged."
+    },
+    {
+      "order": "P4",
+      "probe": "q3-pinned-noc",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": true,
+      "status": "not_run",
+      "reason": "Stopped after P1 abnormal exit; no retry or continuation authorized by the stop rule.",
+      "prediction_comparison": "Not tested; precommitted prediction retained unchanged."
+    },
+    {
+      "order": "P5",
+      "probe": "q4-fixed-window",
+      "native_cap_seconds": 30,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "reason": "Stopped after P1 abnormal exit; no retry or continuation authorized by the stop rule.",
+      "prediction_comparison": "Not tested; precommitted prediction retained unchanged."
+    },
+    {
+      "order": "P6",
+      "probe": "q4-frame-coverage",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": true,
+      "status": "not_run",
+      "reason": "Stopped after P1 abnormal exit; no retry or continuation authorized by the stop rule.",
+      "prediction_comparison": "Not tested; precommitted prediction retained unchanged."
+    },
+    {
+      "order": "P7",
+      "probe": "q4-frame-coverage",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "reason": "Stopped after P1 abnormal exit; no retry or continuation authorized by the stop rule.",
+      "prediction_comparison": "Not tested; precommitted prediction retained unchanged."
+    }
+  ],
+  "questions": {
+    "Q1": {
+      "judgment": "unresolved",
+      "reason": "No card-side completion bracket or resident window was produced."
+    },
+    "Q2": {
+      "judgment": "unresolved",
+      "reason": "No write-only loop was reached; P3 was not run."
+    },
+    "Q3": {
+      "judgment": "unresolved",
+      "reason": "No pinning or NoC kernel was exercised; P4 was not run."
+    },
+    "Q4": {
+      "judgment": "unresolved",
+      "reason": "No actual frame or causal CPU/DMA coverage evidence; P5-P7 were not run."
+    }
+  },
+  "mechanism_selection": {
+    "decision": "unresolved",
+    "first_candidate": "ordinary unpinned CQ1 bulk writes with direct-L1 challenge observation",
+    "adoption_gate": "not_met",
+    "meaning": "No candidate is adopted or ruled out by this launcher failure; no CPU-only fallback."
+  },
+  "power_trace": {
+    "sample_count": 1,
+    "coverage": "not_evaluable_no_card_program_window",
+    "frozen": true,
+    "purpose": "diagnostic startup trace, not accepted production timing evidence"
+  },
+  "artifact_policy": {
+    "log_redaction": "Repository-specific host prefix replaced with a relative marker; private snapshot host sections excluded by allowlist.",
+    "private_raw_log_sha256": "bc7495bf7046ea91ce53d20292943f36e8357227856197d0fe6aa87a8a1f38c5",
+    "artifacts": {
+      "2026-11-07-p150a-issue120-p1-launch-failure.log": {
+        "sha256": "12c1a85ce8d96318849b063b28999cb0f2f762b507e36ff4365397102d59f3e1",
+        "byte_count": 2143
+      },
+      "2026-11-07-p150a-issue120-p1-launch-failure-env.json": {
+        "sha256": "f7f810c4027984bc715dca10f460da0535d297cc3ee3161a9eca4c201a4b0b99",
+        "byte_count": 4433
+      },
+      "2026-11-07-p150a-issue120-p1-launch-failure-power.csv": {
+        "sha256": "b7b1a9d8a9d7548932e5a6330450f4cc5249223052a19e36b465af9373c53b27",
+        "byte_count": 91
+      },
+      "2026-11-07-p150a-issue120-p1-launch-failure-lifecycle.json": {
+        "sha256": "dddfe4b0226422a876008635bb5b645cf0e1c7dfa8ac7010ac71e9189da135b1",
+        "byte_count": 1947
+      },
+      "2026-11-07-p150a-issue120-p1-launch-failure-health.json": {
+        "sha256": "5a632f65fcb73a14c78917e59fd0adbcd7e5e3bcd65b23e779d79279dd3ba93f",
+        "byte_count": 1298
+      },
+      "2026-11-07-p150a-issue120-p1-launch-failure-docker-before.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p1-launch-failure-docker-after.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      }
+    }
+  },
+  "next_precommit_proposal": [
+    "Investigate the exact pinned wheel runtime assets without opening a device; source/image parity is still unasserted.",
+    "Add a tested native-launch runtime-root adapter and required-asset preflight using a program-owned pinned-image root, not an arbitrary path or a replacement toolchain.",
+    "Commit and push the corrected startup prerequisites, renewed P1 Watcher prediction and a separate attempt identity before requesting a retry.",
+    "After a healthy newly authorized P1 and the remaining bounded gates, separately precommit widened non-aliasing production protocol, fixed work calibration, identical-session control, and power-snapshot coverage. Do not run production now."
+  ]
+}

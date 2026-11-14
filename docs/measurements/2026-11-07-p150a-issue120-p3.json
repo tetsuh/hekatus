@@ -1,0 +1,254 @@
+{
+  "schema": "issue120-feasibility-attempt-v1",
+  "issue": 120,
+  "attempt_identity": "p3",
+  "run_id": "20261107T04003277790961511913719490Z",
+  "status": "complete",
+  "timing_evidence": false,
+  "environment": {
+    "board_model": "p150a",
+    "serial": "000004033191411c",
+    "pci": "0000:06:00.0",
+    "firmware": "19.6.0.0",
+    "kmd": "2.11.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "commit": "62f388c951b5205e65eb4b63356e455ff68528b5",
+    "harness_clean": true,
+    "harness_pushed": true
+  },
+  "native_artifact": {
+    "sha256": "1ca91e17b09db83b70b1cec1e09d69e61430d00d5bab9168a283d3503f9c2b4d",
+    "libtt_metal_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "rebuilt_during_session": false,
+    "source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "source_tree_parity_with_image": "not_asserted"
+  },
+  "plan": {
+    "path": "docs/measurements/issue120-feasibility-plan.md",
+    "commit": "62f388c951b5205e65eb4b63356e455ff68528b5",
+    "order": "P3",
+    "probe": "q2-h2d-write-only",
+    "native_cap_seconds": 30,
+    "outer_cap_seconds": 60,
+    "watcher_requested": false,
+    "prediction_comparison": "All 256 immutable write submissions and final drain completed without per-transfer host readback/completion. Inside-window payload witness is not proof that all 256 completed inside the window. Backpressure remains possible; occupancy was not sampled."
+  },
+  "execution": {
+    "start_utc": "2026-11-07T04:00:32Z",
+    "end_utc": "2026-11-07T04:00:40Z",
+    "utc_resolution_seconds": 1,
+    "host_wrapper_start_monotonic_ns": 14586691818143,
+    "host_wrapper_end_monotonic_ns": 14594118056403,
+    "wrapper_exit_code": 0,
+    "container_exit_code": 0,
+    "native_exit_code_observed_directly": 0,
+    "timeout": false,
+    "container_name": "hekatus-bench-119137-11410",
+    "device_nodes_exposed": [
+      "/dev/tenstorrent/0"
+    ],
+    "containers_before": 0,
+    "containers_after": 0,
+    "forced_container_kills": 0,
+    "reset_count": 0,
+    "reset_reason": "No timeout; both cards idle at 800 MHz and DRAM healthy. No reset needed.",
+    "retry_count": 0,
+    "production_run_attempted": false
+  },
+  "baseline_warnings": {
+    "label": "Known baseline warnings (#176)",
+    "accepted_by_owner": true,
+    "verified_before_board_access": true,
+    "proof_sha256": "dbc2aa63f392fb5e56aa7f14f8c3ec20e7ee389ee3373f5817a6bc132cffc9ab",
+    "proof_file_mtime_unix_ns": 1794023960396779613,
+    "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+    "source_lines": {
+      "numa": [
+        8,
+        9
+      ],
+      "motherboard": [
+        18
+      ],
+      "smc": [
+        22,
+        23,
+        24,
+        25
+      ]
+    },
+    "comparison": "Same warning text apart from timestamp/PID/TID/physical-device/bus IDs. NUMA hugepage fallback detail belongs to condition 1.",
+    "observed_warning_count": 7,
+    "new_warning_count": 0,
+    "observed_warnings": [
+      "UMD | hwloc_set_area_membind(): failed for physical_device_id: 0 on NodeSet: [0] with errno: Operation not permitted (pid: 7 tid: 139023624425664) (cpuset_lib.cpp:440)",
+      "UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 0 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)",
+      "Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=0 (bus_id=0x6) \u2014 falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)",
+      "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+    ]
+  },
+  "native_result_transport": {
+    "native_returncode": 0,
+    "attempt_identity": "20261107T04003277790961511913719490Z",
+    "result_candidates": 1,
+    "raw_streams_preserved": true,
+    "direct_execution_metadata_preserved": true,
+    "public_native_copies_byte_exact": true
+  },
+  "card_evidence": {
+    "status": "complete",
+    "resident_interval": {
+      "clock": "resident_observer_low32_wrap_tracked",
+      "end_ticks": 6695536539,
+      "start_ticks": 3994992176
+    },
+    "resident_program_interval": {
+      "clock": "resident_observer_low32_wrap_tracked",
+      "observer_end_ticks": 9395838301,
+      "start_ticks": 3994976968
+    },
+    "clock_gap_ambiguous": false,
+    "transfer_completion_relation": "inside_resident_window",
+    "transfer_program_relation": "resident_program_active",
+    "transfer_completion_lower_ticks": 4265007347,
+    "transfer_completion_upper_ticks": 4400279801,
+    "transfer_payload_pages_verified": 16,
+    "transfer_payload_visible": true,
+    "work": {
+      "bytes_per_transfer": 65536,
+      "bytes_total": 16777216,
+      "observer_page_reads": 57,
+      "payload_pages": 16,
+      "payload_words_per_page": 1024,
+      "queue_id": 1,
+      "repeat_count": 256,
+      "transfer_count": 256
+    },
+    "memory": {
+      "allocated_bytes": 339968,
+      "auxiliary_bytes": 12288,
+      "buffer_pool_size": 4,
+      "device_buffer_bytes": 262144,
+      "host_payload_bytes": 65536,
+      "host_payload_immutable": true,
+      "host_payload_pinned": false,
+      "max_outstanding_transfers": null,
+      "observer_l1_scratch_bytes": 8192,
+      "outstanding_bound": "fixed CQ1 ring with enqueue backpressure; occupancy not sampled"
+    },
+    "host_interval": {
+      "end_ns": 14590006860388,
+      "scope": "submission_and_fixed_host_work_only",
+      "start_ns": 14589457270270
+    },
+    "final_drain_interval": {
+      "end_ns": 14593757064292,
+      "start_ns": 14590006860756
+    },
+    "resident_host_interval": {
+      "end_ns": 14593756926177,
+      "start_ns": 14589457269821
+    },
+    "host_readback_during_submission": false,
+    "explicit_completion_queue_reads_during_submission": false,
+    "host_enqueue_may_backpressure": true
+  },
+  "watcher": {
+    "requested": false,
+    "fresh_watcher_artifacts_retained": false,
+    "error_warning_assert_hang_scan_matches": null,
+    "dump_count": null,
+    "scope": "Disabled; stale shared Watcher files deliberately not attributed or archived."
+  },
+  "failure": null,
+  "power_trace": {
+    "sample_count": 3,
+    "frozen": true,
+    "observed_aiclk_mhz": [
+      800,
+      1350
+    ],
+    "coverage": "No full program-end coverage asserted from sparse samples; no timing conversion.",
+    "timing_evidence": false
+  },
+  "artifact_policy": {
+    "roles": {
+      "native_stdout": "2026-11-07-p150a-issue120-p3-native-stdout.bin",
+      "native_stderr": "2026-11-07-p150a-issue120-p3-native-stderr.bin",
+      "native_execution": "2026-11-07-p150a-issue120-p3-native-execution.json",
+      "native_result": "2026-11-07-p150a-issue120-p3-native-result.json",
+      "wrapper_result": "2026-11-07-p150a-issue120-p3-wrapper-result.json",
+      "wrapper_log": "2026-11-07-p150a-issue120-p3.log",
+      "environment": "2026-11-07-p150a-issue120-p3-env.json",
+      "baseline_verification": "2026-11-07-p150a-issue120-p3-baseline-verification.json",
+      "power": "2026-11-07-p150a-issue120-p3-power.csv",
+      "docker_before": "2026-11-07-p150a-issue120-p3-docker-before.txt",
+      "docker_after": "2026-11-07-p150a-issue120-p3-docker-after.txt",
+      "lifecycle": "2026-11-07-p150a-issue120-p3-lifecycle.json",
+      "health": "2026-11-07-p150a-issue120-p3-health.json"
+    },
+    "artifacts": {
+      "2026-11-07-p150a-issue120-p3-native-stdout.bin": {
+        "sha256": "d0152ad6278bbbd536844f3d97a85da1e0fdfd125c63cbb8f99a3bbe8085ae85",
+        "byte_count": 4422
+      },
+      "2026-11-07-p150a-issue120-p3-native-stderr.bin": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "byte_count": 0
+      },
+      "2026-11-07-p150a-issue120-p3-native-execution.json": {
+        "sha256": "e566c11092e6f514498160906c7bae40d10e506e09a59bc3888c693c01301885",
+        "byte_count": 531
+      },
+      "2026-11-07-p150a-issue120-p3-native-result.json": {
+        "sha256": "134bd5ba7cee1378100a8918bb1588a2dbd931cd4e953f926fd4f8f16bf16d52",
+        "byte_count": 2340
+      },
+      "2026-11-07-p150a-issue120-p3-wrapper-result.json": {
+        "sha256": "5cc5736eddc209f325c38606b8956d07be3886b909b720eafd7e922a2f57f15e",
+        "byte_count": 4490
+      },
+      "2026-11-07-p150a-issue120-p3.log": {
+        "sha256": "57c429550beb5811b98792119e103377a0b266beaf22537758919aeb08f7dc66",
+        "byte_count": 4263
+      },
+      "2026-11-07-p150a-issue120-p3-env.json": {
+        "sha256": "cbf23f5934e5b7956a57d3bb7d57a5fe272918e671f39a07f52dde202fc389e8",
+        "byte_count": 4435
+      },
+      "2026-11-07-p150a-issue120-p3-baseline-verification.json": {
+        "sha256": "dbc2aa63f392fb5e56aa7f14f8c3ec20e7ee389ee3373f5817a6bc132cffc9ab",
+        "byte_count": 3218
+      },
+      "2026-11-07-p150a-issue120-p3-power.csv": {
+        "sha256": "e137b0797fa57f2252dc02dfdbb970fca7dcc0f9a04a4677da84e9b39604d96f",
+        "byte_count": 187
+      },
+      "2026-11-07-p150a-issue120-p3-docker-before.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p3-docker-after.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p3-lifecycle.json": {
+        "sha256": "38544feeb10eea8ee9b08ab88e94a59ebe9a7040546adc1bf98bd98742260779",
+        "byte_count": 1957
+      },
+      "2026-11-07-p150a-issue120-p3-health.json": {
+        "sha256": "70d6d8db88e8336bd35b8dfff7360af1a0ce15d9d47a0ee01b5f31371a3a81c1",
+        "byte_count": 1161
+      }
+    },
+    "raw_generated_and_wrapper_sha256": {
+      "wrapper": "026d1315b132fd6a17dbf580d23697904db2f5d4a0ff097887e1763964be8b65"
+    },
+    "sanitization": "Native streams/result/execution, wrapper result, env, CSV and baseline proof are byte-exact copies. Public generated/wrapper text derivatives replace repository/cache/hostname strings and normalize trailing line whitespace. Private originals remain unchanged; snapshots/lifecycle use explicit reduced fields."
+  },
+  "next_step": "Proceed sequentially only while all remaining run gates hold."
+}

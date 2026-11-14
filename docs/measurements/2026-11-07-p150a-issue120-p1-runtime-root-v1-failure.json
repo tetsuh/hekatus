@@ -1,0 +1,255 @@
+{
+  "schema": "issue120-feasibility-attempt-v1",
+  "issue": 120,
+  "attempt_identity": "p1-runtime-root-v1",
+  "run_id": "20261107T005733680465084398597048Z",
+  "status": "stopped_after_result_capture_failure",
+  "timing_evidence": false,
+  "environment": {
+    "board_model": "p150a",
+    "serial": "000004033191411c",
+    "pci": "0000:06:00.0",
+    "firmware": "19.6.0.0",
+    "kmd": "2.11.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "commit": "9d5025a3a9e1a9001c6c8a47656121c4b15c45c1",
+    "harness_clean": true,
+    "harness_pushed": true
+  },
+  "native_artifact": {
+    "sha256": "63e7bb4dbf5c21dc151bbcf7e75fa3a9abf4bc0f744dac19e73c50d90ba686d5",
+    "libtt_metal_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "rebuilt": false,
+    "source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "source_tree_parity_with_image": "not_asserted"
+  },
+  "plan": {
+    "path": "docs/measurements/issue120-feasibility-plan.md",
+    "commit": "9d5025a3a9e1a9001c6c8a47656121c4b15c45c1",
+    "logical_identity": "p1-runtime-root-v1",
+    "stall_group": "resident-and-transfer",
+    "prediction": "Correct pinned assets and fixed root should avoid the empty-root failure; hardware/JIT/observer remain unproven. Possible gating, inside-window witness, or missing/ambiguous observation if execution succeeds."
+  },
+  "execution": {
+    "start_utc": "2026-11-07T00:57:33Z",
+    "end_utc": "2026-11-07T00:57:41Z",
+    "utc_resolution_seconds": 1,
+    "host_wrapper_start_monotonic_ns": 3607594280618,
+    "host_wrapper_end_monotonic_ns": 3615778841810,
+    "wrapper_exit_code": 2,
+    "container_exit_code": 2,
+    "native_exit_code_observed_directly": null,
+    "native_zero_exit_inference": "The committed wrapper reaches JSON parsing only after native return code zero. Native stdout/stderr were not preserved on parse failure.",
+    "timeout": false,
+    "container_name": "hekatus-bench-39859-25219",
+    "device_nodes_exposed": [
+      "/dev/tenstorrent/0"
+    ],
+    "containers_before": 0,
+    "containers_after": 0,
+    "forced_container_kills": 0,
+    "reset_count": 0,
+    "reset_reason": "No timeout; post-run idle 800 MHz and healthy DRAM. No reset needed.",
+    "retry_count": 0,
+    "production_run_attempted": false
+  },
+  "failure": {
+    "message": "native runner did not return one JSON result",
+    "stage": "wrapper native stdout last-line JSON parsing",
+    "runner_result_emitted": false,
+    "native_stdout_retained": false,
+    "native_stderr_retained": false,
+    "followup_issue": 175,
+    "possible_cause": "Trailing runtime logs are plausible but unverified because native stdout was not retained.",
+    "card_completion_ticks": null,
+    "resident_window": null,
+    "during_window_transfer_count": null,
+    "coverage": "not_evaluable_missing_native_result"
+  },
+  "watcher": {
+    "requested": true,
+    "retained_device": "device 0",
+    "kernel_names_include": [
+      "resident_observer.cpp",
+      "resident_producer.cpp"
+    ],
+    "dump_count": 6,
+    "detach_observed": true,
+    "error_warning_assert_hang_scan_matches": 0,
+    "accepted_kernel_validation": false,
+    "limitation": "Retained diagnostics cannot replace the missing result or establish full Watcher/kernel/transfer acceptance."
+  },
+  "probes": [
+    {
+      "order": "P1",
+      "probe": "q1-cq1-completion",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": true,
+      "status": "result_capture_failed",
+      "prediction_comparison": "Fixed-root path progressed to result parsing but no usable JSON/window/bracket survived; no transfer-gating verdict."
+    },
+    {
+      "order": "P2",
+      "probe": "q1-cq1-completion",
+      "native_cap_seconds": 30,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 abnormal wrapper exit."
+    },
+    {
+      "order": "P3",
+      "probe": "q2-h2d-write-only",
+      "native_cap_seconds": 30,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 abnormal wrapper exit."
+    },
+    {
+      "order": "P4",
+      "probe": "q3-pinned-noc",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": true,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 abnormal wrapper exit."
+    },
+    {
+      "order": "P5",
+      "probe": "q4-fixed-window",
+      "native_cap_seconds": 30,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 abnormal wrapper exit."
+    },
+    {
+      "order": "P6",
+      "probe": "q4-frame-coverage",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": true,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 abnormal wrapper exit."
+    },
+    {
+      "order": "P7",
+      "probe": "q4-frame-coverage",
+      "native_cap_seconds": 60,
+      "outer_cap_seconds": 60,
+      "watcher_requested": false,
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped after P1 abnormal wrapper exit."
+    }
+  ],
+  "questions": {
+    "Q1": {
+      "judgment": "unresolved",
+      "reason": "No usable card completion/window result retained."
+    },
+    "Q2": {
+      "judgment": "unresolved",
+      "reason": "P3 was not run."
+    },
+    "Q3": {
+      "judgment": "unresolved",
+      "reason": "P4 was not run."
+    },
+    "Q4": {
+      "judgment": "unresolved",
+      "reason": "P5-P7 were not run; no frame-window CPU/DMA proof."
+    }
+  },
+  "mechanism_selection": {
+    "decision": "unresolved",
+    "first_candidate": "ordinary unpinned CQ1 bulk writes with direct-L1 challenge observation",
+    "adoption_gate": "not_met",
+    "no_cpu_only_fallback": true
+  },
+  "power_trace": {
+    "sample_count": 4,
+    "frozen": true,
+    "coverage": "not_evaluable_missing_card_program_window",
+    "timing_evidence": false
+  },
+  "artifact_policy": {
+    "sanitization": "Host repository prefix and container cache prefix replaced; sanitized text trailing whitespace normalized once before archival. Private snapshots reduced by allowlist. Original private bytes retained.",
+    "raw_generated_and_wrapper_sha256": {
+      "wrapper": "f1ce6dafd3e412efef5610afb0176a448065d8dc77dab6cdb88ce8f39d4da24c",
+      "watcher/kernel_elf_paths.txt": "3564a0e8ff7a527045ee7a856ee909442b448073d4891c33e7e4d9e6a3e478a3",
+      "watcher/kernel_names.txt": "10c3fb015405ef8922d1c5e81c59c3ef68215ca154b690afe7f0e2d9760019f7",
+      "watcher/watcher.log": "a17c6c86c9a8f6b0e6855bec3c5930c9cef8a7c3328212a163680a4ebcfe526d",
+      "inspector/kernels.yaml": "24a0f34d2cf40bbf2af3e71d21034ad97c88d2864b253a1a6420c6857fc100fe",
+      "inspector/mesh_devices_log.yaml": "bfd5a4ca2b155467e29b2bc6fe70c51a1e5bd15d6affe61f90a9fa20cc0d2682",
+      "inspector/mesh_workloads_log.yaml": "70e2196f1d865545fa4a12cdba30a7e5b894bd64d9e474bf8e86ab489e4e02f7",
+      "inspector/programs_log.yaml": "b17d292053ebdf39e7793f0646d03763d71df248ca28a82d0ac439d9192870ec",
+      "inspector/startup.yaml": "ce1e30982d8d9f5b189ffd7f57eb0f7098cc88edd68a87c71ffe4ed852b41778"
+    },
+    "artifacts": {
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure.log": {
+        "sha256": "ead1dbe181559d6f7f0ba27f6e60cb800dbe2b6eb490b5844836d93f03e52ac7",
+        "byte_count": 163
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-env.json": {
+        "sha256": "646a65fcb3ef8c18273d2b562afa956d7fcdc783f5ec496d89a5adfad79c0361",
+        "byte_count": 4432
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-power.csv": {
+        "sha256": "ab44affa1b577654efccb2dba4e8e997b32c612e28c19be87752ca92eba63158",
+        "byte_count": 235
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-docker-before.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-docker-after.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-watcher-kernel_elf_paths.txt": {
+        "sha256": "2108b42ddd2666fc7b297109c881ad880d0f1c4a51e8424288e11bec80cdabb5",
+        "byte_count": 1544
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-watcher-kernel_names.txt": {
+        "sha256": "10c3fb015405ef8922d1c5e81c59c3ef68215ca154b690afe7f0e2d9760019f7",
+        "byte_count": 586
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-watcher-watcher.log": {
+        "sha256": "a17c6c86c9a8f6b0e6855bec3c5930c9cef8a7c3328212a163680a4ebcfe526d",
+        "byte_count": 111840
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-inspector-kernels.yaml": {
+        "sha256": "b232dce43fab75c49d5ab294d71c77438aba2fc25f7a8aeab13519fedcf5971b",
+        "byte_count": 2461
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-inspector-mesh_devices_log.yaml": {
+        "sha256": "bfd5a4ca2b155467e29b2bc6fe70c51a1e5bd15d6affe61f90a9fa20cc0d2682",
+        "byte_count": 480
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-inspector-mesh_workloads_log.yaml": {
+        "sha256": "70e2196f1d865545fa4a12cdba30a7e5b894bd64d9e474bf8e86ab489e4e02f7",
+        "byte_count": 600
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-inspector-programs_log.yaml": {
+        "sha256": "1712b98de256069d8f645a64edb6835ad9564e1050d9de56e84e3eb937979ad6",
+        "byte_count": 4050
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-inspector-startup.yaml": {
+        "sha256": "ce1e30982d8d9f5b189ffd7f57eb0f7098cc88edd68a87c71ffe4ed852b41778",
+        "byte_count": 144
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-lifecycle.json": {
+        "sha256": "04fd73b408d33ea4cb3a2534cc442455c066388537d60e0eebef265e02b98a5a",
+        "byte_count": 1952
+      },
+      "2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-health.json": {
+        "sha256": "43e10789e52dbd0138a80ccc98c23f39dcefbb8c1b7c5f1c57f96a758fa3c46f",
+        "byte_count": 1155
+      }
+    }
+  },
+  "next_step": "Preserve native streams and define tested result framing under Issue #175 before a newly precommitted, owner-approved hardware retry. No automatic retry now."
+}

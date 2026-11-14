@@ -1,0 +1,11 @@
+0: blank
+5: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate/17794217689952821696//ncrisc/ncrisc.elf
+7: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate/9812670975684703911//ncrisc/ncrisc.elf
+8: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392//trisc0/trisc0.elf:<container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392//trisc1/trisc1.elf:<container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392//trisc2/trisc2.elf
+6: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392//trisc0/trisc0.elf:<container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392//trisc1/trisc1.elf:<container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392//trisc2/trisc2.elf
+2: <container-cache>/5549056967994719787/kernels/cq_dispatch/8924975106515926416//brisc/brisc.elf
+4: <container-cache>/5549056967994719787/kernels/cq_dispatch/2754035003036677881//brisc/brisc.elf
+3: <container-cache>/5549056967994719787/kernels/cq_prefetch/17824919121737592934//brisc/brisc.elf
+1: <container-cache>/5549056967994719787/kernels/cq_prefetch/916285410441297152//brisc/brisc.elf
+9: <container-cache>/5549056967994719787/kernels/q4_frame_producer/6132462572412637018//brisc/brisc.elf
+10: <container-cache>/5549056967994719787/kernels/q4_frame_consumer/11024927666259086877//brisc/brisc.elf

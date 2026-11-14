@@ -1,0 +1,112 @@
+- program_created:
+    id: 0
+    timestamp_ns: 1794017365708233734
+- program_compile_started:
+    id: 0
+    timestamp_ns: 1794017365714868722
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794017366110605901
+    duration_ns: 395737179
+    watcher_kernel_id: 8
+    name: cq_dispatch_subordinate_compute
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate_compute.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794017366110679139
+    duration_ns: 395810417
+    watcher_kernel_id: 6
+    name: cq_dispatch_subordinate_compute
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate_compute/2025977759190935392/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate_compute.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794017366136827063
+    duration_ns: 421958341
+    watcher_kernel_id: 7
+    name: cq_dispatch_subordinate
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate/9812670975684703911/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794017366264521347
+    duration_ns: 549652625
+    watcher_kernel_id: 5
+    name: cq_dispatch_subordinate
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch_subordinate/17794217689952821696/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794017366781688457
+    duration_ns: 1066819735
+    watcher_kernel_id: 4
+    name: cq_dispatch
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch/2754035003036677881/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794017366976104824
+    duration_ns: 1261236102
+    watcher_kernel_id: 2
+    name: cq_dispatch
+    path: <container-cache>/5549056967994719787/kernels/cq_dispatch/8924975106515926416/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794017367118488337
+    duration_ns: 1403619615
+    watcher_kernel_id: 1
+    name: cq_prefetch
+    path: <container-cache>/5549056967994719787/kernels/cq_prefetch/916285410441297152/
+    source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1794017367319088807
+    duration_ns: 1604220085
+    watcher_kernel_id: 3
+    name: cq_prefetch
+    path: <container-cache>/5549056967994719787/kernels/cq_prefetch/17824919121737592934/
+    source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
+- program_compile_finished:
+    id: 0
+    timestamp_ns: 1794017367319117174
+    duration_ns: 1604248452
+- program_created:
+    id: 1
+    timestamp_ns: 1794017367376757057
+- program_created:
+    id: 2
+    timestamp_ns: 1794017367376818479
+- program_destroyed:
+    id: 2
+    timestamp_ns: 1794017367376822211
+- program_compile_started:
+    id: 1
+    timestamp_ns: 1794017367376833197
+- program_kernel_compile_finished:
+    id: 1
+    timestamp_ns: 1794017367603246400
+    duration_ns: 226413203
+    watcher_kernel_id: 10
+    name: resident_producer
+    path: <container-cache>/5549056967994719787/kernels/resident_producer/5365697500648784878/
+    source: /work/enodia/tt/bench/issue120/resident_producer.cpp
+- program_kernel_compile_finished:
+    id: 1
+    timestamp_ns: 1794017367756908744
+    duration_ns: 380075547
+    watcher_kernel_id: 9
+    name: resident_observer
+    path: <container-cache>/5549056967994719787/kernels/resident_observer/18358073189291450019/
+    source: /work/enodia/tt/bench/issue120/resident_observer.cpp
+- program_compile_finished:
+    id: 1
+    timestamp_ns: 1794017367756966001
+    duration_ns: 380132804
+- program_destroyed:
+    id: 1
+    timestamp_ns: 1794017371758343371
+- program_destroyed:
+    id: 0
+    timestamp_ns: 1794017371769598705

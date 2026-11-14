@@ -1,0 +1,2 @@
+environment -> ./out/issue120/p4/env-20261107T0400593921396061196361110Z.json
+native exit 2; raw diagnostics retained

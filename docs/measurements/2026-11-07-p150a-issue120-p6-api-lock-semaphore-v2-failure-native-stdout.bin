@@ -1,0 +1,85 @@
+2026-11-07 13:47:03.755 | info     |          Device | Opening user mode device driver (tt_cluster.cpp:228)
+2026-11-07 13:47:03.755 | info     |             UMD | Cluster constructor started. (cluster.cpp:348)
+2026-11-07 13:47:03.756 | info     |             UMD | Creating TopologyDiscovery for architecture: blackhole (topology_discovery.cpp:95)
+2026-11-07 13:47:03.756 | info     |             UMD | Starting topology discovery. (topology_discovery.cpp:114)
+2026-11-07 13:47:03.759 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)
+2026-11-07 13:47:03.759 | info     |             UMD | Completed topology discovery. (topology_discovery.cpp:118)
+2026-11-07 13:47:03.815 | warning  |             UMD | hwloc_set_area_membind(): failed for physical_device_id: 0 on NodeSet: [0] with errno: Operation not permitted (pid: 7 tid: 136863401931008) (cpuset_lib.cpp:440)
+2026-11-07 13:47:03.815 | warning  |             UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 0 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)
+2026-11-07 13:47:03.815 | info     |             UMD | Opening local chip ids/PCIe ids: {0}/[0] and remote chip ids {} (cluster.cpp:168)
+2026-11-07 13:47:03.815 | info     |             UMD | IOMMU: disabled (cluster.cpp:142)
+2026-11-07 13:47:03.815 | info     |             UMD | KMD version: 2.11.0 (cluster.cpp:145)
+2026-11-07 13:47:03.815 | info     |             UMD | Cluster constructor completed. (cluster.cpp:544)
+2026-11-07 13:47:03.816 | info     |             UMD | Starting devices in cluster (cluster.cpp:1048)
+2026-11-07 13:47:03.835 | info     |             UMD | Starting devices in cluster completed. (cluster.cpp:1056)
+2026-11-07 13:47:03.865 | info     |     Distributed | Using auto discovery to generate mesh graph. (metal_env.cpp:405)
+2026-11-07 13:47:03.865 | info     |     Distributed | Constructing control plane using auto-discovery (no mesh graph descriptor). (metal_env.cpp:467)
+2026-11-07 13:47:03.865 | warning  |          Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=0 (bus_id=0x6) — falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)
+2026-11-07 13:47:03.865 | info     |          Fabric | Logical multi-mesh adjacency: intermesh degree histogram {0:1}; intra-mesh degree histograms mesh0 {0:1} (topology_mapper_utils.cpp:2452)
+2026-11-07 13:47:03.865 | info     |          Fabric | Physical multi-mesh adjacency: intermesh degree histogram {0:1}; intra-mesh degree histograms mesh0 {0:1} (topology_mapper_utils.cpp:2460)
+2026-11-07 13:47:04.484 | info     |       LLRuntime | Watcher log file: /work/generated/watcher/watcher.log (watcher_server.cpp:295)
+2026-11-07 13:47:04.484 | info     |       LLRuntime | Watcher attached device 0 (watcher_server.cpp:132)
+2026-11-07 13:47:04.484 | info     |       LLRuntime | Watcher server initialized, disabled features: None (watcher_server.cpp:556)
+2026-11-07 13:47:04.485 | info     |           Metal | Watcher checking device 0 (watcher_device_reader.cpp:393)
+2026-11-07 13:47:04.485 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)
+2026-11-07 13:47:04.485 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)
+2026-11-07 13:47:04.485 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)
+2026-11-07 13:47:05.492 | info     |           Metal | Watcher checking device 0 (watcher_device_reader.cpp:393)
+2026-11-07 13:47:06.104 | error    |    BuildKernels | brisc compile failure -- cmd: cd /root/.cache/tt-metal-cache/5549056967994719787/kernels/q4_frame_producer/6132462572412637018/brisc/ && /opt/tenstorrent/sfpi/compiler/bin/riscv-tt-elf-g++ -O2 -std=c++17 -ftt-nttp -ftt-constinit -ftt-consteval -ftt-no-dyninit -flto=auto -ffast-math -fno-exceptions -fno-rtti -fno-use-cxa-atexit -g -MMD -Wall -Werror -Wno-error=deprecated-declarations -Wno-error=multistatement-macros -Wno-error=parentheses -Wno-error=unused-but-set-variable -Wno-unused-variable -Wno-unused-function -mcpu=tt-bh -fno-tree-loop-distribute-patterns -I. -I.. -I/opt/venv/lib/python3.12/site-packages/ttnn/ -I/opt/venv/lib/python3.12/site-packages/ttnn/ttnn -I/opt/venv/lib/python3.12/site-packages/ttnn/ttnn/cpp -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/tt-llk/common -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hostdevcommon/api -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/api/ -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/ckernels/blackhole/metal/common -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/ckernels/blackhole/metal/llk_io -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx/blackhole -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx/blackhole/blackhole_defines -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx/blackhole/noc -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/tt-llk/tt_llk_blackhole/common/inc -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/tt-llk/tt_llk_blackhole/llk_lib -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx -I/work/enodia/tt/bench/issue120 -c -o /root/.cache/tt-metal-cache/5549056967994719787/kernels/q4_frame_producer/6132462572412637018/brisc/brisck.82195556253529542.o /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx/brisck.cc -MF /root/.cache/tt-metal-cache/5549056967994719787/kernels/q4_frame_producer/6132462572412637018/brisc/brisck.82195556253529542.d -DIS_NOT_POW2_NUM_L1_BANKS=1 -DLOG_BASE_2_OF_NUM_DRAM_BANKS=3 -DNUM_DRAM_BANKS=8 -DNUM_L1_BANKS=110 -DPCIE_NOC_X=19 -DPCIE_NOC_Y=24 -DTENSIX_FIRMWARE -DLOCAL_MEM_EN=0 -DWATCHER_ENABLED -DPROCESSOR_INDEX=0 -DCOMPILE_FOR_BRISC -DARCH_BLACKHOLE -DDISPATCH_MESSAGE_ADDR=4290184248 -DKERNEL_BUILD -DFULL_KERNEL_NAME="\"q4_frame_producer/6132462572412637018/\"" -DNOC_INDEX='0' -DNOC_MODE='0' -DKERNEL_COMPILE_TIME_ARGS=0,4096,2,4096  (build.cpp:61)
+2026-11-07 13:47:06.104 | critical |          Always | TT_THROW: brisc build failed. Log: In file included from /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/firmware_common.h:14,
+                 from /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx/brisck.cc:17:
+/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/api/compile_time_args.h: In instantiation of 'constexpr uint32_t get_ct_arg() [with long unsigned int Idx = 4; uint32_t = long unsigned int]':
+/work/enodia/tt/bench/issue120/q4_frame_producer.cpp:82:37:   required from here
+   64 | #define get_compile_time_arg_val(arg_idx) get_ct_arg<arg_idx>()
+      |                                           ~~~~~~~~~~~~~~~~~~~^~
+/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/api/compile_time_args.h:27:23: error: static assertion failed: Index out of range
+   27 |     static_assert(Idx < kernel_compile_time_args.size(), "Index out of range");
+      |                   ~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/api/compile_time_args.h:27:23: note: the comparison reduces to '(4 < 4)'
+ (assert.hpp:104)
+2026-11-07 13:47:06.105 | critical |          Always | TT_THROW: Failed to generate binaries for q4_frame_producer TT_THROW @ /project/tt_metal/jit_build/build.cpp:68: tt::exception
+info:
+brisc build failed. Log: In file included from /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/firmware_common.h:14,
+                 from /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx/brisck.cc:17:
+/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/api/compile_time_args.h: In instantiation of 'constexpr uint32_t get_ct_arg() [with long unsigned int Idx = 4; uint32_t = long unsigned int]':
+/work/enodia/tt/bench/issue120/q4_frame_producer.cpp:82:37:   required from here
+   64 | #define get_compile_time_arg_val(arg_idx) get_ct_arg<arg_idx>()
+      |                                           ~~~~~~~~~~~~~~~~~~~^~
+/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/api/compile_time_args.h:27:23: error: static assertion failed: Index out of range
+   27 |     static_assert(Idx < kernel_compile_time_args.size(), "Index out of range");
+      |                   ~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/api/compile_time_args.h:27:23: note: the comparison reduces to '(4 < 4)'
+
+backtrace:
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x7ba2f9) [0x7c7a001c12f9]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb0a510) [0x7c7a00511510]
+ --- tt::tt_metal::JitBuildState::compile_one(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, tt::tt_metal::JitBuildSettings const*, unsigned long) const
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb2c414) [0x7c7a00533414]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb2c3b9) [0x7c7a005333b9]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x7cb057) [0x7c7a001d2057]
+ --- /lib/x86_64-linux-gnu/libc.so.6(+0xa1fb3) [0x7c79ff5b7fb3]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x7caec2) [0x7c7a001d1ec2]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb2c1f1) [0x7c7a005331f1]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x8b19e1) [0x7c7a002b89e1]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x8b04f9) [0x7c7a002b74f9]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x8afa19) [0x7c7a002b6a19]
+ --- /lib/x86_64-linux-gnu/libstdc++.so.6(+0xf5c79) [0x7c79ff84dc79]
+ --- /lib/x86_64-linux-gnu/libc.so.6(+0x9cb84) [0x7c79ff5b2b84]
+ --- /lib/x86_64-linux-gnu/libc.so.6(__clone+0x44) [0x7c79ff63fb64]
+ (assert.hpp:104)
+2026-11-07 13:47:06.500 | info     |           Metal | Watcher checking device 0 (watcher_device_reader.cpp:393)
+2026-11-07 13:47:07.508 | info     |           Metal | Watcher checking device 0 (watcher_device_reader.cpp:393)
+2026-11-07 13:47:08.516 | info     |           Metal | Watcher checking device 0 (watcher_device_reader.cpp:393)
+2026-11-07 13:47:09.524 | info     |           Metal | Watcher checking device 0 (watcher_device_reader.cpp:393)
+2026-11-07 13:47:10.532 | info     |           Metal | Watcher checking device 0 (watcher_device_reader.cpp:393)
+2026-11-07 13:47:11.539 | info     |           Metal | Watcher checking device 0 (watcher_device_reader.cpp:393)
+2026-11-07 13:47:12.225 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)
+2026-11-07 13:47:12.225 | info     |    BuildKernels | JIT cache stats: 0/20 hits (0.0%) [0 cached, 1 build-once dedup, 0 merged artifacts, 0 merged genfiles] (build_cache_telemetry.cpp:207)
+2026-11-07 13:47:12.225 | info     |    BuildKernels | JIT telemetry: 2 registered TelemetryTokens (build_cache_telemetry.cpp:230)
+2026-11-07 13:47:12.226 | info     |       LLRuntime | Watcher thread stopped watching... (watcher_server.cpp:604)
+2026-11-07 13:47:12.226 | info     |       LLRuntime | Watcher detached device 0 (watcher_server.cpp:190)
+2026-11-07 13:47:12.229 | info     |          Device | Closing user mode device drivers (tt_cluster.cpp:513)
+2026-11-07 13:47:12.229 | info     |             UMD | Closing devices in cluster (cluster.cpp:1061)
+2026-11-07 13:47:12.297 | info     |             UMD | Closing devices in cluster completed. (cluster.cpp:1070)
+2026-11-07 13:47:12.297 | info     |             UMD | Cluster destructor started. (cluster.cpp:778)
+2026-11-07 13:47:12.297 | info     |             UMD | Cluster destructor completed. (cluster.cpp:781)

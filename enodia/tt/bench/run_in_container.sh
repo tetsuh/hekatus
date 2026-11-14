@@ -28,6 +28,7 @@ ISSUE101_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue101_combined.py"
 ISSUE127_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue127.py"
 ISSUE137_RUNNER_RELATIVE_PATH="tools/issue137_device.py"
 ISSUE146_RUNNER_RELATIVE_PATH="tools/issue146_device.py"
+ISSUE120_RUNNER_RELATIVE_PATH="enodia/tt/bench/issue120/run_issue120_probe.py"
 
 # Resolve runner paths against the host repository that is mounted at /work.
 # The returned path is the only representation used by runner classifiers and
@@ -214,6 +215,7 @@ ISSUE127_COOLDOWN_TEMPERATURE_TOLERANCE_C="3.0"
 ISSUE127_COOLDOWN_POWER_LIMIT_W="52.0"
 ISSUE127_COOLDOWN_TEMPERATURE_LIMIT_C="61.5"
 RESIDENT_TIMEOUT_CAP_S="600"
+ISSUE120_RUNNER=0
 RESIDENT_CONDITION="unloaded"
 RESIDENT_REQUESTED_TIMEOUT=""
 if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${RESIDENT_RUNNER_RELATIVE_PATH}" ]]; then
@@ -688,6 +690,75 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_
     fi
   fi
   validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "2"
+elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE120_RUNNER_RELATIVE_PATH}" ]]; then
+  ISSUE120_RUNNER=1
+  if [[ "${TIMEOUT_EXPLICIT}" != "1" ]]; then
+    echo "Issue #120 probes require an explicit 60-second container cap" >&2
+    exit 2
+  fi
+  validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "2"
+  if [[ "${CONTAINER_TIMEOUT_S}" != "60" ]]; then
+    echo "Issue #120 probes require a 60-second container cap" >&2
+    exit 2
+  fi
+  ISSUE120_PROBE=""
+  ISSUE120_CAP=""
+  ISSUE120_FIRST_KERNEL=0
+  ISSUE120_EXECUTE=0
+  ISSUE120_ARGUMENT_INDEX=0
+  while [[ "${ISSUE120_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE120_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --probe)
+        if [[ "${ISSUE120_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--probe requires a value" >&2
+          exit 2
+        fi
+        ISSUE120_PROBE="${RUNNER_ARGS[$((ISSUE120_ARGUMENT_INDEX + 1))]}"
+        ISSUE120_ARGUMENT_INDEX=$((ISSUE120_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --probe=*) ISSUE120_PROBE="${argument#--probe=}" ;;
+      --cap-seconds)
+        if [[ "${ISSUE120_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--cap-seconds requires a value" >&2
+          exit 2
+        fi
+        ISSUE120_CAP="${RUNNER_ARGS[$((ISSUE120_ARGUMENT_INDEX + 1))]}"
+        ISSUE120_ARGUMENT_INDEX=$((ISSUE120_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --cap-seconds=*) ISSUE120_CAP="${argument#--cap-seconds=}" ;;
+      --first-kernel-run) ISSUE120_FIRST_KERNEL=1 ;;
+      --execute) ISSUE120_EXECUTE=1 ;;
+      --out|--out=*)
+        echo "Issue #120 result path is wrapper-owned" >&2
+        exit 2
+        ;;
+      *)
+        # Preserve pass-through; the runner validates all remaining arguments.
+        ;;
+    esac
+    ISSUE120_ARGUMENT_INDEX=$((ISSUE120_ARGUMENT_INDEX + 1))
+  done
+  if [[ "${ISSUE120_EXECUTE}" != "1" || -z "${ISSUE120_PROBE}" || -z "${ISSUE120_CAP}" ]]; then
+    echo "Issue #120 requires --execute, --probe, and --cap-seconds" >&2
+    exit 2
+  fi
+  validate_decimal_timeout "${ISSUE120_CAP}" "2"
+  if [[ "${ISSUE120_CAP}" -gt 60 ]]; then
+    echo "Issue #120 probe cap cannot exceed 60 seconds" >&2
+    exit 2
+  fi
+  if [[ "${ISSUE120_FIRST_KERNEL}" == "1" ]]; then
+    if [[ "${ISSUE120_CAP}" != "60" || "${TT_METAL_WATCHER:-}" != "1" ]]; then
+      echo "first Issue #120 kernel run requires Watcher and a 60-second cap" >&2
+      exit 2
+    fi
+  elif [[ -n "${TT_METAL_WATCHER:-}" ]]; then
+    echo "TT_METAL_WATCHER is only enabled for first-kernel Issue #120 runs" >&2
+    exit 2
+  fi
 else
   # Non-resident wrapper users retain their historical timeout range, but the
   # input is still bounded before GNU timeout or any shell arithmetic sees it.
@@ -788,7 +859,7 @@ RUNNER_RESULT_HOST_PATH=""
 if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
   # Issue #146 binds the result basename to its collision-safe wrapper ID.
   # Other custom runners retain the historical one-run path behavior.
-  if [[ "${ISSUE146_RUNNER}" == "1" ]]; then
+  if [[ "${ISSUE146_RUNNER}" == "1" || "${ISSUE120_RUNNER}" == "1" ]]; then
     RUNNER_RESULT_CONTAINER_PATH="/out/runner-result-${RUN_ID}.json"
     RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result-${RUN_ID}.json"
   elif [[ -e "${OUT_DIR}/runner-result.json" ]]; then
@@ -812,6 +883,10 @@ fi
 ISSUE146_REQUESTED_RUN_ENV=()
 if [[ "${ISSUE146_RUNNER}" == "1" ]]; then
   ISSUE146_REQUESTED_RUN_ENV=(-e "HEKATUS_TT_REQUESTED_RUN_ID=${ISSUE146_REQUESTED_RUN_ID}")
+fi
+ISSUE120_ENV=()
+if [[ "${ISSUE120_RUNNER}" == "1" ]]; then
+  ISSUE120_ENV=(-e HEKATUS_TT_PINNED_CONTAINER=1 -e "HEKATUS_TT_ENV_JSON=/out/$(basename "${ENV_JSON}")")
 fi
 
 CAPTURE_SAMPLER_ARGS=(--sampler-mode "${TELEMETRY_MODE}")
@@ -1367,6 +1442,7 @@ else
     "${TELEMETRY_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
     "${ISSUE146_REQUESTED_RUN_ENV[@]}" \
+    "${ISSUE120_ENV[@]}" \
     --entrypoint python3 \
     "${IMAGE}" "${RUNNER}" "${RUNNER_ARGS[@]}" &
 fi

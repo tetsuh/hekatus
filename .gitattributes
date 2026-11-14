@@ -1,0 +1,4 @@
+# Preserve byte-exact raw measurement evidence: reformatting changes manifest SHA-256 hashes.
+docs/measurements/2026-11-07-p150a-issue120-p1-launch-failure.log -whitespace
+docs/measurements/2026-11-07-p150a-issue120-p1-runtime-root-v1-failure-watcher-watcher.log -whitespace
+docs/measurements/2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure-native-stderr.bin -whitespace

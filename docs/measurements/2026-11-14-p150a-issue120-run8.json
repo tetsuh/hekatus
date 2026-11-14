@@ -1,0 +1,37 @@
+{
+  "schema": "issue120-feasibility-session-v1",
+  "issue": 120,
+  "session": "run8",
+  "harness_commit": "e1b37547f0eb7909ae23fdfbb4c176ac7c047cbc",
+  "probes": [
+    {
+      "order": "P6 V3",
+      "identity": "p6-api-lock-semaphore-v3",
+      "record": "2026-11-14-p150a-issue120-p6-api-lock-semaphore-v3.json",
+      "run_branch": 1,
+      "coverage": "covered",
+      "prediction_comparison": "Branch1 and covered: all4096 intact real frames plus first/last causal CPU/DMA brackets pass the unchanged validator. V3 config1/bank258,514 and both runtime/accessor coordinates match; no diagnostic-derived coverage."
+    },
+    {
+      "order": "P7 V3",
+      "identity": "p7-api-lock-semaphore-v3",
+      "record": "2026-11-14-p150a-issue120-p7-api-lock-semaphore-v3.json",
+      "run_branch": 1,
+      "coverage": "covered",
+      "prediction_comparison": "Branch1 and covered: all4096 intact real frames plus first/last causal CPU/DMA brackets pass the unchanged validator. V3 config1/bank258,514 and both runtime/accessor coordinates match; no diagnostic-derived coverage."
+    }
+  ],
+  "Q4": "Bounded4096-frame first/last causal CPU/PCIe coverage passes with Watcher and without; no production timing claim.",
+  "mechanism_selection": {
+    "first_candidate": "ordinary unpinned CQ1 bulk writes plus direct-L1 CPU challenge observation",
+    "feasibility_selected": true,
+    "production_adopted": false,
+    "cpu_only_fallback_selected": false,
+    "reason": "Precommitted selection criteria now pass bounded P6/P7 coverage with fixed memory, prior Q1 overlap and no errors/aborts/overflows. Production integration, widened protocol and same-session long-run acceptance remain gated."
+  },
+  "reboot_stable_environment_matches_run7": true,
+  "reset_count": 0,
+  "retry_count": 0,
+  "production_run_attempted": false,
+  "next_step": "No further hardware work. Preserve results, verify CI/Sonar and report; separately precommit/approve production-instrument integration and widened bounded protocol before any500000-frame run."
+}

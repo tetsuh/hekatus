@@ -1,0 +1,20 @@
+[
+  {
+    "commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "path": "tt_metal/distributed/pinned_memory.cpp",
+    "sha256": "d91aa86a2a085eb7fe9882fb8a8ef096bb8c73a268aebce162ab5c21a2814f16",
+    "staged_source_byte_match": true
+  },
+  {
+    "commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "path": "tt_metal/llrt/tt_cluster.cpp",
+    "sha256": "92128c6a2910df170e81c9ac635bacf3c7fc7d198dfe0bb3886c8eaf48a8112e",
+    "staged_source_byte_match": true
+  },
+  {
+    "commit": "bc77ac2f7382ffeb9fa5430055f0854d53979489",
+    "path": "device/pcie/pci_device.cpp",
+    "sha256": "c870a986d9889a4e7149e53b1a4b2d0e931061ead8444b52f0ed0a2d6a2f965e",
+    "staged_source_byte_match": true
+  }
+]

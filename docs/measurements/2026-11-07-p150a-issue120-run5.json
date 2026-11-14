@@ -1,0 +1,57 @@
+{
+  "schema": "issue120-feasibility-session-v1",
+  "issue": 120,
+  "session": "run5",
+  "harness_commit": "2eefe9a0d08b14f9bbfe4f7579947b204e4dd4dc",
+  "branch": "owner-selected ordinary unpinned CQ1; no P4 rerun",
+  "probes": [
+    {
+      "order": "P5",
+      "record": "2026-11-07-p150a-issue120-p5.json",
+      "status": "completed_expected_not_covered_falsifier",
+      "prediction_comparison": "Predicted not_covered falsifier detected insufficient fixed work. Owner explicitly allowed continuation for this result; no anomaly or new warning."
+    },
+    {
+      "order": "P6",
+      "record": "2026-11-07-p150a-issue120-p6.json",
+      "status": "stopped_at_not_evaluable_startup_gate",
+      "prediction_comparison": "First real-frame instrument returned not_evaluable with no startup response/frames. The healthy-P6 prerequisite for P7 is unmet; stop without retry or P7. No unsupported-mechanism or actual producer-start claim follows from the validator reason."
+    },
+    {
+      "order": "P7",
+      "status": "not_run",
+      "prediction_comparison": "Healthy-P6 prerequisite not met; original identity remains unused."
+    }
+  ],
+  "Q4": "P5 expected insufficient-work falsifier works; P6 real-frame causal startup gate not evaluable, zero frames. No full-window CPU/PCIe proof.",
+  "mechanism_selection": {
+    "first_candidate": "ordinary unpinned CQ1 with direct-L1 CPU challenge observation",
+    "branch_selected_for_feasibility": true,
+    "production_adopted": false,
+    "reason": "Real-frame startup/coverage gate unmet; P7 and long-run validation absent.",
+    "cpu_only_fallback_selected": false
+  },
+  "reset_count": 0,
+  "retry_count": 0,
+  "p4_rerun": false,
+  "production_run_attempted": false,
+  "pinning_source_audit": {
+    "issue": 177,
+    "comment_url": "https://github.com/tetsuh/hekatus/issues/177#issuecomment-6703394216",
+    "conclusion": "Effective identity/passthrough (or unreadable/non-DMA sysfs type) causes false IOMMU detection and early {0,0,false}; global iommu=pt token alone is not the per-device condition.",
+    "host_settings_changed": false,
+    "kernel_command_line_read_or_changed": false,
+    "native_capability_query_run": false,
+    "artifacts": {
+      "2026-11-07-p150a-issue120-run5-pinning-source-audit.json": {
+        "sha256": "d2e774f2a5367d5a123795521f63a45c1eeabac1d355d1a4bd5f49d1490a8c13",
+        "byte_count": 701
+      },
+      "2026-11-07-p150a-issue120-run5-pinning-source-audit.md": {
+        "sha256": "3c8e03cfa9c1b9a6e6aeb17d438c6f1dc92224a0a2a9478c57ee54529799b86b",
+        "byte_count": 3949
+      }
+    }
+  },
+  "next_step": "Board-free #178 diagnosis, tested correction and new bounded startup/real-frame precommit; no automatic hardware access or production."
+}

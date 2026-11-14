@@ -1,0 +1,51 @@
+Issue #120 probe failed: TT_THROW @ /project/tt_metal/impl/program/program.cpp:232: tt::exception
+info:
+Failed to generate binaries for q4_frame_producer TT_THROW @ /project/tt_metal/jit_build/build.cpp:68: tt::exception
+info:
+brisc build failed. Log: In file included from /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/firmware_common.h:14,
+                 from /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx/brisck.cc:17:
+/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/api/compile_time_args.h: In instantiation of 'constexpr uint32_t get_ct_arg() [with long unsigned int Idx = 4; uint32_t = long unsigned int]':
+/work/enodia/tt/bench/issue120/q4_frame_producer.cpp:82:37:   required from here
+   64 | #define get_compile_time_arg_val(arg_idx) get_ct_arg<arg_idx>()
+      |                                           ~~~~~~~~~~~~~~~~~~~^~
+/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/api/compile_time_args.h:27:23: error: static assertion failed: Index out of range
+   27 |     static_assert(Idx < kernel_compile_time_args.size(), "Index out of range");
+      |                   ~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/api/compile_time_args.h:27:23: note: the comparison reduces to '(4 < 4)'
+
+backtrace:
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x7ba2f9) [0x7c7a001c12f9]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb0a510) [0x7c7a00511510]
+ --- tt::tt_metal::JitBuildState::compile_one(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, tt::tt_metal::JitBuildSettings const*, unsigned long) const
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb2c414) [0x7c7a00533414]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb2c3b9) [0x7c7a005333b9]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x7cb057) [0x7c7a001d2057]
+ --- /lib/x86_64-linux-gnu/libc.so.6(+0xa1fb3) [0x7c79ff5b7fb3]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x7caec2) [0x7c7a001d1ec2]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb2c1f1) [0x7c7a005331f1]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x8b19e1) [0x7c7a002b89e1]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x8b04f9) [0x7c7a002b74f9]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x8afa19) [0x7c7a002b6a19]
+ --- /lib/x86_64-linux-gnu/libstdc++.so.6(+0xf5c79) [0x7c79ff84dc79]
+ --- /lib/x86_64-linux-gnu/libc.so.6(+0x9cb84) [0x7c79ff5b2b84]
+ --- /lib/x86_64-linux-gnu/libc.so.6(__clone+0x44) [0x7c79ff63fb64]
+
+backtrace:
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x94e2d9) [0x7c7a003552d9]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x9320c9) [0x7c7a003390c9]
+ --- tt::tt_metal::JitBuildCache::build_once(unsigned long, std::function<void ()> const&)
+ --- tt::tt_metal::jit_build_once(unsigned long, std::function<void ()> const&)
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x931c33) [0x7c7a00338c33]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb2c414) [0x7c7a00533414]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb2c3b9) [0x7c7a005333b9]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x7cb057) [0x7c7a001d2057]
+ --- /lib/x86_64-linux-gnu/libc.so.6(+0xa1fb3) [0x7c79ff5b7fb3]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x7caec2) [0x7c7a001d1ec2]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0xb2c1f1) [0x7c7a005331f1]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x8b19e1) [0x7c7a002b89e1]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x8b04f9) [0x7c7a002b74f9]
+ --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x8afa19) [0x7c7a002b6a19]
+ --- /lib/x86_64-linux-gnu/libstdc++.so.6(+0xf5c79) [0x7c79ff84dc79]
+ --- /lib/x86_64-linux-gnu/libc.so.6(+0x9cb84) [0x7c79ff5b2b84]
+ --- /lib/x86_64-linux-gnu/libc.so.6(__clone+0x44) [0x7c79ff63fb64]
+

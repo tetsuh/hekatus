@@ -1,0 +1,130 @@
+{
+  "schema": "issue120-feasibility-session-v1",
+  "issue": 120,
+  "session": "run4",
+  "harness_commit": "62f388c951b5205e65eb4b63356e455ff68528b5",
+  "baseline_warning_proof": {
+    "schema": "issue120-baseline-warning-verification-v1",
+    "issue": 176,
+    "authorized_scope": [
+      "P2",
+      "P3",
+      "P4",
+      "P5",
+      "P6",
+      "P7"
+    ],
+    "judgment": "all three owner-accepted baseline warning conditions matched before any board access",
+    "description": "Known baseline warnings (#176); timestamp, PID/TID, physical-device and bus IDs vary by invocation. NUMA fallback detail is the adjacent consequence of condition 1, not a separately authorized new warning. No other warning/error is allowed.",
+    "evidence": [
+      {
+        "condition": "numa_membind",
+        "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+        "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2",
+        "matches": [
+          {
+            "line": 8,
+            "text": "UMD | hwloc_set_area_membind(): failed for physical_device_id: 1 on NodeSet: [0] with errno: Operation not permitted (pid: 1 tid: 136557857326912) (cpuset_lib.cpp:440)"
+          }
+        ]
+      },
+      {
+        "condition": "numa_fallback_detail",
+        "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+        "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2",
+        "matches": [
+          {
+            "line": 9,
+            "text": "UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 1 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)"
+          }
+        ]
+      },
+      {
+        "condition": "unknown_motherboard",
+        "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+        "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2",
+        "matches": [
+          {
+            "line": 18,
+            "text": "Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=0 (bus_id=0x9) \u2014 falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)"
+          }
+        ]
+      },
+      {
+        "condition": "dispatch_telemetry_smc",
+        "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+        "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2",
+        "matches": [
+          {
+            "line": 22,
+            "text": "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+          },
+          {
+            "line": 23,
+            "text": "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+          },
+          {
+            "line": 24,
+            "text": "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+          },
+          {
+            "line": 25,
+            "text": "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+          }
+        ]
+      }
+    ]
+  },
+  "probes": [
+    {
+      "order": "P2",
+      "record": "2026-11-07-p150a-issue120-p2.json",
+      "status": "complete",
+      "prediction_comparison": "Inside-window full-payload witness, matching the possible-overlap prediction for transfer-only stall group. No timing threshold or causal wait diagnosis."
+    },
+    {
+      "order": "P3",
+      "record": "2026-11-07-p150a-issue120-p3.json",
+      "status": "complete",
+      "prediction_comparison": "All 256 immutable write submissions and final drain completed without per-transfer host readback/completion. Inside-window payload witness is not proof that all 256 completed inside the window. Backpressure remains possible; occupancy was not sampled."
+    },
+    {
+      "order": "P4",
+      "record": "2026-11-07-p150a-issue120-p4.json",
+      "status": "blocked_at_pinned_capacity_preflight",
+      "prediction_comparison": "The planned capacity-blocking branch occurred as native nonzero preflight rejection. Stop before P5; no mapping/pinned kernel/DMA feasibility verdict."
+    },
+    {
+      "order": "P5",
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped at P4 nonzero capacity preflight; original identity remains unused."
+    },
+    {
+      "order": "P6",
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped at P4 nonzero capacity preflight; original identity remains unused."
+    },
+    {
+      "order": "P7",
+      "status": "not_run",
+      "prediction_comparison": "Untested: stopped at P4 nonzero capacity preflight; original identity remains unused."
+    }
+  ],
+  "questions": {
+    "Q1": "Both-stall-group P1 (prior session) and transfer-only P2 support bounded CQ1/CQ0 full-payload overlap. Historical wait cause not diagnosed.",
+    "Q2": "P3 completed 256 fixed 64 KiB immutable writes and final drain without per-transfer host completion/readback. Exact ring occupancy and every-transfer in-window progress not measured.",
+    "Q3": "Blocked at capacity preflight; actual API parameters not retained, no pinned mapping/kernel/DMA verdict.",
+    "Q4": "Unresolved; P5-P7 not run."
+  },
+  "mechanism_selection": {
+    "first_candidate": "ordinary unpinned CQ1 bulk writes with direct-L1 challenge observation",
+    "adopted": false,
+    "reason": "Short-window overlap/write-only completion supported; full real-frame causal CPU/PCIe coverage remains untested.",
+    "cpu_only_fallback_selected": false
+  },
+  "reset_count": 0,
+  "retry_count": 0,
+  "production_run_attempted": false,
+  "stop": "P4 native exit 2, non-timeout capacity rejection; both cards healthy at 800 MHz, no containers, no reset needed.",
+  "next_step": "Assess #177 and conditionally precommit/re-authorize remaining feasibility/protocol calibration before any production proposal."
+}

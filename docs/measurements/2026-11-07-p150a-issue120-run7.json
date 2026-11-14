@@ -1,0 +1,33 @@
+{
+  "schema": "issue120-feasibility-session-v1",
+  "issue": 120,
+  "session": "run7",
+  "harness_commit": "49743efb848d33fa9ef856dd9429db9bfc8ba400",
+  "probes": [
+    {
+      "order": "P6 V2",
+      "identity": "p6-api-lock-semaphore-v2",
+      "record": "2026-11-07-p150a-issue120-p6-api-lock-semaphore-v2-failure.json",
+      "status": "stopped_before_run_branch_jit_compile_failure",
+      "run_branch": null,
+      "coordinate_diagnostic_branch": null
+    },
+    {
+      "order": "P7 V2",
+      "identity": "p7-api-lock-semaphore-v2",
+      "status": "not_run",
+      "reason": "P6 failed JIT compilation before branch1 prerequisite could be evaluated."
+    }
+  ],
+  "Q4": "No new real-frame evidence; not evaluable after pre-dispatch JIT failure.",
+  "mechanism_selection": {
+    "first_candidate": "ordinary unpinned CQ1 with direct-L1 CPU challenge observation",
+    "production_adopted": false,
+    "cpu_only_fallback_selected": false,
+    "reason": "V2 runtime-route correction not hardware validated; actual accessor layout and safe one-shot diagnostic applicability need diagnosis."
+  },
+  "reset_count": 0,
+  "retry_count": 0,
+  "production_run_attempted": false,
+  "next_step": "End hardware work. Board-free check actual buffer/sharding/CTA layout and fail-closed diagnostic applicability, tests-first correction and fresh precommit/owner approval before any new probe; no P7 or production."
+}

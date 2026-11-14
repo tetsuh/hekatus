@@ -1,0 +1,68 @@
+{
+  "schema": "issue120-baseline-warning-verification-v1",
+  "issue": 176,
+  "authorized_scope": [
+    "p6-api-lock-semaphore-v2",
+    "p7-api-lock-semaphore-v2"
+  ],
+  "judgment": "all three owner-accepted baseline warning conditions matched before any board access",
+  "description": "Known baseline warnings (#176); timestamp, PID/TID, physical-device and bus IDs vary by invocation. NUMA fallback detail is the adjacent consequence of condition 1, not a separately authorized new warning. No other warning/error is allowed.",
+  "evidence": [
+    {
+      "condition": "numa_membind",
+      "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+      "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2",
+      "matches": [
+        {
+          "line": 8,
+          "text": "UMD | hwloc_set_area_membind(): failed for physical_device_id: 1 on NodeSet: [0] with errno: Operation not permitted (pid: 1 tid: 136557857326912) (cpuset_lib.cpp:440)"
+        }
+      ]
+    },
+    {
+      "condition": "numa_fallback_detail",
+      "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+      "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2",
+      "matches": [
+        {
+          "line": 9,
+          "text": "UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 1 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)"
+        }
+      ]
+    },
+    {
+      "condition": "unknown_motherboard",
+      "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+      "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2",
+      "matches": [
+        {
+          "line": 18,
+          "text": "Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=0 (bus_id=0x9) \u2014 falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)"
+        }
+      ]
+    },
+    {
+      "condition": "dispatch_telemetry_smc",
+      "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+      "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2",
+      "matches": [
+        {
+          "line": 22,
+          "text": "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+        },
+        {
+          "line": 23,
+          "text": "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+        },
+        {
+          "line": 24,
+          "text": "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+        },
+        {
+          "line": 25,
+          "text": "Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+        }
+      ]
+    }
+  ]
+}
