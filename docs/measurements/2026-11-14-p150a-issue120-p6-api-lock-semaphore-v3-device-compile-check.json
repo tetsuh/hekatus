@@ -1,0 +1,189 @@
+{
+  "schema": "issue178-offline-device-check-v3",
+  "compiler_sha256": "f13c2418084b18b5a7cac7bc1d0bab3c1b43db2163f2a803b2f5487f55e28e7f",
+  "manifest_sha256": "7699fedf0ee0331bb4d3cb99ba4487528e7c9b7c8ceaaa0bc41f791154e31ab6",
+  "cases": [
+    {
+      "case": "v3-producer-watcher-0",
+      "compile_time_args": [
+        1,
+        4096,
+        1,
+        1,
+        4,
+        4,
+        514,
+        2,
+        4096
+      ],
+      "returncode": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "v3-producer-watcher-1",
+      "compile_time_args": [
+        1,
+        4096,
+        1,
+        1,
+        4,
+        4,
+        514,
+        2,
+        4096
+      ],
+      "returncode": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "v3-consumer-watcher-0",
+      "compile_time_args": [
+        1,
+        4096,
+        1,
+        1,
+        4,
+        4,
+        514,
+        1,
+        4096,
+        1,
+        1,
+        1,
+        1,
+        258,
+        2,
+        4096,
+        2,
+        4096,
+        2,
+        4096
+      ],
+      "returncode": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "v3-consumer-watcher-1",
+      "compile_time_args": [
+        1,
+        4096,
+        1,
+        1,
+        4,
+        4,
+        514,
+        1,
+        4096,
+        1,
+        1,
+        1,
+        1,
+        258,
+        2,
+        4096,
+        2,
+        4096,
+        2,
+        4096
+      ],
+      "returncode": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "legacy_non_sharded-producer-watcher-0",
+      "compile_time_args": [
+        0,
+        4096,
+        2,
+        4096
+      ],
+      "returncode": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "legacy_non_sharded-producer-watcher-1",
+      "compile_time_args": [
+        0,
+        4096,
+        2,
+        4096
+      ],
+      "returncode": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "legacy_non_sharded-consumer-watcher-0",
+      "compile_time_args": [
+        0,
+        4096,
+        0,
+        4096,
+        2,
+        4096,
+        2,
+        4096,
+        2,
+        4096
+      ],
+      "returncode": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "legacy_non_sharded-consumer-watcher-1",
+      "compile_time_args": [
+        0,
+        4096,
+        0,
+        4096,
+        2,
+        4096,
+        2,
+        4096,
+        2,
+        4096
+      ],
+      "returncode": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "source_sha256": {
+    "q4_frame_producer.cpp": "302511efd85ff12441eae60c6f4b90f3daf9f4f907253430fdd41725b450dbff",
+    "q4_frame_consumer.cpp": "f84d30f7ec8de9be93c9d72b19e6d19411fb7b3991572d50b36f7795d1fdd224",
+    "q4_clock.hpp": "7c23de47475e7db012cf3db4a3006c8fb86d76b2fce31ba09900af80b88336bc",
+    "q4_runtime_args.hpp": "017eb0ac1fce8154e34cd242923a89046073587f8994985b5cc3fcc89de96111",
+    "q4_accessor_diagnostics.hpp": "b5c1c88c40884619cd359cfda584f0a1c5b7bc614043cd5e3820f8096107f060",
+    "q4_protocol.hpp": "9b61231b423943504819c3e8d891e11db225710e42e9e2d0a8c47af8ef6e5abe"
+  },
+  "scope": "syntax/constexpr only, not device link, dispatch or execution",
+  "all_passed": true,
+  "red": {
+    "source_harness": "427cda1504a3ded183daa3bb48ec00ff005c1c3a",
+    "producer_compile_time_args": [
+      0,
+      4096,
+      2,
+      4096
+    ],
+    "returncode": 1,
+    "error": "Index out of range; 4 < 4",
+    "stderr_sha256": "a4862f9db89b65553f7b08147f027bada3528acf802313fee7c21069a5993c31",
+    "before_implementation": true
+  },
+  "isolation": {
+    "network": "none",
+    "device_mappings": [],
+    "device_requests": [],
+    "hardware_discovery_masked": true,
+    "root_and_source_read_only": true,
+    "capabilities_dropped": "ALL",
+    "native_tt_runtime_imported": false
+  }
+}

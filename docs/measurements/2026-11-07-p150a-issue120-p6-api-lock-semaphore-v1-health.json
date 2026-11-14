@@ -1,0 +1,37 @@
+{
+  "before": [
+    {
+      "serial": "000004033191411c",
+      "pci": "0000:06:00.0",
+      "aiclk_mhz": 800,
+      "dram_healthy": true,
+      "firmware": "19.6.0.0"
+    },
+    {
+      "serial": "0000040331914124",
+      "pci": "0000:09:00.0",
+      "aiclk_mhz": 800,
+      "dram_healthy": true,
+      "firmware": "19.6.0.0"
+    }
+  ],
+  "after": [
+    {
+      "serial": "000004033191411c",
+      "pci": "0000:06:00.0",
+      "aiclk_mhz": 800,
+      "dram_healthy": true,
+      "firmware": "19.6.0.0"
+    },
+    {
+      "serial": "0000040331914124",
+      "pci": "0000:09:00.0",
+      "aiclk_mhz": 800,
+      "dram_healthy": true,
+      "firmware": "19.6.0.0"
+    }
+  ],
+  "before_source": "fresh preflight after unrelated host test ended",
+  "compute_device": 0,
+  "other_device_use": "requested telemetry only; never exposed to compute container"
+}

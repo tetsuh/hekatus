@@ -1,0 +1,150 @@
+{
+  "clock_gap_ambiguous": false,
+  "coverage": "not_covered",
+  "coverage_basis": "fixed_payload_witness_bracket_on_resident_observer_clock",
+  "coverage_scope": "one_payload_witness_in_short_synthetic_observer_window_not_frame_stream",
+  "coverage_submission_count": 256,
+  "coverage_witness_slot": 0,
+  "device_wait_stream_may_stall": true,
+  "environment": {
+    "board_model": "p150a",
+    "commit": "2eefe9a0d08b14f9bbfe4f7579947b204e4dd4dc",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "firmware": "19.6.0.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "kmd": "2.11.0",
+    "pci": "0000:06:00.0",
+    "serial": "000004033191411c"
+  },
+  "errors": [],
+  "final_drain_interval": {
+    "end_ns": 23351370772672,
+    "start_ns": 23347621234670
+  },
+  "first_kernel_run": false,
+  "full_window_pcie_progress_evidence": false,
+  "host_cpu_work": {
+    "checksum": 260046848,
+    "end_ns": 23347370473585,
+    "operations": 1048576,
+    "rounds": 1024,
+    "start_ns": 23347369817245,
+    "words_per_round": 1024
+  },
+  "host_enqueue_may_backpressure": true,
+  "host_explicit_cq_reads_during_submission": false,
+  "host_interval": {
+    "end_ns": 23347621234419,
+    "scope": "submission_and_fixed_host_work_only",
+    "start_ns": 23347067067094
+  },
+  "host_process_max_rss_kib": 56848,
+  "later_count_calibration": "precommit_a_count_and_repeat_the_bounded_probe;never_loop_until_covered",
+  "memory": {
+    "allocated_bytes": 339968,
+    "auxiliary_bytes": 12288,
+    "buffer_pool_size": 4,
+    "device_buffer_bytes": 262144,
+    "host_payload_bytes": 65536,
+    "host_payload_immutable": true,
+    "host_payload_pinned": false,
+    "max_outstanding_transfers": null,
+    "observer_l1_scratch_bytes": 8192,
+    "outstanding_bound": "fixed CQ1 ring with enqueue backpressure; occupancy not sampled"
+  },
+  "memory_scope": "explicit_payload_dram_and_cb_buffers;runtime_rings_and_allocator_metadata_excluded",
+  "native_capture": {
+    "attempt_identity": "20261107T06263023645806543480426579Z",
+    "directory": "native-20261107T06263023645806543480426579Z",
+    "execution_file": "execution.json",
+    "native_returncode": 0,
+    "result_file": "result/result.json",
+    "stderr_file": "stderr.bin",
+    "stdout_file": "stdout.bin"
+  },
+  "not_evaluable_reason": null,
+  "outer_cap_seconds": 30,
+  "payload_witness_inside_window": true,
+  "plan": {
+    "allocated_bytes": 339968,
+    "allocation_policy": "fixed_pool_with_bounded_runtime_queue_backpressure",
+    "auxiliary_bytes": 12288,
+    "buffer_pool_size": 4,
+    "device_buffer_slots": 4,
+    "device_open": {
+      "command_queues": 2,
+      "device_id": 0
+    },
+    "first_kernel_run": false,
+    "host_buffer_slots": 1,
+    "host_cpu_rounds": 1024,
+    "host_cpu_words_per_round": 1024,
+    "load_cores": [],
+    "max_outstanding_transfers": null,
+    "outer_cap_seconds": 30,
+    "probe_id": "q4-fixed-window",
+    "queue_bound_evidence": "fixed_metalium_command_ring;occupancy_not_sampled",
+    "repeat_count": 256,
+    "resident_cores": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "transfer_bytes": 65536,
+    "watcher": false
+  },
+  "probe_id": "q4-fixed-window",
+  "resident_host_interval": {
+    "end_ns": 23351370625022,
+    "start_ns": 23347067066643
+  },
+  "resident_interval": {
+    "clock": "resident_observer_low32_wrap_tracked",
+    "end_ticks": 3815310295,
+    "start_ticks": 1114765970
+  },
+  "resident_program_interval": {
+    "clock": "resident_observer_low32_wrap_tracked",
+    "observer_end_ticks": 6515612304,
+    "start_ticks": 1114750758
+  },
+  "schema": "issue120-probe-v1",
+  "setup": {
+    "payload_buffer_zeroed": true,
+    "setup_blocking": true,
+    "setup_bytes": 65536,
+    "setup_outside_load_interval": true,
+    "setup_queue_id": 1
+  },
+  "source": {
+    "libtt_metal_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "source_tree_parity_with_image": "not_asserted; image library hash is pinned",
+    "tt_metal_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "tt_metal_tag": "v0.75.0"
+  },
+  "status": "complete",
+  "timing_evidence": false,
+  "transfer_completion_lower_ticks": 1384781137,
+  "transfer_completion_relation": "inside_resident_window",
+  "transfer_completion_ticks": 1520053646,
+  "transfer_completion_upper_ticks": 1520053646,
+  "transfer_payload_pages_verified": 16,
+  "transfer_payload_visible": true,
+  "transfer_program_relation": "resident_program_active",
+  "watcher": false,
+  "work": {
+    "bytes_per_transfer": 65536,
+    "bytes_total": 16777216,
+    "observer_page_reads": 57,
+    "payload_pages": 16,
+    "payload_words_per_page": 1024,
+    "queue_id": 1,
+    "repeat_count": 256,
+    "transfer_count": 256
+  }
+}

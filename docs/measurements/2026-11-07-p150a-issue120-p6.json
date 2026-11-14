@@ -1,0 +1,313 @@
+{
+  "schema": "issue120-feasibility-attempt-v1",
+  "issue": 120,
+  "attempt_identity": "p6",
+  "run_id": "20261107T06265700961746643550122029Z",
+  "status": "stopped_at_not_evaluable_startup_gate",
+  "timing_evidence": false,
+  "environment": {
+    "board_model": "p150a",
+    "commit": "2eefe9a0d08b14f9bbfe4f7579947b204e4dd4dc",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+    "firmware": "19.6.0.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "kmd": "2.11.0",
+    "pci": "0000:06:00.0",
+    "serial": "000004033191411c",
+    "harness_clean": true,
+    "harness_pushed": true
+  },
+  "native_artifact": {
+    "sha256": "1ca91e17b09db83b70b1cec1e09d69e61430d00d5bab9168a283d3503f9c2b4d",
+    "libtt_metal_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "rebuilt_during_session": false,
+    "source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "source_tree_parity_with_image": "not_asserted"
+  },
+  "plan": {
+    "path": "docs/measurements/issue120-feasibility-plan.md",
+    "commit": "2eefe9a0d08b14f9bbfe4f7579947b204e4dd4dc",
+    "order": "P6",
+    "probe": "q4-frame-coverage",
+    "native_cap_seconds": 60,
+    "outer_cap_seconds": 60,
+    "watcher_requested": true,
+    "workload_changed": false,
+    "prediction_comparison": "First real-frame instrument returned not_evaluable with no startup response/frames. The healthy-P6 prerequisite for P7 is unmet; stop without retry or P7. No unsupported-mechanism or actual producer-start claim follows from the validator reason."
+  },
+  "execution": {
+    "start_utc": "2026-11-07T06:26:56Z",
+    "end_utc": "2026-11-07T06:27:19Z",
+    "utc_resolution_seconds": 1,
+    "host_wrapper_start_monotonic_ns": 23370923342599,
+    "host_wrapper_end_monotonic_ns": 23393217647241,
+    "wrapper_exit_code": 0,
+    "container_exit_code": 0,
+    "native_exit_code_observed_directly": 0,
+    "timeout": false,
+    "container_name": "hekatus-bench-435501-17637",
+    "device_nodes_exposed": [
+      "/dev/tenstorrent/0"
+    ],
+    "containers_before": 0,
+    "containers_after": 0,
+    "forced_container_kills": 0,
+    "reset_count": 0,
+    "reset_reason": "Normal process exits, no timeout; both cards idle at 800 MHz and DRAM healthy. No reset condition.",
+    "retry_count": 0,
+    "p4_rerun": false,
+    "production_run_attempted": false
+  },
+  "baseline_warnings": {
+    "label": "Known baseline warnings (#176)",
+    "previously_verified_and_accepted_by_owner": true,
+    "proof_sha256": "dbc2aa63f392fb5e56aa7f14f8c3ec20e7ee389ee3373f5817a6bc132cffc9ab",
+    "proof_source": "Issue #146 run1-c018 stdout, lines 8-9/18/22-25",
+    "observed_warning_count": 7,
+    "new_warning_count": 0
+  },
+  "native_result_transport": {
+    "attempt_identity": "20261107T06265700961746643550122029Z",
+    "result_candidates": 1,
+    "raw_streams_preserved": true,
+    "direct_execution_metadata_preserved": true,
+    "public_native_copies_byte_exact": true
+  },
+  "card_evidence": {
+    "status": "not_evaluable",
+    "not_evaluable_reason": "producer started without card-side load observation",
+    "coverage": "not_evaluable",
+    "coverage_analysis": {
+      "completed_bytes_during_frames_lower_bound": 0,
+      "completed_bytes_lower_bound": 0,
+      "coverage": "not_evaluable",
+      "frame_count": 0,
+      "reason": "producer started without card-side load observation",
+      "verified_frames": 0
+    },
+    "coverage_scope": "all_real_frame_completion_intervals_consumer_clock",
+    "frame_coverage": {
+      "aborted": 2,
+      "attempted": 0,
+      "clock": "consumer_low32_wrap_tracked",
+      "clock_gap_ambiguous": false,
+      "consumed": 0,
+      "frame_count": 4096,
+      "frame_period_ticks": 1350000,
+      "frames": [],
+      "load_end_ticks": 14527251743,
+      "load_start_ticks": 1160912425,
+      "overflow": 0,
+      "produced": 0,
+      "producer_gated_after_load_observation": false,
+      "repeat_count": 262144,
+      "startup_response_challenge": 0,
+      "tail": {
+        "issued_challenge": 2,
+        "left_sequence": 12475,
+        "left_ticks": 1160930935,
+        "progress_valid": true,
+        "response_challenge": 0,
+        "right_sequence": 12475,
+        "right_ticks": 14527251743
+      },
+      "transfer_bytes": 4096
+    },
+    "host_cpu_work": {
+      "checksum": 0,
+      "end_ns": 23392960317312,
+      "operations": 8589934592,
+      "outer_repetitions": 262144,
+      "rounds": 32,
+      "start_ns": 23374317830178,
+      "words_per_round": 1024
+    },
+    "work": {
+      "bytes_per_transfer": 4096,
+      "bytes_total": 1073741824,
+      "host_mmio_payload_bytes": 1048576,
+      "host_mmio_reads": 262144,
+      "payload_words_per_transfer": 1024,
+      "repeat_count": 262144,
+      "transfer_count": 262144
+    },
+    "memory": {
+      "allocated_bytes": 16830496,
+      "auxiliary_bytes": 16822304,
+      "buffer_pool_size": 1,
+      "device_buffer_bytes": 4096,
+      "host_payload_bytes": 4096,
+      "max_outstanding_transfers": null,
+      "outstanding_bound": "fixed runtime ring with backpressure; occupancy not sampled"
+    },
+    "host_interval": {
+      "end_ns": 23392960317312,
+      "start_ns": 23374317830178
+    },
+    "resident_host_interval": {
+      "end_ns": 23384755164161,
+      "start_ns": 23374317819755
+    },
+    "resident_interval": {
+      "clock": "consumer_low32_wrap_tracked",
+      "end_ticks": 14527251743,
+      "start_ticks": 1160912425
+    },
+    "final_drain_interval": {
+      "end_ns": 23392960469562,
+      "start_ns": 23392960365034
+    },
+    "cpu_challenge_protocol": "direct_l1_span_read_then_fixed_cpu_work_then_cq1_write"
+  },
+  "watcher": {
+    "requested": true,
+    "fresh_watcher_artifacts_retained": true,
+    "error_warning_assert_hang_scan_matches": 0,
+    "dump_count": 20,
+    "scope": "P6 kernel runtime diagnostics only; no healthy startup/coverage inference."
+  },
+  "stop": {
+    "validator_reason": "producer started without card-side load observation",
+    "reason": "No card-observed startup challenge response; real-frame instrument aborted without frames. P7 prerequisite unmet despite process code 0.",
+    "produced": 0,
+    "consumed": 0,
+    "aborted": 2,
+    "root_cause": "unresolved; no cause assigned from zero mailbox response alone",
+    "followup_issue": 178,
+    "p7_run": false
+  },
+  "power_trace": {
+    "sample_count": 10,
+    "frozen": true,
+    "observed_aiclk_mhz": [
+      800,
+      1350
+    ],
+    "coverage": "Sparse samples do not prove full program-end coverage; no timing conversion.",
+    "timing_evidence": false
+  },
+  "artifact_policy": {
+    "roles": {
+      "native_stdout": "2026-11-07-p150a-issue120-p6-native-stdout.bin",
+      "native_stderr": "2026-11-07-p150a-issue120-p6-native-stderr.bin",
+      "native_execution": "2026-11-07-p150a-issue120-p6-native-execution.json",
+      "native_result": "2026-11-07-p150a-issue120-p6-native-result.json",
+      "wrapper_result": "2026-11-07-p150a-issue120-p6-wrapper-result.json",
+      "wrapper_log": "2026-11-07-p150a-issue120-p6.log",
+      "environment": "2026-11-07-p150a-issue120-p6-env.json",
+      "baseline_verification": "2026-11-07-p150a-issue120-p6-baseline-verification.json",
+      "power": "2026-11-07-p150a-issue120-p6-power.csv",
+      "docker_before": "2026-11-07-p150a-issue120-p6-docker-before.txt",
+      "docker_after": "2026-11-07-p150a-issue120-p6-docker-after.txt",
+      "watcher/kernel_elf_paths.txt": "2026-11-07-p150a-issue120-p6-watcher-kernel_elf_paths.txt",
+      "watcher/kernel_names.txt": "2026-11-07-p150a-issue120-p6-watcher-kernel_names.txt",
+      "watcher/watcher.log": "2026-11-07-p150a-issue120-p6-watcher-watcher.log",
+      "inspector/kernels.yaml": "2026-11-07-p150a-issue120-p6-inspector-kernels.yaml",
+      "inspector/mesh_devices_log.yaml": "2026-11-07-p150a-issue120-p6-inspector-mesh_devices_log.yaml",
+      "inspector/mesh_workloads_log.yaml": "2026-11-07-p150a-issue120-p6-inspector-mesh_workloads_log.yaml",
+      "inspector/programs_log.yaml": "2026-11-07-p150a-issue120-p6-inspector-programs_log.yaml",
+      "inspector/startup.yaml": "2026-11-07-p150a-issue120-p6-inspector-startup.yaml",
+      "lifecycle": "2026-11-07-p150a-issue120-p6-lifecycle.json",
+      "health": "2026-11-07-p150a-issue120-p6-health.json"
+    },
+    "artifacts": {
+      "2026-11-07-p150a-issue120-p6-native-stdout.bin": {
+        "sha256": "94b3dc1eca4e8e6d9781ee68ff2bdfbf481aa8991dd720e612849853d1629493",
+        "byte_count": 7071
+      },
+      "2026-11-07-p150a-issue120-p6-native-stderr.bin": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "byte_count": 0
+      },
+      "2026-11-07-p150a-issue120-p6-native-execution.json": {
+        "sha256": "df12269d1c5147e6fc0038704eadcc69dae13fe58dea3d72241ed7663ab65696",
+        "byte_count": 531
+      },
+      "2026-11-07-p150a-issue120-p6-native-result.json": {
+        "sha256": "83fb4471bdd82bcf637d43377e67ddedb4c7837fb724cc26a7f8b574ed9a6651",
+        "byte_count": 2172
+      },
+      "2026-11-07-p150a-issue120-p6-wrapper-result.json": {
+        "sha256": "5f5474088711d37d9cce2e7714f26716aaa74d03cc2aebec7f508066b4f304ee",
+        "byte_count": 4712
+      },
+      "2026-11-07-p150a-issue120-p6.log": {
+        "sha256": "0823091e5d1f29eade3372add999f2fcf7221d0c06501b0288d35d9214e55c8e",
+        "byte_count": 4387
+      },
+      "2026-11-07-p150a-issue120-p6-env.json": {
+        "sha256": "24e984154e35ee03904d2e8f4561e577bdd7b2e51e11914bbc9c394032a880b3",
+        "byte_count": 4435
+      },
+      "2026-11-07-p150a-issue120-p6-baseline-verification.json": {
+        "sha256": "dbc2aa63f392fb5e56aa7f14f8c3ec20e7ee389ee3373f5817a6bc132cffc9ab",
+        "byte_count": 3218
+      },
+      "2026-11-07-p150a-issue120-p6-power.csv": {
+        "sha256": "eb7388020e0a26a6e51ae8aa5c88fa3e0e14849dd611058d2d1855a7cf67ad7c",
+        "byte_count": 523
+      },
+      "2026-11-07-p150a-issue120-p6-docker-before.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p6-docker-after.txt": {
+        "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+        "byte_count": 71
+      },
+      "2026-11-07-p150a-issue120-p6-watcher-kernel_elf_paths.txt": {
+        "sha256": "c60c6a9cd6096e164e7bf886170a4f2d91e805cb0ee26a5494117ab0f02810bb",
+        "byte_count": 1544
+      },
+      "2026-11-07-p150a-issue120-p6-watcher-kernel_names.txt": {
+        "sha256": "e8f2073d3783b4f4eaef20883877b63f5102d70415651d22087f9a3bbbe0ba13",
+        "byte_count": 586
+      },
+      "2026-11-07-p150a-issue120-p6-watcher-watcher.log": {
+        "sha256": "2b1a12202888d884d22a1f633b329420092591a3faf7af40f4d07a6d8b3046fa",
+        "byte_count": 373173
+      },
+      "2026-11-07-p150a-issue120-p6-inspector-kernels.yaml": {
+        "sha256": "1f3f63da0bba48f1c67990da2c57befe3afa9e235fa11315347f2e28bab7f523",
+        "byte_count": 2461
+      },
+      "2026-11-07-p150a-issue120-p6-inspector-mesh_devices_log.yaml": {
+        "sha256": "db74cd4fe011d11736da1b032ae6dec43f08890953849d363431aa924d9983ae",
+        "byte_count": 480
+      },
+      "2026-11-07-p150a-issue120-p6-inspector-mesh_workloads_log.yaml": {
+        "sha256": "ac5b55657c1236a3e20d9e3015aefdde3633a5eb368fde8fda2b6a50586e0064",
+        "byte_count": 600
+      },
+      "2026-11-07-p150a-issue120-p6-inspector-programs_log.yaml": {
+        "sha256": "d7ab8824d18969630ae39664b6b5c1ca6641dc9de56dc4ac4c10ae466b6f4523",
+        "byte_count": 4050
+      },
+      "2026-11-07-p150a-issue120-p6-inspector-startup.yaml": {
+        "sha256": "574f760d5d015387326aaa35e5052d199574511c4d01f00cf44f9bc5e3c03aaa",
+        "byte_count": 144
+      },
+      "2026-11-07-p150a-issue120-p6-lifecycle.json": {
+        "sha256": "9c434e6bbe86b7f5726580944185a85535b50a2953cbfe4a590d0bdb5a58f622",
+        "byte_count": 1957
+      },
+      "2026-11-07-p150a-issue120-p6-health.json": {
+        "sha256": "2adc73bdf408bfc88ca3697b371e4d9acc0c7e838701fe834204165c9d3d8ef3",
+        "byte_count": 1139
+      }
+    },
+    "raw_generated_and_wrapper_sha256": {
+      "wrapper": "ddc9fe82ff9d33d6bc395798710df82aa997483ff82ad224883c50e93a4eb3b9",
+      "watcher/kernel_elf_paths.txt": "279b8a61a2834bd73a4ae268dbc7fbd0489c3c3096b724b83ace1f37dae51212",
+      "watcher/kernel_names.txt": "e8f2073d3783b4f4eaef20883877b63f5102d70415651d22087f9a3bbbe0ba13",
+      "watcher/watcher.log": "89c05a836707bcc4807e939b005725344ea6fafa01a9196688b069a9c8ed5329",
+      "inspector/kernels.yaml": "0bfab025c1755781cabf0849da160a70ddfb3d985450231a66ae4629f067037a",
+      "inspector/mesh_devices_log.yaml": "db74cd4fe011d11736da1b032ae6dec43f08890953849d363431aa924d9983ae",
+      "inspector/mesh_workloads_log.yaml": "ac5b55657c1236a3e20d9e3015aefdde3633a5eb368fde8fda2b6a50586e0064",
+      "inspector/programs_log.yaml": "a48332087d48d9e08cfe693097644d6b59149006435b47b97ce66d75ed592301",
+      "inspector/startup.yaml": "574f760d5d015387326aaa35e5052d199574511c4d01f00cf44f9bc5e3c03aaa"
+    },
+    "sanitization": "Native streams/result/execution, wrapper result, env, CSV and baseline proof are byte-exact copies. Public generated/wrapper derivatives replace repository/cache/hostname strings and normalize trailing line whitespace. Private originals unchanged; snapshots/lifecycle use reduced explicit fields."
+  },
+  "next_step": "Board-free #178 assessment before new precommitted bounded validation and renewed hardware approval; no retry/P7/production."
+}
