@@ -78,12 +78,15 @@ It does not change the production data plane, frame timing or coverage rules.
 
 - 2026-11-07: Recorded the correction strategy determined by the supervising
   operator's PR #172 task instructions for Issue #175, not an owner decision.
-  Corrected the earlier attribution to the owner. Owner acceptance through
-  PR merge remains pending.
-- 2026-11-07: The settled header marker is retained only because the existing
-  `adr-status-guard` checks PR heads and rejects Proposed as well as unsettled
-  statuses. The operator requested Proposed until owner merge if allowed; an
-  in-memory Proposed trial returned `Proposed is not settled; Proposed never
-  reaches main`. No guard/process change is made here, and the retained marker
-  must not be read as evidence of owner approval. Hardware authorization and
-  merge remain separately owner-controlled.
+  Corrected the earlier attribution to the owner. This records implementation
+  direction, not a separate pre-merge owner acceptance.
+- 2026-11-07: Verified that the existing `adr-status-guard` checks PR heads and
+  rejects Proposed as well as unsettled statuses. The operator requested
+  Proposed until owner merge if allowed; an in-memory Proposed trial returned
+  `Proposed is not settled; Proposed never reaches main`.
+- 2026-11-14: Clarified the header under `docs/development_workflow.md` section 6:
+  Accepted records the transition in the carrying PR and takes effect at the
+  owner's merge, which is the acceptance. No separate pre-merge acceptance or
+  later header change is implied. The guard enforces the settled form before
+  landing; this is not a process exception. No guard or workflow rule changes
+  here. Hardware authorization remains separately owner-controlled.
