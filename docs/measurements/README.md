@@ -2,6 +2,8 @@
 
 Raw results kept as data, each with the reproducibility information that
 produced it.
+Three byte-exact raw evidence paths have `.gitattributes` whitespace exceptions;
+reformatting them would change their manifest SHA-256 values.
 
 ## Issue #120 board-free feasibility preparation
 
