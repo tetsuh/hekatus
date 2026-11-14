@@ -5,6 +5,7 @@
 #include "q4_host_sequence.hpp"
 #include "distributed/mesh_workload_impl.hpp"
 #include <tt-metalium/distributed.hpp>
+#include <tt-metalium/buffer_distribution_spec.hpp>
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/mesh_buffer.hpp>
 #include <tt-metalium/mesh_coord.hpp>
@@ -18,6 +19,7 @@
 #include <chrono>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -55,12 +57,18 @@ std::shared_ptr<MeshBuffer> dram(MeshDevice& mesh, uint32_t pages) {
 
 std::shared_ptr<MeshBuffer> l1(MeshDevice& mesh, CoreCoord core, uint32_t pages) {
     const CoreRangeSet range({CoreRange{core, core}});
-    ShardSpecBuffer shard(range, {pages, page_words}, ShardOrientation::ROW_MAJOR,
-                         {1, page_words}, {pages, 1});
+    BufferDistributionSpec distribution(Shape{pages, 1}, Shape{pages, 1}, range, ShardOrientation::ROW_MAJOR);
     DeviceLocalBufferConfig local{
         .page_size = page_bytes, .buffer_type = BufferType::L1,
-        .sharding_args = BufferShardingArgs(shard, TensorMemoryLayout::HEIGHT_SHARDED)};
-    return MeshBuffer::create(ReplicatedBufferConfig{.size = uint64_t(pages) * page_bytes}, local, &mesh);
+        .sharding_args = BufferShardingArgs(std::move(distribution))};
+    auto buffer = MeshBuffer::create(ReplicatedBufferConfig{.size = uint64_t(pages) * page_bytes}, local, &mesh);
+    const auto* reference = buffer->get_reference_buffer();
+    const auto& actual = reference->buffer_distribution_spec();
+    if (!actual || actual->cores().size() != 1 || actual->cores().front() != core ||
+        actual->num_dev_pages_per_core(0) != pages || reference->aligned_size_per_bank() < uint64_t(pages) * page_bytes) {
+        throw std::runtime_error("Q4 L1 allocation does not match the requested core/page distribution");
+    }
+    return buffer;
 }
 
 void partition(MeshDevice& mesh) {
@@ -131,14 +139,30 @@ MeshWorkload workload(MeshDevice& mesh, const Resources& buffers, uint32_t repea
     scratch(program, producer_core, 1);
     scratch(program, consumer_core, 2);
     std::vector<uint32_t> producer_args;
+    const auto expected_peers = peer_coordinates(mesh.get_devices().at(0));
     append_accessor(producer_args, buffers.ring, &routing.producer_ring_compile_args);
+    issue120_q4_host::validate_single_core_accessor(routing.producer_ring_compile_args,
+        expected_peers.consumer, ring_pages);
     append_accessor(producer_args, buffers.producer_stats);
     std::vector<uint32_t> consumer_args;
-    append_accessor(consumer_args, buffers.ring);
+    std::vector<uint32_t> consumer_ring_args;
+    append_accessor(consumer_args, buffers.ring, &consumer_ring_args);
+    issue120_q4_host::validate_single_core_accessor(consumer_ring_args, expected_peers.consumer, ring_pages);
     append_accessor(consumer_args, buffers.anchor, &routing.consumer_anchor_compile_args);
+    issue120_q4_host::validate_single_core_accessor(routing.consumer_anchor_compile_args,
+        expected_peers.producer, 1);
     routing.consumer_anchor_bank_slot = uint32_t(consumer_args.size() - 1);
     for (const auto& buffer : {buffers.progress, buffers.frames, buffers.consumer_stats}) {
         append_accessor(consumer_args, buffer);
+    }
+    std::ifstream manifest_file(source("q4_compile_args.json"));
+    Json manifest;
+    manifest_file >> manifest;
+    if (manifest.at("schema") != "issue178-device-compile-args-v3" ||
+        producer_args != manifest.at("v3").at("producer").get<std::vector<uint32_t>>() ||
+        consumer_args != manifest.at("v3").at("consumer").get<std::vector<uint32_t>>()) {
+        throw std::runtime_error("Q4 actual CTA differs from the offline-compiled V3 manifest: " +
+            Json{{"producer", producer_args}, {"consumer", consumer_args}}.dump());
     }
     const auto producer = CreateKernel(program, source("q4_frame_producer.cpp"), producer_core,
         DataMovementConfig{.processor = DataMovementProcessor::RISCV_0,
@@ -245,16 +269,21 @@ Json coordinate_direction(const std::vector<uint32_t>& stats, uint32_t offset,
     const std::array<uint32_t, 2> accessor_xy{uint32_t((accessor >> 36) & 63), uint32_t((accessor >> 42) & 63)};
     const uint64_t target = ticks(stats.data(), offset + 8);
     const std::array<uint32_t, 2> target_xy{uint32_t((target >> 36) & 63), uint32_t((target >> 42) & 63)};
-    const bool word_matches = stats[offset + 1] == packed;
+    const bool bank_present = stats[offset + 11] != 0;
+    const bool word_matches = bank_present && stats[offset + 1] == packed;
     return {
         {"host_expected_peer_virtual", peer}, {"host_passed_peer_runtime", passed},
         {"host_expected_packed_word", packed}, {"host_accessor_compile_args", expected.host_cta},
         {"host_actual_bank_word", expected.host_cta.back()}, {"host_global_bank_cta_slot", expected.host_bank_slot},
-        {"kernel_bank_cta_slot", stats[offset]}, {"kernel_bank_word", stats[offset + 1]},
+        {"kernel_config_word", stats[offset + 10]}, {"kernel_is_sharded", bank_present},
+        {"kernel_bank_word_present", bank_present},
+        {"kernel_bank_cta_slot", bank_present ? Json(stats[offset]) : Json(nullptr)},
+        {"kernel_bank_word", bank_present ? Json(stats[offset + 1]) : Json(nullptr)},
+        {"kernel_config_matches_host", stats[offset + 10] == expected.host_cta.front()},
         {"kernel_word_matches_host_expected_pack", word_matches},
         {"host_actual_word_matches_expected_pack", expected.host_cta.back() == packed},
-        {"kernel_word_matches_actual_host_cta", stats[offset + 1] == expected.host_cta.back()},
-        {"kernel_cta_slot_matches_host", stats[offset] == expected.host_bank_slot},
+        {"kernel_word_matches_actual_host_cta", bank_present && stats[offset + 1] == expected.host_cta.back()},
+        {"kernel_cta_slot_matches_host", bank_present && stats[offset] == expected.host_bank_slot},
         {"accessor_raw_noc_address", accessor}, {"accessor_coordinate", accessor_xy},
         {"accessor_matches_virtual", accessor_xy == peer},
         {"kernel_self_noc0", {stats[offset + 4], stats[offset + 5]}},
@@ -264,8 +293,8 @@ Json coordinate_direction(const std::vector<uint32_t>& stats, uint32_t offset,
         {"runtime_matches_passed", runtime == passed}, {"passed_matches_diagnostic_virtual", passed == peer},
         {"actual_target", target}, {"actual_target_coordinate", target_xy},
         {"target_coordinate_matches_virtual", target_xy == peer},
-        {"accessor_diagnostic_branch", issue120_q4_host::coordinate_classification(
-            stats[offset + 1], {accessor_xy[0], accessor_xy[1]}, expected.peer)}};
+        {"accessor_diagnostic_branch", bank_present ? issue120_q4_host::coordinate_classification(
+            stats[offset + 1], {accessor_xy[0], accessor_xy[1]}, expected.peer) : "not_applicable_non_sharded"}};
 }
 
 Json startup_diagnostics(MeshDevice& mesh, MeshWorkload& program, const Resources& buffers,
@@ -308,7 +337,11 @@ Json startup_diagnostics(MeshDevice& mesh, MeshWorkload& program, const Resource
     return {
         {"schema", "issue178-startup-diagnostics-v1"}, {"scope", "post_join_and_both_finishes_not_coverage"},
         {"coordinate_diagnostics", {
-            {"schema", "issue178-coordinate-diagnostics-v2"}, {"scope", "final_stats_only_not_coverage"},
+            {"schema", "issue178-coordinate-diagnostics-v3"}, {"scope", "final_stats_only_not_coverage"},
+            {"host_cta_manifest_matches", true},
+            {"allocation_contract", "single-core BufferDistributionSpec; core and per-bank pages checked before dispatch"},
+            {"l1_local_addresses", {{"ring", buffers.ring->address()}, {"anchor", buffers.anchor->address()},
+                                    {"mailbox", buffers.mailbox->address()}}},
             {"consumer_to_producer", coordinate_direction(consumer, issue120_q4_args::consumer_coordinate_stats,
                 {diagnostic_coordinates.consumer, diagnostic_coordinates.producer, routing.passed.producer,
                  routing.consumer_anchor_compile_args, routing.consumer_anchor_bank_slot})},

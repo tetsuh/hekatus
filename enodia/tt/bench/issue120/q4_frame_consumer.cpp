@@ -2,6 +2,7 @@
 // Real ring-frame work and transfer observation share this low-word-only clock.
 #include "q4_clock.hpp"
 #include "q4_runtime_args.hpp"
+#include "q4_accessor_diagnostics.hpp"
 
 using namespace issue120_q4;
 
@@ -185,14 +186,16 @@ void kernel_main() {
     // One final-row snapshot; no accessor coordinate is used for NoC traffic.
     constexpr auto coordinate_offset = issue120_q4_args::consumer_coordinate_stats;
     const uint64_t accessor_raw = anchor.get_noc_addr(0);
-    row[coordinate_offset] = anchor_args.BankCoordsCTAOffset;
-    row[coordinate_offset + 1] = get_compile_time_arg_val(anchor_args.BankCoordsCTAOffset);
+    row[coordinate_offset] = accessor_bank_slot<decltype(anchor_args)>();
+    row[coordinate_offset + 1] = accessor_bank_word<decltype(anchor_args)>();
     row[coordinate_offset + 2] = uint32_t(accessor_raw);
     row[coordinate_offset + 3] = uint32_t(accessor_raw >> 32);
     row[coordinate_offset + 4] = my_x[0]; row[coordinate_offset + 5] = my_y[0];
     row[coordinate_offset + 6] = peer_x; row[coordinate_offset + 7] = peer_y;
     row[coordinate_offset + 8] = uint32_t(start_target);
     row[coordinate_offset + 9] = uint32_t(start_target >> 32);
+    row[coordinate_offset + 10] = get_compile_time_arg_val(ring_args.next_compile_time_args_offset());
+    row[coordinate_offset + 11] = decltype(anchor_args)::is_sharded;
     noc_async_write_page(0, stats, record_address);
     clock.writes_complete();
     cb_push_back(0, 2);

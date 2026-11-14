@@ -2,6 +2,7 @@
 // Actual fixed-size frames, paced independently of the transfer progress path.
 #include "q4_clock.hpp"
 #include "q4_runtime_args.hpp"
+#include "q4_accessor_diagnostics.hpp"
 
 using namespace issue120_q4;
 
@@ -78,14 +79,16 @@ void kernel_main() {
     // Snapshot only: accessor coordinates never determine a peer destination.
     constexpr auto coordinate_offset = issue120_q4_args::producer_coordinate_stats;
     const uint64_t accessor_raw = ring.get_noc_addr(0);
-    result[coordinate_offset] = ring_args.BankCoordsCTAOffset;
-    result[coordinate_offset + 1] = get_compile_time_arg_val(ring_args.BankCoordsCTAOffset);
+    result[coordinate_offset] = accessor_bank_slot<decltype(ring_args)>();
+    result[coordinate_offset + 1] = accessor_bank_word<decltype(ring_args)>();
     result[coordinate_offset + 2] = uint32_t(accessor_raw);
     result[coordinate_offset + 3] = uint32_t(accessor_raw >> 32);
     result[coordinate_offset + 4] = my_x[0]; result[coordinate_offset + 5] = my_y[0];
     result[coordinate_offset + 6] = peer_x; result[coordinate_offset + 7] = peer_y;
     result[coordinate_offset + 8] = uint32_t(ready_target);
     result[coordinate_offset + 9] = uint32_t(ready_target >> 32);
+    result[coordinate_offset + 10] = get_compile_time_arg_val(0);
+    result[coordinate_offset + 11] = decltype(ring_args)::is_sharded;
     noc_async_write_page(0, stats, scratch);
     clock.writes_complete();
     cb_push_back(0, 1);

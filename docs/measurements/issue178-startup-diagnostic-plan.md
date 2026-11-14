@@ -428,3 +428,132 @@ CTA generation and safe diagnostic applicability/retention tests board-free.
 Runtime routing remains hardware-unvalidated. New JIT error triggered stop;
 P7/retry/production were not run, no timeout/container survivor, both cards
 800MHz/DRAM healthy, reset0. New correction/identity requires renewed approval.
+
+## V3: explicit distribution, guarded snapshots and board-free device compile
+
+After reboot, the operator conveyed owner approval for this board-free change,
+precommit and `p6-api-lock-semaphore-v3` plus branch1-only P7 V3. No production,
+automatic retry or relaxed validator is authorized. V2 records remain immutable.
+
+### Source conclusion and allocation choice
+
+The operator established the source chain (v0.75.0, paths relative to tt_metal/):
+`api/tt-metalium/buffer.hpp:150-153` legacy ShardSpecBuffer constructor populates
+only shard_spec; `impl/buffers/buffer.cpp:328-329` copies both optionals unchanged;
+`impl/buffers/tensor_accessor_args.cpp:146-157` sets Sharded only if distribution
+is present. This explains source-side why legacy L1 allocations produce
+interleaved accessor config0 and resolve bank0, consistent with run6 `(1,5)`.
+It is a source inference to be checked against V3 values, not fabricated V2 stats.
+
+**Choice:** retain ring/anchor/mailbox allocations but construct them with
+`BufferDistributionSpec(Shape{pages,1},Shape{pages,1},single_core,ROW_MAJOR)` and
+`BufferShardingArgs(distribution)`. Ring data writes already use runtime xy plus
+local ring_address/page offset, so no accessor participates in that route.
+Anchor stays diagnostic-only: retaining its original one-page allocation allows
+checking the old coordinate explanation without altering pool size/bytes.
+
+The address is valid on the designated core, not a claimed exclusive per-core
+allocation: `impl/allocator/allocator.cpp:128-186` uses the normal lockstep L1
+manager (per_core_allocation remains false). `bank_manager.cpp:410-447` reserves
+a per-bank extent based on num_shards; the common allocator address is reserved
+across banks, including the selected worker. Distribution cores select the
+single logical worker and its page mapping, not an interleaved bank0 route.
+`buffer_distribution_spec.cpp:114-149,330-380` squeezes matching shape dimensions
+to rank1. Host checks actual distribution/core count/selected core/per-core pages
+and aligned per-bank extent before use. Four local4096-byte ring pages then fit
+inside the reserved extent on consumer core; anchor/mailbox each have one page.
+This does not assert per-core-only reservation or reduced allocator overhead.
+
+### Invariants -> RED -> implementation
+
+1. Retain V2 runtime peer xy and fixed shared indices for every cross-core
+   start/free/ready/done/ring-write destination. Accessor xy never routes data.
+2. All L1 allocations carry explicit distribution. Before CreateKernel, host
+   admits each ring/anchor accessor only if config is static Sharded L1, one
+   bank, shapes match fixed pages, and bank word matches virtual xy pack.
+   Actual complete producer/consumer CTA arrays must also equal the offline-
+   checked manifest; any mismatch throws explicitly before dispatch, not a retry.
+3. Templated `if constexpr(Args::is_sharded)` guards the bank read. Config is
+   always recorded. For non-sharded input the slot has an invalid sentinel and
+   JSON bank slot/word are null with bank-present=false; no out-of-range read.
+4. Final stats snapshot only, with config/Sharded/presence and prior raw address/
+   runtime/target fields. Diagnostics remain optional and never coverage input.
+5. Counts, CPU work, buffers, ring extent, budgets/caps, unconditional start,
+   join-before-finish, strict validator and prior record bytes stay unchanged.
+
+RED: `uv run pytest -q tests/test_issue178_distribution.py` failed2 before
+implementation (missing admission helper/guard header). CPU tests subsequently
+execute rank1/rank2 admission, bad config/bank/shape/truncation/CRTA rejection,
+and prove the non-sharded template never instantiates missing CTA index4.
+
+An additional **real pinned RISC-V RED** ran the old producer with actual run7
+CTA `[0,4096,2,4096]` in a strictly device-free container, reproducing
+`Index out of range; 4 < 4` before kernel changes. This exposes the prior host-
+only validation gap without opening a device.
+
+### Mandatory device-free syntax/constexpr gate
+
+`tools/check_issue178_device_kernels.py` runs inside the exact pinned image,
+using its SFPI RISC-V compiler and runtime headers, no TT Python/native runtime.
+It passes explicit `-DKERNEL_COMPILE_TIME_ARGS=` arrays from shared
+`q4_compile_args.json`, BRISC/NOC0/Blackhole flags matching the saved invocation,
+and `-fsyntax-only` over each actual kernel plus firmware_common.h.
+
+Eight cases passed: both kernels, V3 sharded and legacy non-sharded vectors,
+Watcher off/on. [Proof with hashes](issue178-v3-device-compile-check.json) binds
+compiler, manifest and kernel/header source bytes; raw output stays in the
+private work directory. Container has no devices/network, masked sys/proc
+hardware discovery, non-root/read-only source/root and all capabilities dropped.
+
+V3 exact producer args are `[1,4096,1,1,4,4,514,2,4096]`; consumer concatenates
+ring `[1,4096,1,1,4,4,514]`, anchor `[1,4096,1,1,1,1,258]`, then three DRAM
+`[2,4096]` pairs. Host rejects any complete array differing from this manifest,
+so submitted arrays cannot silently differ from the ones syntax-checked.
+This gate catches constexpr/static-assert errors, **not device linking,
+allocation execution, firmware dispatch or physical NoC behavior**; the bounded
+Watcher run remains mandatory. Precommit also requires full tests/ruff, pinned
+host compile/link, isolated no-chip startup and matching-head CI/public Sonar
+via curl (no acceptance).
+
+### V3 identities, predictions and stop rules
+
+| Attempt | Output | Native / outer cap | Watcher |
+|---|---|---|---|
+| `p6-api-lock-semaphore-v3` | `out/issue120/p6-api-lock-semaphore-v3` | 60 s / 60 s | on |
+| `p7-api-lock-semaphore-v3` | `out/issue120/p7-api-lock-semaphore-v3` | 60 s / 60 s | off |
+
+Run branches are unchanged from the V2 brief:1=start observed plus full intact
+frame stream with evaluable covered/not_covered (only then P7),2=start observed
+but incomplete stream,3=start remains0/no attempts. Unexpected error, warning
+outside the three accepted #176 conditions, timeout or failed gate stops;
+no diagnostic may manufacture coverage. Fixed4096 frames/262144 writes/32x1024
+CPU work,1GiB H2D/1MiB load MMIO remain; no count/cap adaptation for a genuine
+early host finish. Production remains forbidden.
+
+Coordinate prediction, separately from the run branch: kernel config1/Sharded,
+bank present and packed word258 `(1,2)` for consumer anchor,514 `(2,2)` for
+producer ring; each agrees with host CTA/virtual xy and runtime peer echo.
+Expected global bank slots are13 and6 respectively. Record every deviation
+separately, including absent bank word; actual routes remain runtime-based and
+a diagnostic mismatch alone does not turn evaluated coverage into a pass/fail.
+These values would support the non-sharded source explanation and repaired
+accessor representation, not retroactively create missing run5/run6/V2 words.
+
+Reboot invalidates old snapshots/private temporary evidence. Before P6, freshly
+capture both cards' detection/serial/PCI/FW/KMD/800MHz, pinned image digest,
+environment and no-heavy-process/container0 preflight. Compare stable values
+with archived run7; stop/report any changed value instead of assuming parity.
+Use only device0 serial411c, named containers, saved before/after ps, idle800MHz
+postchecks; no heavy host tasks during runs. Reset only for timeout/abnormal
+exit, at most once across V3, no automatic retry. P7 requires branch1/normal
+Watcher/errors checks; no production. New native fingerprint and final
+verification will be published before either physical invocation.
+
+V3 pinned native host compile/link passed; native SHA-256:
+`c35af4b4506dfd2534fa71debb6bdd0206825bd428fa102a04124a00cf3a9e43`.
+The offline device proof binds the unchanged kernel/header/manifest hashes.
+Full board-free suite:6120 passed/1057 skipped/8 subtests, ruff/diff/ADR guard
+passed. Strict masked no-device/no-network startup passed asset preflight and
+stopped at No chips detected, direct native2, byte-exact stdout768/stderr2259
+retained, absent result refused, sandbox removed. These are pre-board checks,
+not evidence of physical allocation/NoC/coverage success.

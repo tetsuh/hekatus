@@ -19,6 +19,31 @@ constexpr uint32_t pack_coordinate(CoreXY core) {
     return ((core.x & 0xff) << 8) | (core.y & 0xff);
 }
 
+inline uint32_t validate_single_core_accessor(const std::vector<uint32_t>& args, CoreXY core, uint32_t pages) {
+    // Default compile-time, one-core L1 distribution: Sharded only, no CRTA/DRAM.
+    if (args.size() < 4 || args[0] != 1 || args[1] != 4096 || args[2] < 1 || args[2] > 4 ||
+        (args[3] & 0x7fffffffu) != 1 || pages == 0) {
+        throw std::invalid_argument("Q4 accessor is not a static single-core sharded L1 layout");
+    }
+    const uint32_t rank = args[2];
+    const uint32_t slot = 4 + 2 * rank;
+    if (args.size() != slot + 1 || args[slot] != pack_coordinate(core)) {
+        throw std::invalid_argument("Q4 accessor bank slot or virtual coordinate differs");
+    }
+    uint64_t tensor_pages = 1, shard_pages = 1;
+    for (uint32_t i = 0; i < rank; ++i) {
+        if (args[4 + i] == 0 || args[4 + i] > pages || args[4 + rank + i] == 0 || args[4 + rank + i] > pages) {
+            throw std::invalid_argument("Q4 accessor shape exceeds its fixed allocation");
+        }
+        tensor_pages *= args[4 + i];
+        shard_pages *= args[4 + rank + i];
+    }
+    if (tensor_pages != pages || shard_pages != pages) {
+        throw std::invalid_argument("Q4 accessor shape does not match its page allocation");
+    }
+    return slot;
+}
+
 constexpr const char* coordinate_classification(uint32_t kernel_word, CoreXY accessor, CoreXY expected) {
     if (kernel_word != pack_coordinate(expected)) { return "C"; }
     return accessor.x == expected.x && accessor.y == expected.y ? "A" : "B";
