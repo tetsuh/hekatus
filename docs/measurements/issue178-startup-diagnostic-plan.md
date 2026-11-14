@@ -557,3 +557,19 @@ passed. Strict masked no-device/no-network startup passed asset preflight and
 stopped at No chips detected, direct native2, byte-exact stdout768/stderr2259
 retained, absent result refused, sandbox removed. These are pre-board checks,
 not evidence of physical allocation/NoC/coverage success.
+
+### V3 execution outcome (run8)
+
+After matching-head CI/public Sonar and fresh reboot preflight matched run7,
+[run8](2026-11-14-p150a-issue120-run8.md) completed P6 V3 with Watcher and only
+then P7 V3 without. Both branch1/covered,4096 intact frames,0 abort/overflow,
+strict causal first/last/per-frame coverage. Both directions returned config1,
+bank-present=true, words258/514 at slots13/6 matching host actual/expected packs,
+accessor/virtual/runtime xy and actual targets. This supports the confirmed
+source explanation and repaired representation; old absent raw words remain
+absent. Diagnostics did not generate coverage. The selected short feasibility
+instrument is ordinary CQ1/direct-L1, not a production adoption or run.
+All exits0, baseline warnings only, clean P6 Watcher8 dumps, both cards800MHz/
+DRAM healthy, containers0, reset/retry0. No further hardware follows. The literal
+legacy mailbox_expected2 is not the full4096-frame expected token4098; #179
+tracks that non-blocking metadata scope, with original result bytes preserved.

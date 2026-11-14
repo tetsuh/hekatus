@@ -2261,6 +2261,22 @@ tested precommit/approval. P7/production/retry remained unrun, both cards health
 at800MHz, no container survivor, reset0; no production fix is bundled into the
 failure archive. The first candidate and outstanding coverage/long-run gates
 are unchanged.
+The [subsequently authorized V3 run8](measurements/2026-11-14-p150a-issue120-run8.md)
+at `e1b3754` corrected the confirmed legacy-sharding/distribution mismatch,
+retained explicit runtime routes and guarded absent bank words. Eight pinned
+RISC-V syntax/constexpr cases tied to actual submitted CTA arrays preceded
+hardware. Fresh reboot values matched run7. Both P6 Watcher and conditional P7
+no-Watcher completed4096 frames with strict causal coverage,0 abort/overflow;
+config1 and packed258/514 matched host/kernel/accessor/runtime coordinates.
+This supplies bounded Q4 evidence and selects ordinary unpinned CQ1/direct-L1
+as the feasibility instrument, not the500000-frame production timing result.
+Runtime/distribution fixes were validated together; missing historical raw
+values are not reconstructed. Baseline warnings only, normal health/cleanup,
+reset/retry0; hardware ended after P7. Production still needs widened protocol,
+conservative fixed-work bounds/calibration, real control/load integration and
+same-session acceptance/precommit/approval. A legacy expected2 diagnostic label
+is scoped to zero frames; actual final token4098 is correct and #179 tracks
+that metadata wording without changing recorded bytes or coverage.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

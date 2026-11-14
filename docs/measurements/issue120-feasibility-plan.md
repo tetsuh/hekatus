@@ -395,8 +395,10 @@ not the 500,000-frame production measurement or an AICLK-independent deadline.
 4. If both work, prefer the simpler verified write-only path. If neither works,
    report the evidence and await the owner's CPU-only decision; never downgrade
    silently.
-5. P6/P7 implement the previously missing real-frame confirmation, but have not
-   been run. No mechanism is selected and no feasibility AC is marked complete.
+5. The original precommit had no real-frame confirmation or selected mechanism.
+   Authorized V3 run8 later passed bounded P6/P7 causal coverage with and without
+   Watcher, selecting the ordinary CQ1/direct-L1 instrument under branch2 above.
+   This does not mark the production timing/control acceptance criteria complete.
    Insufficient counts do not prove a mechanism impossible; a direct-read stall
    may be an instrumentation limitation. The pinned-host alternative still
    needs equivalent causal frame-coverage evidence before it could be selected.
@@ -797,3 +799,21 @@ Stop without P7/retry/production. Healthy800MHz postchecks, containers0, reset0.
 No runtime-route or Q4 coverage validation follows. Actual buffer/sharding/CTA
 layout and fail-closed diagnostic applicability/retention need board-free tests
 and a new correction/precommit/owner approval; all prior gates remain.
+
+### V3 run8: bounded Q4 coverage and feasibility selection
+
+[Run8](2026-11-14-p150a-issue120-run8.md) at precommitted `e1b3754`, native
+`c35af4b4...`, followed full tests/CI/public Sonar, device-free native startup and
+8 pinned RISC-V syntax/constexpr cases tied to the submitted CTA manifest.
+Reboot stable-state comparison matched run7 before both authorized probes.
+P6 V3 Watcher and conditional P7 V3 no-Watcher each returned branch1/covered:
+4096 intact frames,0 abort/overflow, strict every-frame/first-last CPU/PCIe proof.
+Both config1 and bank258/514 matched host/accessor/runtime xy, supporting the
+legacy non-sharded/distribution explanation without fabricating old raw values.
+Only baseline warnings, clean P6 Watcher, healthy800MHz postchecks, containers0,
+reset/retry0. No production followed. Diagnostics never establish coverage.
+Select ordinary unpinned CQ1/direct-L1 as the bounded feasibility instrument;
+production integration, widened non-alias protocol, fixed-work calibration and
+same-session500000-frame/control acceptance remain gated. Sparse power traces
+are not full production timing/end coverage. Legacy diagnostic expected2 stays
+byte-exact though full-stream mailbox is4098; #179 tracks its phase labeling.

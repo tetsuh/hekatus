@@ -86,6 +86,15 @@ No fabricated start0/C or coverage, no P7/retry/production, reset0 and healthy
 800-MHz postchecks. Actual sharding/CTA layout and safe diagnostic applicability
 remain board-free follow-up gates; host compile/no-chip/CI were not device JIT
 validation.
+The [V3 run8](2026-11-14-p150a-issue120-run8.md) subsequently passed bounded Q4:
+[P6 Watcher](2026-11-14-p150a-issue120-p6-api-lock-semaphore-v3.json) and
+[P7 no-Watcher](2026-11-14-p150a-issue120-p7-api-lock-semaphore-v3.json) both
+branch1/covered,4096 frames,0 abort/overflow, matching config1/bank258/514 and
+runtime/accessor/host xy. Explicit distribution and guarded diagnostics passed
+8 offline RISC-V cases before hardware. Ordinary CQ1/direct-L1 is selected for
+short feasibility, not production. Only baseline warnings, healthy postchecks,
+no reset/retry/production; previous bytes unchanged. See run8 for the remaining
+long-run/control gates and #179's legacy expected2 label caveat (actual4098).
 
 ## Issue #137 duration-bounded runner (revision 2)
 
