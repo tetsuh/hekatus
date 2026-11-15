@@ -11,9 +11,12 @@ SCHEMA = "issue120-wide-progress-v1"
 
 
 def _integer(value: object, low: int, high: int, field: str) -> int:
-    if type(value) is not int or not low <= value <= high:
+    if type(value) is not int:
         raise ValueError(f"invalid {field}")
-    return value
+    number = int(value)
+    if not low <= number <= high:
+        raise ValueError(f"invalid {field}")
+    return number
 
 
 def admit_domain(*, frame_count: int, repeat_count: int) -> None:

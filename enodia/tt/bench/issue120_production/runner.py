@@ -17,7 +17,7 @@ from . import plan, recording, records, runtime, sessions
 
 def _unit(identity: str) -> str:
     position = [s.identity for s in plan.RUNS].index(identity)
-    return "B" if position < 2 else "C" if position < 4 else "P"
+    return ("B", "B", "C", "C", "P", "P")[position]
 
 
 def _session_spec(identity: str, session_id: str):
@@ -40,6 +40,7 @@ def _clean_pushed() -> str:
 
 
 def wrapper_command(spec: plan.RunSpec, session_id: str) -> tuple[list[str], dict]:
+    session_id = sessions.canonical_session_id(session_id)
     case = sessions.session_path(session_id) / "cases" / spec.identity
     environment = os.environ.copy()
     environment.update(HEKATUS_TT_RUNNER="enodia/tt/bench/issue120_production/run_production.py",

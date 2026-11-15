@@ -86,7 +86,7 @@ def validate_record(record: dict) -> None:
         raise ValueError("session identity missing")
 
 
-def compare_records(control: dict, loaded: dict) -> dict:
+def _validate_comparison(control: dict, loaded: dict) -> None:
     for record in (control, loaded):
         validate_record(record)
         if not record.get("timing_evidence"):
@@ -100,6 +100,10 @@ def compare_records(control: dict, loaded: dict) -> dict:
         raise ValueError("control and loaded attempts must be distinct")
     if loaded["native"]["program_host_interval"]["start_ns"] < control["native"]["program_host_interval"]["end_ns"]:
         raise ValueError("control must precede loaded in the session")
+
+
+def compare_records(control: dict, loaded: dict) -> dict:
+    _validate_comparison(control, loaded)
     differences = {}
     for name in ("p50", "p99", "p99_9", "p99_99"):
         a = control["metrics"]["frame_intervals"]["percentiles"][name]
@@ -116,29 +120,32 @@ def compare_records(control: dict, loaded: dict) -> dict:
             "latency_threshold": None}
 
 
+def _calibration_observation(record: dict, count: int) -> tuple[float, float, float]:
+    validate_record(record)
+    if (record.get("phase") != "calibration" or not record.get("timing_evidence") or
+            record.get("coverage_analysis", {}).get("coverage") != "covered"):
+        raise ValueError("calibration is not causally covered")
+    native = record["native"]
+    if native["frame_count"] != count:
+        raise ValueError("wrong calibration identity")
+    elapsed = (native["host_interval"]["end_ns"] - native["host_interval"]["start_ns"]) / 1e9
+    program = native["program_host_interval"]
+    if elapsed <= 0:
+        raise ValueError("zero calibration work interval")
+    projected = (program["end_ns"] - program["start_ns"]) / 1e9 * 500000 / count
+    overhead = record.get("overhead", {})
+    values = [overhead.get(k) for k in ("setup_seconds", "per_frame_analysis_seconds", "sampler_wait_seconds")]
+    if any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in values):
+        raise ValueError("calibration overhead accounting missing")
+    return native["repeat_count"] / elapsed, projected, values[0] + values[1] * 500000 + values[2] + 5
+
+
 def calibration_proposal(calibrations: list[dict]) -> dict:
     if len(calibrations) != 2:
         raise ValueError("both fixed-size calibration records required")
-    rates, projected, overheads = [], [], []
-    for record, count in zip(calibrations, (16384, 32768), strict=True):
-        validate_record(record)
-        if (record.get("phase") != "calibration" or not record.get("timing_evidence") or
-                record.get("coverage_analysis", {}).get("coverage") != "covered"):
-            raise ValueError("calibration is not causally covered")
-        native = record["native"]
-        if native["frame_count"] != count:
-            raise ValueError("wrong calibration identity")
-        elapsed = (native["host_interval"]["end_ns"] - native["host_interval"]["start_ns"]) / 1e9
-        program = native["program_host_interval"]
-        if elapsed <= 0:
-            raise ValueError("zero calibration work interval")
-        rates.append(native["repeat_count"] / elapsed)
-        projected.append((program["end_ns"] - program["start_ns"]) / 1e9 * 500000 / count)
-        overhead = record.get("overhead", {})
-        values = [overhead.get(k) for k in ("setup_seconds", "per_frame_analysis_seconds", "sampler_wait_seconds")]
-        if any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in values):
-            raise ValueError("calibration overhead accounting missing")
-        overheads.append(values[0] + values[1] * 500000 + values[2] + 5)
+    observations = [_calibration_observation(record, count)
+                    for record, count in zip(calibrations, (16384, 32768), strict=True)]
+    rates, projected, overheads = zip(*observations, strict=True)
     for key in ("program_identity", "environment"):
         if calibrations[0].get(key) != calibrations[1].get(key):
             raise ValueError("calibration provenance differs")

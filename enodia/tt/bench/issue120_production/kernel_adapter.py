@@ -9,10 +9,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 SOURCE = Path(__file__).resolve().parent
 BASE = SOURCE.parent / "kernels"
+TABLES_HEADER = "resident_tables.h"
+OWNED_OUTPUTS = (ROOT / "out/issue120-production-build/kernels",
+                 Path("/out/issue120-production-device-check/kernels"))
 BASE_HASHES = {
     "resident_producer.cpp": "ebf3eac498a7f9d5ef835f3c9fd81410b46a7bb4c57cda2e4905c10ff25ef976",
     "resident_consumer.cpp": "2ef8bef2e0600069336bd0b67db56e0581112254a283510b2cde0a368c21529a",
-    "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c",
+    TABLES_HEADER: "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c",
 }
 
 
@@ -97,30 +100,43 @@ def _consumer(text: str) -> str:
     return text[:end] + "    observation.completed(clock);\n" + text[end:]
 
 
+def _owned_output(output: Path) -> Path:
+    for owned in OWNED_OUTPUTS:
+        if output.absolute() == owned and output.resolve() == owned:
+            return owned
+    raise ValueError("kernel generation requires a fixed program-owned destination")
+
+
 def generate(output: Path) -> dict[str, Path]:
+    output = _owned_output(output)
+    names = ("production_producer.cpp", "production_consumer.cpp", TABLES_HEADER,
+             "protocol.hpp", "device.hpp", "sources.json")
+    for name in names:
+        target = output / name
+        if target.is_symlink() or target.resolve() != target.absolute():
+            raise ValueError("generated kernel target is redirected")
     output.mkdir(parents=True, exist_ok=True)
     outputs = {}
     for role in ("producer", "consumer"):
         target = output / f"production_{role}.cpp"
         target.write_text(derive(role))
         outputs[role] = target
-    for name, source in (("resident_tables.h", BASE / "resident_tables.h"),
+    for name, source in ((TABLES_HEADER, BASE / TABLES_HEADER),
                          ("protocol.hpp", SOURCE / "protocol.hpp"), ("device.hpp", SOURCE / "device.hpp")):
         raw = source.read_bytes()
         if name in BASE_HASHES and hashlib.sha256(raw).hexdigest() != BASE_HASHES[name]:
             raise ValueError("resident support header changed")
         (output / name).write_bytes(raw)
-    manifest = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                for p in sorted(output.iterdir()) if p.suffix in {".cpp", ".hpp", ".h"}}
+    manifest = {name: hashlib.sha256((output / name).read_bytes()).hexdigest()
+                for name in sorted(names) if name != "sources.json"}
     (output / "sources.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return outputs
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("output", type=Path)
-    args = parser.parse_args(argv)
-    generate(args.output)
+    parser.parse_args(argv)
+    generate(OWNED_OUTPUTS[0])
     return 0
 
 

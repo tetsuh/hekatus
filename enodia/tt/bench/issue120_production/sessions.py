@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import subprocess
 import time
 import uuid
@@ -19,10 +18,17 @@ def boot_fingerprint() -> str:
     return hashlib.sha256(Path("/proc/sys/kernel/random/boot_id").read_bytes().strip()).hexdigest()
 
 
+def canonical_session_id(value: str) -> str:
+    if not isinstance(value, str) or len(value) != 32:
+        raise ValueError("session identity must be canonical UUID hex")
+    number = int(value, 16)
+    if not 0 <= number < 2**128 or value != format(number, "032x"):
+        raise ValueError("session identity must be canonical UUID hex")
+    return format(number, "032x")
+
+
 def session_path(identity: str) -> Path:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", identity):
-        raise ValueError("invalid session identity")
-    return runtime.fixed_path(SESSIONS / identity, SESSIONS, exists=False)
+    return runtime.fixed_path(SESSIONS / canonical_session_id(identity), SESSIONS, exists=False)
 
 
 def read_session(identity: str) -> tuple[dict, str]:
@@ -56,7 +62,7 @@ def create_session(specs: list[plan.RunSpec]) -> dict:
 
 
 def admission_hashes(phase: str) -> dict:
-    names = [] if phase == "startup" else ["bounded"] if phase == "calibration" else ["bounded", "production"]
+    names = {"startup": (), "calibration": ("bounded",), "production": ("bounded", "production")}[phase]
     hashes = {}
     for kind in names:
         _committed_admission(kind)

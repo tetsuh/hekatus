@@ -13,12 +13,38 @@ OUTPUT = Path("/out/issue120-production-device-check")
 COMPILER = Path("/opt/tenstorrent/sfpi/compiler/bin/riscv-tt-elf-g++")
 
 
-def main() -> int:
+def _require_isolation() -> None:
     if Path("/dev/tenstorrent").exists():
         raise RuntimeError("device nodes must not be exposed")
     for path in (Path("/sys"), Path("/proc/bus"), Path("/proc/driver")):
         if path.exists() and any(path.iterdir()):
             raise RuntimeError("hardware discovery must be masked")
+
+
+def _check_case(name: str, unit: Path, args: list[int], flags: list[str], watcher: bool) -> dict:
+    command = [str(COMPILER), *flags,
+               "-DKERNEL_COMPILE_TIME_ARGS=" + ",".join(map(str, args)),
+               *(["-DWATCHER_ENABLED"] if watcher else []), "-fsyntax-only", str(unit)]
+    result = subprocess.run(command, capture_output=True, check=False, timeout=60)
+    for stream in ("stdout", "stderr"):
+        (OUTPUT / (name + "." + stream)).write_bytes(getattr(result, stream))
+    print(name, result.returncode, flush=True)
+    return {"case": name, "compile_time_args": args, "returncode": result.returncode,
+            "stdout_sha256": hashlib.sha256(result.stdout).hexdigest(),
+            "stderr_sha256": hashlib.sha256(result.stderr).hexdigest()}
+
+
+def _check_role(role: str, kernel: Path, args: list[int], flags: list[str]) -> list[dict]:
+    if not args or any(type(x) is not int or not 0 <= x < 2**32 for x in args):
+        raise ValueError("invalid compile words")
+    unit = OUTPUT / (role + ".cpp")
+    unit.write_text('#include "internal/firmware_common.h"\n' + f'#include "{kernel}"\n')
+    return [_check_case(f"{role}-watcher-{int(watcher)}", unit, args, flags, watcher)
+            for watcher in (False, True)]
+
+
+def main() -> int:
+    _require_isolation()
     from enodia.tt.bench.issue120_production.kernel_adapter import generate
 
     helper = ROOT / "tools/check_issue178_device_kernels.py"
@@ -32,24 +58,7 @@ def main() -> int:
         raise ValueError("unsupported production compile manifest")
     cases = []
     for role, kernel in kernels.items():
-        args = manifest[role]
-        if not args or any(type(x) is not int or not 0 <= x < 2**32 for x in args):
-            raise ValueError("invalid compile words")
-        unit = OUTPUT / (role + ".cpp")
-        unit.write_text('#include "internal/firmware_common.h"\n' + f'#include "{kernel}"\n')
-        for watcher in (False, True):
-            name = f"{role}-watcher-{int(watcher)}"
-            command = [str(COMPILER), *module._flags(),
-                       "-DKERNEL_COMPILE_TIME_ARGS=" + ",".join(map(str, args)),
-                       *(["-DWATCHER_ENABLED"] if watcher else []), "-fsyntax-only", str(unit)]
-            result = subprocess.run(command, capture_output=True, check=False, timeout=60)
-            for stream in ("stdout", "stderr"):
-                (OUTPUT / (name + "." + stream)).write_bytes(getattr(result, stream))
-            cases.append({"case": name, "compile_time_args": args,
-                          "returncode": result.returncode,
-                          "stdout_sha256": hashlib.sha256(result.stdout).hexdigest(),
-                          "stderr_sha256": hashlib.sha256(result.stderr).hexdigest()})
-            print(name, result.returncode, flush=True)
+        cases.extend(_check_role(role, kernel, manifest[role], module._flags()))
     report = {"schema": "issue120-production-device-check-v1", "cases": cases,
               "all_passed": all(x["returncode"] == 0 for x in cases),
               "scope": "syntax/constexpr only; not device link, dispatch or execution",

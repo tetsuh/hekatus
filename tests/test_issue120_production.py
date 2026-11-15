@@ -68,7 +68,8 @@ def test_precommitted_estimate_and_control_configuration():
     assert plan.program_configuration(control) == plan.program_configuration(loaded)
     assert control.condition == "control"
     assert loaded.condition == "loaded"
-    assert control.watcher and loaded.watcher
+    assert control.watcher
+    assert loaded.watcher
     assert control.cap_seconds == 60
     assert plan.run_spec("production-v1-loaded-500000").cap_seconds == 600
 
@@ -151,12 +152,13 @@ int main() {
     subprocess.run([str(exe)], check=True, timeout=5)
 
 
-def test_versioned_kernel_adapter_preserves_base_bytes(tmp_path):
+def test_versioned_kernel_adapter_preserves_base_bytes(tmp_path, monkeypatch):
     from enodia.tt.bench.issue120_production import kernel_adapter
 
     paths = [ROOT / "enodia/tt/bench/kernels" / ("resident_" + role + ".cpp")
              for role in ("producer", "consumer")]
     before = [hashlib.sha256(p.read_bytes()).hexdigest() for p in paths]
+    monkeypatch.setattr(kernel_adapter, "OWNED_OUTPUTS", (tmp_path,))
     outputs = kernel_adapter.generate(tmp_path)
     assert set(outputs) == {"producer", "consumer"}
     assert before == [hashlib.sha256(p.read_bytes()).hexdigest() for p in paths]

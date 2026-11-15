@@ -272,7 +272,10 @@ launcher watchdog permits120 seconds of wrapper preflight/cleanup outside that
 measurement cap, not a longer native run. Unknown runtime warnings stop success;
 only the exact normalized #176 baseline is allowed. Fresh Watcher bytes are
 separated from stale append prefixes, size/hash-bound on revalidation, and still
-require operator inspection. Bounded admission requires successful warning,
+require operator inspection. Generator CLI output is fixed to its program-owned
+build directory; library generation admits only build/device-check roots and
+rejects redirected targets. Session arguments are reconstructed from canonical
+128-bit UUID hex before subprocess use. Bounded admission requires successful warning,
 fresh Watcher and execution predicates for both rows, not merely consistent
 failure flags. Watcher diagnostic captures have a fixed64MiB limit.
 

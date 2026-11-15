@@ -14,14 +14,14 @@ from enodia.tt.bench.issue120_production import plan, protocol, records, runner,
 def test_wrapper_command_has_literal_caps_image_device_and_watcher(monkeypatch):
     monkeypatch.setenv("TT_METAL_WATCHER", "1")
     control = plan.run_spec("production-v1-control-500000")
-    command, environment = runner.wrapper_command(control, "unit-session")
+    command, environment = runner.wrapper_command(control, "0123456789abcdef" * 2)
     assert environment["HEKATUS_TT_CONTAINER_TIMEOUT_S"] == "600"
     assert environment["HEKATUS_TT_DEVICE_NODE"] == "/dev/tenstorrent/0"
     assert environment["HEKATUS_TT_IMAGE"] == runtime.PINNED_IMAGE
     assert "TT_METAL_WATCHER" not in environment
     assert "--production-approved" in command
     first = plan.run_spec("production-v1-control-watch")
-    _, env = runner.wrapper_command(first, "unit-session")
+    _, env = runner.wrapper_command(first, "0123456789abcdef" * 2)
     assert env["TT_METAL_WATCHER"] == "1"
     assert env["HEKATUS_TT_CONTAINER_TIMEOUT_S"] == "60"
 

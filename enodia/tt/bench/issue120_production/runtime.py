@@ -16,6 +16,8 @@ SOURCE = Path(__file__).resolve().parent
 BUILD = ROOT / "out/issue120-production-build"
 DEPS = ROOT / "out/issue120-deps"
 PROOF = ROOT / "docs/measurements/issue120-production-device-compile-check.json"
+PROTOCOL_HEADER = "protocol.hpp"
+COMPILE_MANIFEST = "compile_args.json"
 LIBRARY_SHA256 = "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
 PINNED_IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
 
@@ -37,7 +39,7 @@ def fixed_path(path: Path, root: Path, *, exists: bool = True) -> Path:
 
 
 def source_hashes() -> dict[str, str]:
-    paths = [SOURCE / name for name in ("native.cpp", "protocol.hpp", "host_protocol.hpp",
+    paths = [SOURCE / name for name in ("native.cpp", PROTOCOL_HEADER, "host_protocol.hpp",
                                        "host_sequence.hpp", "CMakeLists.txt")]
     paths += [SOURCE.parent / "issue120" / name for name in ("CMakeLists.txt", "native_result_io.hpp",
                                                             "q4_host_sequence.hpp", "q4_runtime_args.hpp")]
@@ -77,8 +79,8 @@ def _native_receipt() -> dict:
 
 def _device_proof() -> dict:
     proof = json.loads(PROOF.read_bytes())
-    manifest = json.loads((SOURCE / "compile_args.json").read_bytes())
-    if not proof.get("all_passed") or proof.get("manifest_sha256") != sha(SOURCE / "compile_args.json"):
+    manifest = json.loads((SOURCE / COMPILE_MANIFEST).read_bytes())
+    if not proof.get("all_passed") or proof.get("manifest_sha256") != sha(SOURCE / COMPILE_MANIFEST):
         raise ValueError("offline device compile proof is missing or stale")
     cases = {case["case"]: case for case in proof["cases"]}
     expected = {f"{role}-watcher-{watcher}" for role in ("producer", "consumer") for watcher in (0, 1)}
@@ -99,7 +101,7 @@ def _derived_hashes() -> dict:
             raise ValueError("derived kernel differs from pinned adapter")
         hashes[p.name] = sha(p)
     for name, original in (("device.hpp", SOURCE / "device.hpp"),
-                           ("protocol.hpp", SOURCE / "protocol.hpp"),
+                           (PROTOCOL_HEADER, SOURCE / PROTOCOL_HEADER),
                            ("resident_tables.h", kernel_adapter.BASE / "resident_tables.h")):
         p = fixed_path(generated / name, generated)
         if p.read_bytes() != original.read_bytes():
@@ -114,7 +116,7 @@ def program_identity() -> dict:
         raise ValueError("actual derived kernels differ from offline proof")
     return {"native_sha256": receipt["native_sha256"], "library_sha256": LIBRARY_SHA256,
             "kernel_sources_sha256": hashes, "device_compile_proof_sha256": sha(PROOF),
-            "compile_manifest_sha256": sha(SOURCE / "compile_args.json"),
+            "compile_manifest_sha256": sha(SOURCE / COMPILE_MANIFEST),
             "python_sources_sha256": {p.name: sha(p) for p in sorted(SOURCE.glob("*.py"))}}
 
 
