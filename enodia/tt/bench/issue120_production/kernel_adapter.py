@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[4]
 SOURCE = Path(__file__).resolve().parent
 BASE = SOURCE.parent / "kernels"
 TABLES_HEADER = "resident_tables.h"
+PROTOCOL_HEADER = "protocol.hpp"
+DEVICE_HEADER = "device.hpp"
+SOURCE_MANIFEST = "sources.json"
 OWNED_OUTPUTS = (ROOT / "out/issue120-production-build/kernels",
                  Path("/out/issue120-production-device-check/kernels"))
 BASE_HASHES = {
@@ -110,7 +113,7 @@ def _owned_output(output: Path) -> Path:
 def generate(output: Path) -> dict[str, Path]:
     output = _owned_output(output)
     names = ("production_producer.cpp", "production_consumer.cpp", TABLES_HEADER,
-             "protocol.hpp", "device.hpp", "sources.json")
+             PROTOCOL_HEADER, DEVICE_HEADER, SOURCE_MANIFEST)
     for name in names:
         target = output / name
         if target.is_symlink() or target.resolve() != target.absolute():
@@ -122,14 +125,14 @@ def generate(output: Path) -> dict[str, Path]:
         target.write_text(derive(role))
         outputs[role] = target
     for name, source in ((TABLES_HEADER, BASE / TABLES_HEADER),
-                         ("protocol.hpp", SOURCE / "protocol.hpp"), ("device.hpp", SOURCE / "device.hpp")):
+                         (PROTOCOL_HEADER, SOURCE / PROTOCOL_HEADER), (DEVICE_HEADER, SOURCE / DEVICE_HEADER)):
         raw = source.read_bytes()
         if name in BASE_HASHES and hashlib.sha256(raw).hexdigest() != BASE_HASHES[name]:
             raise ValueError("resident support header changed")
         (output / name).write_bytes(raw)
     manifest = {name: hashlib.sha256((output / name).read_bytes()).hexdigest()
-                for name in sorted(names) if name != "sources.json"}
-    (output / "sources.json").write_text(json.dumps(manifest, indent=2) + "\n")
+                for name in sorted(names) if name != SOURCE_MANIFEST}
+    (output / SOURCE_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n")
     return outputs
 
 
