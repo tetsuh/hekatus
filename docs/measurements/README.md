@@ -98,6 +98,15 @@ short feasibility, not production. Only baseline warnings, healthy postchecks,
 no reset/retry/production; previous bytes unchanged. See run8 for the remaining
 long-run/control gates and #179's legacy expected2 label caveat (actual4098).
 
+## Issue #120 production results (reserved)
+
+[Stage-A plan](issue120-production-plan.md) and
+[ADR-0019](../adr/0019-issue120-production-causal-instrument.md) describe the new
+versioned resident instrument, bounded calibration proposals and later matching
+control/load pair. **No production result is present.** New-kernel validation,
+calibration, fixed-count precommit and separate owner approvals remain gates;
+no feasibility record is relabeled as production evidence.
+
 ## Issue #137 duration-bounded runner (revision 2)
 
 The board-free planning command prints the immutable configurations and their

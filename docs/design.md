@@ -2278,6 +2278,16 @@ same-session acceptance/precommit/approval. A legacy expected2 diagnostic label
 is scoped to zero frames; actual final token4098 is correct and #179 tracks
 that metadata wording without changing recorded bytes or coverage.
 
+### Issue #120 production follow-up (result slot, no measurement yet)
+
+The [board-free production plan](measurements/issue120-production-plan.md) and
+[ADR-0019](adr/0019-issue120-production-causal-instrument.md) define additive
+instrumentation of the Issue #118 resident work, a widened causal protocol and
+new-schema-only host-interval validation. Existing measured sources and records
+remain unchanged. Fixed-count calibration and the same-session production
+control/load pair still require separate owner authorization. This slot contains
+no production result, inferred percentile difference or timing acceptance.
+
 ### Issue #104 paired-outlier measurement (2026-10-06)
 
 The pinned resident harness was run for 400,000 frames at the Issue #12 final

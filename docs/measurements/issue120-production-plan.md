@@ -22,7 +22,9 @@ owner-authorized phase of this PR.
 3. Start the host worker before workload enqueue; join it before **any** CQ0/CQ1
    finish/Synchronize. Do not hold the MeshDevice API lock waiting for CQ0 while
    another thread must enqueue CQ1. Test the actual host order with callables,
-   shared-lock fakes and an exception path, not source grep.
+   shared-lock fakes and exception paths, not source grep. Cancel and join after
+   partial start/enqueue/worker failures, then drain before releasing resources;
+   preserve the original failure instead of publishing a successful result.
 4. L1 ring/control/anchor/mailbox allocations carry explicit
    BufferDistributionSpec. Validate core/pages/bank pack and complete compiled
    CTA vectors before dispatch. Every cross-core data/semaphore destination uses
@@ -65,7 +67,10 @@ not simply become a500000-frame substitute.
 Use an additive native production host plus versioned, reproducible adapters of
 those #118 kernel sources. Retain their work and accounting; add runtime-peer
 routing, a bounded startup start semaphore and v3-meaning observation hooks.
-The observation cost is present in **both** conditions. The instrument is not
+Record frame admission, observe progress, then sample the original work-start;
+keep completion immediately after the unchanged arithmetic. Work duration stays
+separate from observation duration. The observation cost remains visible in
+completion intervals and is present in **both** conditions. The instrument is not
 claimed binary-identical to the historical #118 measurement, nor are its absolute
 latencies a retrospective replacement. The controlled difference measures the
 presence of host CPU/PCIe work with the same new instrument.
@@ -114,9 +119,21 @@ The short19/13-bit layout is not reused:
   tail) to that exact host transition table. An un-emitted splice is rejected.
   The mapping is source/attempt/hash-bound, validated and part of the evidence.
   This is not a claim about arbitrary/malicious writers or validator completeness.
-- An advancing fully validated observation witnesses one completed page only;
-  never multiply unobserved sequence jumps into completed bytes. Preserve v3
-  same-clock challenge/response ordering and both boundary checks.
+- An advancing fully validated observation witnesses all4096 bytes arriving by
+  scan completion, **not CQ retirement or an atomic page snapshot**. Attribute
+  those bytes only to fresh-challenge-issue through response-scan-completion,
+  never between the two scan-end timestamps. Require challenge issue after the
+  preceding completion and response scan after current admission/before current
+  completion. Frame-zero bytes are not automatically inside the frame window;
+  later frame challenges are. Tail bytes are separately after the last frame.
+  Do not multiply unseen sequence gaps or double-count sequences.
+- This sufficient proof assumes coherent32-bit observations, monotonic host
+  challenges, no unrelated writer, encoded(0,0) initialization, source-buffer
+  copy before reuse, and scan timestamps after completed reads. These are not
+  proofs of arbitrary byte-tearing hardware, continuous CPU/PCIe occupancy, or
+  product wall time. Final map lookup is bounded by successful submissions;
+  unsuccessful/pending enqueue suffixes never become evidence. Bind the exact
+  startup observation used for start, not a later replacement.
 
 The protocol proof is subject to explicit board-free counterexample tests before
 implementation: old-mask boundaries, max/new values, wrap/overflow admission,
@@ -224,7 +241,45 @@ clock ambiguity, timeout or survivor stops. No retry/reset is authorized here.
 
 B1/B2, C1/C2 and P1/P2 are **separate owner approval units**, not authorization
 from a successful previous stage. Both production rows require explicit separate
-owner approval and one same-session/configuration manifest. These are planned
+owner approval and one same-session/configuration manifest. Host launch verifies
+the boot identity; that host-verified manifest binds container execution without
+assuming a worktree's external Git directory is visible inside the container. These are planned
 identities; paths must be new, never resumed/overwritten. Native internal caps
 and outer wrapper caps must match; an omitted generic wrapper timeout is not an
 approved production command. Stage A will not run any of them.
+
+## Operational admission (board-free implementation)
+
+The new runner defaults to a JSON proposal and never imports an accelerator
+module. `uv run python -m enodia.tt.bench.issue120_production.runner --build-only`
+only compiles/links and writes a source-bound build receipt. Actual launch needs
+an explicit owner-approved flag, a fresh session, clean/pushed sources, fixed
+wrapper image/device/caps, and the exact compiled/proved sources.
+
+`--prepare-unit B` prepares only a new session manifest. Each run is launched
+separately, not automatically continued. Non-Watcher calibration additionally
+requires a committed `bounded_admission.json` binding the healthy B records and
+operator Watcher inspection. Production additionally requires a committed
+`production_admission.json` with both validated calibration record digests and
+the recomputed fixed count. Neither file can be honestly produced in stage A;
+the production entry point rejects their absence. The offline count proposal
+is not authorization. New count data do not require changing the host algorithm
+or widening the admitted wire domain.
+
+The same immutable container wrapper supplies environment/run IDs and the power
+sampler. The native and Docker measurement caps are60/600 seconds. A separate
+launcher watchdog permits120 seconds of wrapper preflight/cleanup outside that
+measurement cap, not a longer native run. Unknown runtime warnings stop success;
+only the exact normalized #176 baseline is allowed. Fresh Watcher bytes are
+separated from stale append prefixes, size/hash-bound on revalidation, and still
+require operator inspection. Bounded admission requires successful warning,
+fresh Watcher and execution predicates for both rows, not merely consistent
+failure flags. Watcher diagnostic captures have a fixed64MiB limit.
+
+Compact native sidecars are copied byte-exact into primary-stem companions before
+record publication. Revalidation recomputes complete frame/map coverage and
+resident metrics, checks the original atomic native envelope/direct status/raw
+stream fingerprints and frozen power. This is scoped validation, not a claim of
+completeness. Power freezes after a bounded wait for a terminal sample and uses
+an explicit observed-host-envelope scope; it does not invent an exact card UTC
+end or frame-window average. The result slots remain empty.
