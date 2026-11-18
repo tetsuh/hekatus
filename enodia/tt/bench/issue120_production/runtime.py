@@ -10,7 +10,7 @@ from pathlib import Path
 
 from enodia.tt.bench import issue120_probe, issue120_results
 
-from . import host_trace, host_trace_contract, kernel_adapter, plan
+from . import host_build_inputs, host_trace, host_trace_contract, kernel_adapter, plan
 
 ROOT = Path(__file__).resolve().parents[4]
 SOURCE = Path(__file__).resolve().parent
@@ -19,6 +19,7 @@ DEPS = ROOT / "out/issue120-deps"
 PROOF = ROOT / "docs/measurements/issue120-production-device-compile-check.json"
 PROTOCOL_HEADER = "protocol.hpp"
 COMPILE_MANIFEST = "compile_args.json"
+NATIVE_SOURCE_NAME = "native_trace.cpp"
 LIBRARY_SHA256 = "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
 PINNED_IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
 
@@ -44,29 +45,35 @@ def source_hashes() -> dict[str, str]:
                                        PROTOCOL_HEADER, "host_protocol.hpp", "host_sequence.hpp", "CMakeLists.txt")]
     paths += [SOURCE.parent / "issue120" / name for name in ("CMakeLists.txt", "native_result_io.hpp",
                                                             "q4_host_sequence.hpp", "q4_runtime_args.hpp")]
-    paths.append(BUILD / "host-trace-input/native_trace.cpp")
+    paths.append(BUILD / "host-trace-input" / NATIVE_SOURCE_NAME)
     return {p.relative_to(ROOT).as_posix(): sha(p) for p in paths}
 
 
 def build() -> None:
+    environment = host_build_inputs.environment()
     fixed_path(BUILD, ROOT / "out", exists=False)
     BUILD.mkdir(parents=True, exist_ok=True)
     successor = host_trace_contract.derive_native((SOURCE / "native.cpp").read_text())
     host_trace_contract.verify_native_source(successor)
     _write_host_source(successor)
     kernel_adapter.generate(BUILD / "kernels")
-    command = ["cmake", "-S", str(SOURCE), "-B", str(BUILD),
+    command = ["cmake", "--fresh", "-G", "Unix Makefiles", "-S", str(SOURCE), "-B", str(BUILD),
+               "-DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++", "-DCMAKE_BUILD_TYPE:STRING=",
+               "-DCMAKE_CXX_FLAGS:STRING=", "-DCMAKE_CXX_FLAGS_INIT:STRING=",
                f"-DTT_METAL_SOURCE_ROOT={DEPS / 'source'}",
                "-DTT_METAL_SOURCE_REVISION=d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
                f"-DTT_METAL_LIBRARY={DEPS / 'lib/libtt_metal.so'}",
                f"-DTT_METAL_EXTRA_INCLUDE_DIRS={DEPS / 'include'}",
                f"-DTT_METAL_EXTRA_LIBRARY_DIRS={DEPS / 'lib'};{DEPS / 'wheel-libs'}"]
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, env=environment)
+    if host_build_inputs.verify_flags(BUILD) != str(ROOT):
+        raise ValueError("compiler include root differs from the protected project")
     subprocess.run(["cmake", "--build", str(BUILD), "--target", "issue120_production",
-                    "--parallel", "2"], check=True)
+                    "--parallel", "2"], check=True, env=environment)
     receipt = {"schema": "issue120-production-build-v1", "source_sha256": source_hashes(),
                "native_sha256": sha(BUILD / "issue120_production"),
-               "library_sha256": sha(BUILD / "libtt_metal.so")}
+               "library_sha256": sha(BUILD / "libtt_metal.so"),
+               "compiler_inputs": host_build_inputs.identity(BUILD, ROOT)}
     (BUILD / "build-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
 
 
@@ -76,7 +83,7 @@ def _host_input_directory() -> Path:
         if not directory.is_dir() or directory.stat().st_mode & 0o022:
             raise ValueError("generated input directory is not private/canonical")
         for entry in directory.iterdir():
-            if entry.name != "native_trace.cpp" or entry.is_symlink() or not entry.is_file():
+            if entry.name != NATIVE_SOURCE_NAME or entry.is_symlink() or not entry.is_file():
                 raise ValueError("shadow header or redirected generated input")
     return directory
 
@@ -84,7 +91,7 @@ def _host_input_directory() -> Path:
 def _write_host_source(text: str) -> None:
     directory = _host_input_directory()
     directory.mkdir(mode=0o700, exist_ok=True)
-    target = fixed_path(directory / "native_trace.cpp", directory, exists=False)
+    target = fixed_path(directory / NATIVE_SOURCE_NAME, directory, exists=False)
     fd, temporary_name = tempfile.mkstemp(prefix=".host-source-", dir=directory)
     temporary = Path(temporary_name)
     try:
@@ -107,6 +114,8 @@ def _native_receipt() -> dict:
         raise ValueError("native artifact pin differs")
     if sha(fixed_path(BUILD / "libtt_metal.so", BUILD)) != LIBRARY_SHA256:
         raise ValueError("native runtime library differs")
+    if receipt.get("compiler_inputs") != host_build_inputs.identity(BUILD, ROOT):
+        raise ValueError("effective compiler inputs or resolved protected headers changed")
     return receipt
 
 
@@ -146,7 +155,7 @@ def _derived_hashes() -> dict:
 def program_identity() -> dict:
     fixed_path(BUILD, ROOT / "out")
     directory = _host_input_directory()
-    successor = fixed_path(directory / "native_trace.cpp", directory)
+    successor = fixed_path(directory / NATIVE_SOURCE_NAME, directory)
     host_trace_contract.verify_native_source(successor.read_text())
     receipt, proof, hashes = _native_receipt(), _device_proof(), _derived_hashes()
     if proof.get("derived_sources") != hashes:

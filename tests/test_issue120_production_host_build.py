@@ -16,6 +16,8 @@ def fake_build(monkeypatch, tmp_path):
     monkeypatch.setattr(runtime.kernel_adapter, "generate", lambda *a: None)
     monkeypatch.setattr(runtime.subprocess, "run", lambda *a, **kw: None)
     monkeypatch.setattr(runtime, "source_hashes", dict)
+    monkeypatch.setattr(runtime.host_build_inputs, "verify_flags", lambda *a: str(tmp_path))
+    monkeypatch.setattr(runtime.host_build_inputs, "identity", lambda *a: {})
     monkeypatch.setattr(runtime, "sha", lambda *a: "a" * 64)
     return build
 

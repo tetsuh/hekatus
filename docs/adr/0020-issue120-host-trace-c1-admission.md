@@ -43,6 +43,10 @@ exception that ignores arbitrary native or Python mismatches.
    or links. Rebase legacy relative includes to the pinned source tree and reject
    shadow inputs before compilation/identity checks. Use fresh temporary output
    and atomic replacement, not direct truncation or symlink-following writes.
+   Fresh configure rejects ambient compiler/include overrides and preserves the
+   original empty-build-type/no-user-CXX-flags configuration. Effective generated
+   flags and the compiler dependency file's resolved protected headers are checked
+   and receipt-bound; an unchecked cached quote-search option is not evidence.
    These boundaries address the board-free findings tracked in Issue #184.
 2. Observe a preceding fully committed write before the next original challenge
    read, and the last commit after submit_fixed returns. The definition is a

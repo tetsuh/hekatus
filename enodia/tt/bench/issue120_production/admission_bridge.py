@@ -9,7 +9,7 @@ SCHEMA = "issue120-bounded-admission-v2"
 C1 = "production-v1-calibration-small"
 UNCHANGED_IDENTITIES = ("library_sha256", "kernel_sources_sha256", "device_compile_proof_sha256", "compile_manifest_sha256")
 CHANGED_PYTHON = {"recording.py", "runtime.py", "sessions.py"}
-ADDED_PYTHON = {"host_trace.py", "host_trace_contract.py", "bounded_evidence.py", "admission_bridge.py"}
+ADDED_PYTHON = {"host_trace.py", "host_trace_contract.py", "host_build_inputs.py", "bounded_evidence.py", "admission_bridge.py"}
 
 
 def _source_proof() -> dict:

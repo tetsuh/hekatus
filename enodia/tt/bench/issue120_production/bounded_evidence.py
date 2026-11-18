@@ -61,24 +61,38 @@ def validate_references(refs) -> None:
         raise ValueError("admission does not bind the original B4 evidence pins")
 
 
-def _copy_members(archive: tarfile.TarFile, directory: Path, facts: dict) -> None:
-    seen, total = set(), 0
+def _trusted_identity(case: str) -> str:
+    return next(pin[1] for pin in PINS if pin[0] == case)
+
+
+def _trusted_names(case: str) -> tuple[str, ...]:
+    identity = _trusted_identity(case)
+    suffixes = (".json", "-frames.bin", "-transitions.bin", "-watcher.log", "-native-result.json",
+                "-native-execution.json", "-native-stdout.bin", "-native-stderr.bin")
+    return (f"env-{identity}.json", f"power-{identity}.csv", f"power-trace-snapshot-{identity}-1.csv",
+            *(f"results-{identity}{suffix}" for suffix in suffixes))
+
+
+def _copy_members(archive: tarfile.TarFile, directory: Path, facts: dict, names: tuple[str, ...]) -> None:
+    members, total = {}, 0
     for member in archive:
-        if (not member.isfile() or member.name not in facts or member.name in seen or
+        if (not member.isfile() or member.name not in facts or member.name in members or
                 Path(member.name).name != member.name or member.name in (".", "..")):
             raise ValueError("B4 archive has an unexpected/duplicate/redirected member")
-        seen.add(member.name)
+        members[member.name] = member
         total += member.size
-        if not 0 <= member.size <= MAX_BYTES or total > MAX_BYTES or len(seen) > 11:
+        if not 0 <= member.size <= MAX_BYTES or total > MAX_BYTES or len(members) > 11:
             raise ValueError("B4 archive extraction bound exceeded")
-        with archive.extractfile(member) as source, (directory / Path(member.name).name).open("xb") as target:
+    if set(members) != set(facts) or set(facts) != set(names) or len(members) != 11:
+        raise ValueError("original B4 archive is incomplete")
+    # Filesystem names come only from fixed independent attempt pins, never tar metadata.
+    for name in names:
+        path = directory / name
+        with archive.extractfile(members[name]) as source, path.open("xb") as target:
             while block := source.read(1024 * 1024):
                 target.write(block)
-        path = directory / member.name
-        if path.stat().st_size != facts[member.name]["byte_count"] or runtime.sha(path) != facts[member.name]["sha256"]:
+        if path.stat().st_size != facts[name]["byte_count"] or runtime.sha(path) != facts[name]["sha256"]:
             raise ValueError("original B4 payload fingerprint differs")
-    if seen != set(facts) or len(seen) != 11:
-        raise ValueError("original B4 archive is incomplete")
 
 
 def _load_one(ref: dict) -> dict:
@@ -97,8 +111,8 @@ def _load_one(ref: dict) -> dict:
     with tempfile.TemporaryDirectory(prefix="issue120-bounded-") as temporary:
         directory = Path(temporary)
         with tarfile.open(path, "r:gz") as archive:
-            _copy_members(archive, directory, facts)
-        record_path = directory / ref["record_file"]
+            _copy_members(archive, directory, facts, _trusted_names(ref["case"]))
+        record_path = directory / f"results-{_trusted_identity(ref['case'])}.json"
         if runtime.sha(record_path) != ref["record_sha256"]:
             raise ValueError("B4 primary record differs")
         record = load_validated_record(record_path)

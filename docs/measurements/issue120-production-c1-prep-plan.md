@@ -49,7 +49,12 @@ frame period, queues/subdevices, fixed-work payload/challenges or dispatch.
    translation unit; reject shadow headers/links before compilation and identity
    checks. Rebase legacy relative includes to the protected source tree. Publish
    generated text through a fresh temporary file plus atomic replacement, never
-   truncating/following an existing generated-output link.
+   truncating/following an existing generated-output link. Fresh CMake configure
+   must reject compiler/include environment overrides and pin the original empty
+   build-type/CXX-flags configuration. Check effective flags before compilation,
+   then verify and receipt-bind the compiler dependency file's resolved protected
+   headers, not merely the intended SOURCE files. Cache quote-search overrides
+   cannot authorize a new binary.
 7. A host-only native change satisfies the owner's stated Watcher exception
    only with this source/dispatch proof and unchanged actual derived kernels,
    CTA and pinned compiler proof. Then the next approved C1 may remain Watcher
@@ -109,3 +114,30 @@ clock/coverage/frame/health/timeout/exit failures. At most one reset only for
 abnormal device execution/timeout, no automatic retry. Record and publish raw
 statuses and scope-qualified metrics afterward, with no control difference.
 This paragraph is future procedure, not a command executed during preparation.
+
+## Prepared native and admission
+
+Implementation precommit: fa49d89, following invariant precommit9f4db7c.
+The new native SHA256 is
+`0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6`,
+from an actual pinned compile/link. The preserved B4 native is
+`bd0ac1384aeebcce715a9cb7527211453ef3378f28e868bbc85080fe7bc4c3c0`.
+The change adds only host committed-prefix observations and metadata; old measured
+native/protocol/lifecycle and all device-facing generation remain unchanged.
+
+`enodia/tt/bench/issue120_production/bounded_admission.json` is a committed
+v2 C1-only receipt. Its old evidence identities/digests remain B4's originals;
+its target is the actual new native and current approved Python sources. A
+board-free check of the committed path admits only small and rejects P, without
+creating a runtime session. New receipt generation is reproducible with
+`uv run python tools/prepare_issue120_c1_admission.py`; review/commit its JSON,
+not an unvalidated native hash. Do not refresh a receipt to hide source drift.
+
+The [offline preparation proof](issue120-production-c1-prep-checks.json) records
+build/startup/publication/source preservation and the unchanged device proof.
+No C1 frame/coverage/rate or present hardware health is asserted by those checks.
+At next power-on use the native above and the final clean/pushed green head;
+missing/stale artifacts or changed environment stop before any device launch.
+The eventual `--prepare-unit C` must yield a fresh small-only session. Launch
+only `production-v1-calibration-small` with that session and explicit approval,
+Watcher off/device0/60s native+outer. C2/P remain blocked by this admission.
