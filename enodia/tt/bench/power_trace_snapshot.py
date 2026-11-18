@@ -1194,6 +1194,13 @@ def _evaluate_trace_rows(
     return _set_trace_coverage(trace, options.definition)
 
 
+def _validate_load_interval_contract(options: PowerTraceCsvOptions) -> None:
+    if options.load_interval_contract not in _LOAD_INTERVAL_SOURCES:
+        raise ValueError("unknown load interval contract")
+    if options.load_interval_contract != LEGACY_LOAD_INTERVAL_CONTRACT and not options.require_explicit_load_interval:
+        raise ValueError("versioned load interval requires an explicit interval")
+
+
 def read_power_trace_csv(
     path: Path,
     *,
@@ -1202,10 +1209,7 @@ def read_power_trace_csv(
 ) -> dict[str, Any]:
     """Read power CSV bytes and evaluate one named run-coverage contract."""
     options = _csv_options_from_legacy(options, legacy_options)
-    if options.load_interval_contract not in _LOAD_INTERVAL_SOURCES:
-        raise ValueError("unknown load interval contract")
-    if options.load_interval_contract != LEGACY_LOAD_INTERVAL_CONTRACT and not options.require_explicit_load_interval:
-        raise ValueError("versioned load interval requires an explicit interval")
+    _validate_load_interval_contract(options)
     read_options = options.read_options
     definition = canonical_coverage_definition(options.coverage_definition)
     path = Path(path)

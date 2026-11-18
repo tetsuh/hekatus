@@ -27,21 +27,34 @@ from enodia.tt.bench.run_binding import validate_run_id
 from . import artifacts, checks, coverage, diagnostics, plan, protocol, records, runtime
 
 
+@contextlib.contextmanager
+def _public_output(path: Path, *, mode: str = "x", publish_mode: int = 0o644):
+    """Create only fresh public measurement bytes, never secrets or existing files.
+
+    Host readback crosses UIDs: owner writes, everyone may read, nobody else
+    writes. Exclusive creation and fingerprints, not mode, bind immutable bytes.
+    Reject settings before opening so this cannot become a generic chmod API.
+    """
+    if mode not in ("x", "xb") or type(publish_mode) is not int or publish_mode != 0o644:
+        raise ValueError("public artifacts require exclusive creation and0644")
+    with path.open(mode) as output:
+        os.fchmod(output.fileno(), publish_mode)
+        yield output
+
+
 def copy_exclusive(source: Path, target: Path) -> None:
-    with source.open("rb") as src, target.open("xb") as dst:
+    with source.open("rb") as src, _public_output(target, mode="xb") as dst:
         shutil.copyfileobj(src, dst, 1024 * 1024)
         dst.flush()
-        os.fchmod(dst.fileno(), 0o644)
         os.fsync(dst.fileno())
 
 
 def write_record(path: Path, value: dict) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("x") as output:
+    with _public_output(temporary) as output:
         json.dump(value, output, sort_keys=True, indent=2)
         output.write("\n")
         output.flush()
-        os.fchmod(output.fileno(), 0o644)
         os.fsync(output.fileno())
     os.link(temporary, path)
     temporary.unlink()
@@ -174,9 +187,8 @@ def make_record(spec: plan.RunSpec, attempt, native: dict, program_identity: dic
             modified_after_start=path.is_file() and path.stat().st_mtime_ns >= start_utc_ns)
         watcher.update(facts)
         target = output / f"results-{identity}-watcher.log"
-        with target.open("xb") as handle:
+        with _public_output(target, mode="xb") as handle:
             handle.write(fresh)
-            os.fchmod(handle.fileno(), 0o644)
         watcher["artifact"] = {"file": target.name, "sha256": runtime.sha(target), "byte_count": len(fresh)}
     record["watcher"] = watcher
     power, waited = freeze_power(output, identity, start_utc_ns, end_utc_ns, native)

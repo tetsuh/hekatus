@@ -67,6 +67,17 @@ def test_real_launcher_reopens_child_artifacts_across_permission_seam(tmp_path, 
     assert f"results-{IDENTITY}.json" in reopens
 
 
+@pytest.mark.parametrize("settings", [
+    {"mode": "wb"}, {"publish_mode": 0o666}, {"publish_mode": 0o600}, {"publish_mode": True},
+])
+def test_public_output_policy_rejects_unsafe_settings_before_open(tmp_path, settings):
+    path = tmp_path / "existing"
+    path.write_bytes(b"retain original")
+    with pytest.raises(ValueError), recording._public_output(path, **settings):
+        pytest.fail("invalid publication settings must not open an artifact")
+    assert path.read_bytes() == b"retain original"
+
+
 def test_replay_publisher_restores_parent_umask(tmp_path):
     prior = os.umask(0o027)
     try:

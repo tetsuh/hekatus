@@ -14,7 +14,9 @@ native/kernel source bytes and digests are to remain unchanged.
    not an assertion that mode0600 prevents mutation. Existing snapshots are never
    chmodded or rewritten. New production snapshots may explicitly publish0644
    (owner read/write, others read; no group/world write) before the atomic link.
-   The shared legacy default remains0600.
+   The shared legacy default remains0600. One exclusive-open policy restricts
+   fresh public outputs to0644 and rejects replacement/write modes or other
+   permissions before opening a destination.
 3. Do not add privileged containers, capabilities, broad chown/chmod, new writable
    mounts or a result-transport fallback. ADR-0018 native result publication is
    unchanged. Mode-scoped publication keeps the existing #172 pinned runtime/
