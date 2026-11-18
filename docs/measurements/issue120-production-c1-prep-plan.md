@@ -117,7 +117,8 @@ This paragraph is future procedure, not a command executed during preparation.
 
 ## Prepared native and admission
 
-Implementation precommit: fa49d89, following invariant precommit9f4db7c.
+Implementation precommit: fa49d89, following invariant precommit9f4db7c;
+compiler-input and Sonar code refinement:6447bba.
 The new native SHA256 is
 `0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6`,
 from an actual pinned compile/link. The preserved B4 native is
