@@ -6,6 +6,36 @@ Base: PR #172 merged as `8c96cdc`; preserve all of its measured artifacts and
 sources. Production completes the remaining Issue #120 scope in a later
 owner-authorized phase of this PR.
 
+## Owner-approved execution baseline — 2026-11-18
+
+The owner approved **Linux6.8.0-149-generic and TT-KMD2.12.0 on2026-11-18**
+as the new production-measurement baseline and authorized B1, followed by B2
+only after a healthy B1. C and P remain unauthorized. The earlier run8 evidence
+used Linux6.8.0-138-generic/TT-KMD2.11.0; do not claim an identical-environment
+comparison with it. Its rates remain uncalibrated planning inputs only.
+
+Keep all other identity requirements: device0, p150a serial000004033191411c,
+PCI0000:06:00.0, firmware bundle19.6.0.0, the pinned image and existing native/
+kernel proof digests, idle800MHz and healthy DRAM on both detected cards. Take
+fresh environment snapshots rather than reuse the previous preflight. No old
+kernel/KMD value is hardcoded in the production admission code or tests; no
+algorithm/schema change or rebuild is needed for this baseline decision.
+
+Use one new runtime session manifest for both B rows, retaining its boot,
+program/image/configuration bindings. The session archive additionally records
+this dated owner decision, the fresh full environment baseline and the exact
+runtime-manifest SHA-256. Before each launch compare the current environment
+against that baseline and boot binding; retain each wrapper environment snapshot
+with its record. B2 must use the unchanged manifest and matching environment,
+not an older control. The runtime manifest is not edited between runs.
+
+KMD2.12.0 with tt-metal v0.75.0 has not yet been exercised. Any device-open
+anomaly or warning/error outside the three exact #176 baseline classes stops B1;
+changed wording is not automatically accepted. Both B runs retain4096 frames,
+Watcher and60s native/outer caps, named containers and pre/post lifecycle/idle
+checks. No automatic retry; the owner permits at most one reset in this B unit,
+only after timeout/abnormal exit. A healthy B2 still grants no C/P authority.
+
 ## Invariants (before tests and implementation)
 
 1. Preserve the Issue #118 resident synthetic payload, cadence, drop-new ring,
