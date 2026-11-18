@@ -19,8 +19,8 @@ frame period, queues/subdevices, fixed-work payload/challenges or dispatch.
    construction, buffer layout, queue/open configuration, write count/size/order,
    CPU arithmetic and challenge/transition algorithm. Do not add device reads,
    writes, events, synchronization or a runtime fallback.
-2. Trace only existing host lifecycle timestamps and successful enqueue returns:
-   worker start, first successful write return, main enqueue-return observation,
+2. Trace only existing host lifecycle timestamps and committed successful enqueues:
+   worker start, first successful committed write observation, main enqueue-return observation,
    every65536 successful writes, worker end and join. Main observation records
    count plus before/after monotonic bounds, not an impossible exact simultaneous
    clock/counter snapshot. These are host submissions, never CQ retirement.
@@ -38,17 +38,26 @@ frame period, queues/subdevices, fixed-work payload/challenges or dispatch.
    this exact new binary later; do not call B4 and C1 identical host throughput.
    The non-interference claim concerns device content/counts and fixed work,
    not guaranteed unchanged wall time. Host samples cannot manufacture coverage.
-6. Mechanically reverse only the known host-trace insertions in native.cpp and
-   require the exact measured B4 base-source SHA. Hash the trace header and new
+6. Keep measured native.cpp and host_protocol.hpp byte-identical. Add an
+   explicitly traced native_trace.cpp successor in the fixed build directory,
+   not a second maintained/duplicated device implementation, and a thin host-only
+   adapter around the unchanged submit loop. Mechanically reverse only known insertions
+   in that successor and require the exact measured B4 base-source SHA. Hash the trace header and new
    compiled image; fail if protected/device-facing source changes. Preserve the
    old ancestor/build receipt and both B4 archives, never relabel their digests.
+   A dedicated generated-input directory may contain only its regular canonical
+   translation unit; reject shadow headers/links before compilation and identity
+   checks. Rebase legacy relative includes to the protected source tree. Publish
+   generated text through a fresh temporary file plus atomic replacement, never
+   truncating/following an existing generated-output link.
 7. A host-only native change satisfies the owner's stated Watcher exception
    only with this source/dispatch proof and unchanged actual derived kernels,
    CTA and pinned compiler proof. Then the next approved C1 may remain Watcher
    off. Any device-content/dispatch difference stops preparation for a decision,
    rather than silently treating the new native as already hardware-validated.
-8. Validate new trace fields only when present in persisted records, retaining
-   accepted v1/v2/B4 behavior. New native success requires the new host trace;
+8. Validate the new native-v2/host-trace contract on current records and declare
+   it in the current program identity, retaining accepted v1/v2/B4 behavior.
+   Removing trace/schema fields cannot downgrade a declared successor to legacy. New native success requires the new host trace;
    old records cannot be edited or upgraded to supply it. A failed enqueue must
    not create a successful-return trace point. Coverage stays frame/map-only.
 

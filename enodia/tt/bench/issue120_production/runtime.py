@@ -5,11 +5,12 @@ import hashlib
 import json
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 from enodia.tt.bench import issue120_probe, issue120_results
 
-from . import kernel_adapter, plan
+from . import host_trace, host_trace_contract, kernel_adapter, plan
 
 ROOT = Path(__file__).resolve().parents[4]
 SOURCE = Path(__file__).resolve().parent
@@ -39,15 +40,20 @@ def fixed_path(path: Path, root: Path, *, exists: bool = True) -> Path:
 
 
 def source_hashes() -> dict[str, str]:
-    paths = [SOURCE / name for name in ("native.cpp", PROTOCOL_HEADER, "host_protocol.hpp",
-                                       "host_sequence.hpp", "CMakeLists.txt")]
+    paths = [SOURCE / name for name in ("native.cpp", "host_trace.hpp", "host_protocol_trace.hpp",
+                                       PROTOCOL_HEADER, "host_protocol.hpp", "host_sequence.hpp", "CMakeLists.txt")]
     paths += [SOURCE.parent / "issue120" / name for name in ("CMakeLists.txt", "native_result_io.hpp",
                                                             "q4_host_sequence.hpp", "q4_runtime_args.hpp")]
+    paths.append(BUILD / "host-trace-input/native_trace.cpp")
     return {p.relative_to(ROOT).as_posix(): sha(p) for p in paths}
 
 
 def build() -> None:
     fixed_path(BUILD, ROOT / "out", exists=False)
+    BUILD.mkdir(parents=True, exist_ok=True)
+    successor = host_trace_contract.derive_native((SOURCE / "native.cpp").read_text())
+    host_trace_contract.verify_native_source(successor)
+    _write_host_source(successor)
     kernel_adapter.generate(BUILD / "kernels")
     command = ["cmake", "-S", str(SOURCE), "-B", str(BUILD),
                f"-DTT_METAL_SOURCE_ROOT={DEPS / 'source'}",
@@ -62,6 +68,33 @@ def build() -> None:
                "native_sha256": sha(BUILD / "issue120_production"),
                "library_sha256": sha(BUILD / "libtt_metal.so")}
     (BUILD / "build-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+
+
+def _host_input_directory() -> Path:
+    directory = fixed_path(BUILD / "host-trace-input", BUILD, exists=False)
+    if directory.exists():
+        if not directory.is_dir() or directory.stat().st_mode & 0o022:
+            raise ValueError("generated input directory is not private/canonical")
+        for entry in directory.iterdir():
+            if entry.name != "native_trace.cpp" or entry.is_symlink() or not entry.is_file():
+                raise ValueError("shadow header or redirected generated input")
+    return directory
+
+
+def _write_host_source(text: str) -> None:
+    directory = _host_input_directory()
+    directory.mkdir(mode=0o700, exist_ok=True)
+    target = fixed_path(directory / "native_trace.cpp", directory, exists=False)
+    fd, temporary_name = tempfile.mkstemp(prefix=".host-source-", dir=directory)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w") as output:
+            output.write(text)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, target)  # Never truncate/follow an existing output link.
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _native_receipt() -> dict:
@@ -111,10 +144,15 @@ def _derived_hashes() -> dict:
 
 
 def program_identity() -> dict:
+    fixed_path(BUILD, ROOT / "out")
+    directory = _host_input_directory()
+    successor = fixed_path(directory / "native_trace.cpp", directory)
+    host_trace_contract.verify_native_source(successor.read_text())
     receipt, proof, hashes = _native_receipt(), _device_proof(), _derived_hashes()
     if proof.get("derived_sources") != hashes:
         raise ValueError("actual derived kernels differ from offline proof")
-    return {"native_sha256": receipt["native_sha256"], "library_sha256": LIBRARY_SHA256,
+    return {"native_sha256": receipt["native_sha256"], "host_trace_contract": host_trace.TRACE_SCHEMA,
+            "library_sha256": LIBRARY_SHA256,
             "kernel_sources_sha256": hashes, "device_compile_proof_sha256": sha(PROOF),
             "compile_manifest_sha256": sha(SOURCE / COMPILE_MANIFEST),
             "python_sources_sha256": {p.name: sha(p) for p in sorted(SOURCE.glob("*.py"))}}
@@ -132,4 +170,6 @@ def execute_native(spec: plan.RunSpec, attempt: issue120_results.NativeAttempt):
                                         issue120_probe._runtime_environment, ROOT)
     if completed.returncode != 0:
         raise ValueError("native failed; direct status and raw streams retained")
-    return issue120_results.read_result(attempt), identity
+    native = issue120_results.read_result(attempt)
+    host_trace.validate_native(native, require_new=True)
+    return native, identity

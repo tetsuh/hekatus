@@ -126,6 +126,12 @@ timing or C/P execution is claimed. Its inclusive worker rate41153.868writes/s
 contains a possible fixed lead; the updated cap study and B4 plan retain that
 uncertainty rather than adopt an uncalibrated shorter target.
 
+The [C1 host-trace preparation](issue120-production-c1-prep-plan.md) preserves
+those B4 bytes and adds bounded host diagnostics plus a C1-only evidence bridge
+under ADR-0020. The owner powered down the board: this is board-free preparation
+only, with no C1/C2/P result or current session. Future C1 starts from fresh
+next-boot baseline/preflight; the catalog counts and60s/Watcher-off scope remain.
+
 ## Issue #137 duration-bounded runner (revision 2)
 
 The board-free planning command prints the immutable configurations and their

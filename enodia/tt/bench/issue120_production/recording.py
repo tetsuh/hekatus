@@ -24,7 +24,7 @@ from enodia.tt.bench.power_trace_snapshot import (
 from enodia.tt.bench.resident_clock import AICLK_SOURCE_LOAD_INTERVAL_TRACE
 from enodia.tt.bench.run_binding import validate_run_id
 
-from . import artifacts, checks, coverage, diagnostics, plan, protocol, records, runtime
+from . import artifacts, checks, coverage, diagnostics, host_trace, plan, protocol, records, runtime
 
 
 @contextlib.contextmanager
@@ -171,6 +171,7 @@ def make_record(spec: plan.RunSpec, attempt, native: dict, program_identity: dic
               "execution_interval": {"start_ns": execute_start_ns, "end_ns": execute_end_ns,
                                      "start_utc_ns": start_utc_ns, "end_utc_ns": end_utc_ns}}
     records.validate_record(record)
+    host_trace.validate_native(native, require_new=program_identity.get("host_trace_contract") == host_trace.TRACE_SCHEMA)
     _diagnostic_check(native)
     values, index = _copy_frames(native, attempt, output)
     began = time.monotonic()
@@ -210,6 +211,8 @@ def make_record(spec: plan.RunSpec, attempt, native: dict, program_identity: dic
 def load_validated_record(path: Path) -> dict:
     record = issue120_results._read_json(path)
     records.validate_record(record)
+    program = records.mapping(record.get("program_identity"), "program identity")
+    host_trace.validate_native(record["native"], require_new=program.get("host_trace_contract") == host_trace.TRACE_SCHEMA)
     output = path.parent.resolve()
     identity = record["attempt_identity"]
     if path.name != f"results-{identity}.json":

@@ -26,7 +26,8 @@ def test_wrapper_command_has_literal_caps_image_device_and_watcher(monkeypatch):
     assert env["HEKATUS_TT_CONTAINER_TIMEOUT_S"] == "60"
 
 
-def test_missing_stage_receipt_never_admits_production():
+def test_missing_stage_receipt_never_admits_production(tmp_path, monkeypatch):
+    monkeypatch.setattr(runtime, "SOURCE", tmp_path)
     assert len(sessions.admitted_specs("B")) == 2
     with pytest.raises(ValueError, match="admission"):
         sessions.admitted_specs("P")

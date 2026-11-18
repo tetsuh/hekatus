@@ -9,7 +9,7 @@ import uuid
 from dataclasses import replace
 from pathlib import Path
 
-from . import plan, runtime
+from . import admission_bridge, bounded_evidence, plan, runtime
 
 SESSIONS = runtime.ROOT / "out/issue120-production/sessions"
 
@@ -42,6 +42,8 @@ def read_session(identity: str) -> tuple[dict, str]:
 
 
 def create_session(specs: list[plan.RunSpec]) -> dict:
+    if specs[0].phase == "calibration" and specs != admitted_specs("C"):
+        raise ValueError("calibration session must match the admitted C1/current scope")
     identity = uuid.uuid4().hex
     directory = session_path(identity)
     directory.mkdir(parents=True, exist_ok=False)
@@ -85,11 +87,19 @@ def _committed_admission(kind: str, bindings: dict | None = None) -> dict:
         if result.stdout != raw:
             raise ValueError("stage admission must be precommitted unchanged")
     receipt = json.loads(raw)
+    _validate_receipt_identity(kind, receipt)
+    return receipt
+
+
+def _validate_receipt_identity(kind: str, receipt: dict) -> None:
+    current = runtime.program_identity()
+    if kind == "bounded" and receipt.get("schema") == admission_bridge.SCHEMA:
+        admission_bridge.validate_bridge(receipt, current)
+        return
     if receipt.get("schema") != f"issue120-{kind}-admission-v1":
         raise ValueError("stage admission schema differs")
-    if receipt.get("program_identity") != runtime.program_identity():
+    if receipt.get("program_identity") != current:
         raise ValueError("stage admission is for a different program")
-    return receipt
 
 
 def _records_from_receipt(receipt: dict) -> list[dict]:
@@ -97,6 +107,11 @@ def _records_from_receipt(receipt: dict) -> list[dict]:
     from .records import SCHEMA
 
     refs = receipt.get("records")
+    if receipt.get("schema") == admission_bridge.SCHEMA:
+        rows = bounded_evidence.load_records(refs)
+        if any(row["program_identity"] != receipt.get("evidence_program_identity") for row in rows):
+            raise ValueError("original B4 identity was relabeled")
+        return rows
     if not isinstance(refs, list) or len(refs) != 2:
         raise ValueError("stage admission requires both artifact-bound records")
     records = []
@@ -137,6 +152,10 @@ def admitted_specs(unit: str, bindings: dict | None = None) -> list[plan.RunSpec
             not all(_healthy_bounded(r, s) for r, s in zip(rows, plan.RUNS[:2], strict=True)) or
             rows[1]["coverage_analysis"]["coverage"] != "covered"):
         raise ValueError("healthy first-kernel Watcher admission missing")
+    if bounded.get("schema") == admission_bridge.SCHEMA:
+        if unit != "C" or bounded.get("allowed_plan_identities") != [admission_bridge.C1]:
+            raise ValueError("host-only B4 admission permits C1, not C2 or P")
+        return [plan.run_spec(admission_bridge.C1)]
     if unit == "C":
         return list(plan.RUNS[2:4])
     if unit != "P":

@@ -314,6 +314,24 @@ replace only the current B launch labels, not old evidence or the native work.
 Final clean/pushed-head CI/Sonar0/0/OK and publication checker precede hardware.
 The old exit2 invocation/session is not resumed; C/P still require approval.
 
+## C1 host-trace preparation, hardware paused
+
+The owner retained approval for only `production-v1-calibration-small`,16384
+frames/1048576writes,60s/Watcher off/device0, then powered down the board and
+restricted the present task to [board-free C1 preparation](issue120-production-c1-prep-plan.md).
+No C1/device/tt-smi/preflight/session activation occurs now. C2/P remain excluded.
+
+[ADR-0020](../adr/0020-issue120-host-trace-c1-admission.md) carries the additive
+host-trace successor and explicit B4-old/current-new C1-only admission bridge.
+The original measured native/protocol files and all B4 bytes remain unchanged;
+new samples are host committed-prefix diagnostics, never card coverage. Actual
+native digest, exact source-pair/device-proof checks and offline validation are
+recorded in the preparation proof. A new native is not hardware-validated by
+this preparation. The owner's Watcher-off exception applies only while device
+content/dispatch stay unchanged. Next power-on requires fresh baseline/boot
+preflight and a new C1-only session at a clean/pushed green head; do not reuse
+B4's session or treat the admission receipt as present execution permission.
+
 ## Operational admission (board-free implementation)
 
 The new runner defaults to a JSON proposal and never imports an accelerator
