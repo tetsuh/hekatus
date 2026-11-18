@@ -1,0 +1,92 @@
+{
+  "schema": "issue120-production-b3-board-free-checks-v1",
+  "fixture_only": true,
+  "timing_evidence": false,
+  "board_access": false,
+  "unchanged_artifacts": {
+    "native_sha256": "bd0ac1384aeebcce715a9cb7527211453ef3378f28e868bbc85080fe7bc4c3c0",
+    "kernel_sources_sha256": {
+      "production_producer.cpp": "1ba9af269b3317c99dacc4a2486e2fd822e8c16ccaf6610cb411fbb366f8e149",
+      "production_consumer.cpp": "864680c4782a58e966e60570c4039cfdb3cbd9e689bf28073e2baa9684269c56",
+      "device.hpp": "eead1032618e6ebaf4ddca36b5b089c5c49cce063ee028b78d7326a2803c64c2",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+      "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c"
+    },
+    "B1_archive_sha256": "713740885cc86daab2666b10f0f57ef79447d4a53eb969ae8810a2c56b0b2efb",
+    "unchanged": true
+  },
+  "native_startup": {
+    "schema": "issue120-b3-device-free-startup-v1",
+    "native_sha256": "bd0ac1384aeebcce715a9cb7527211453ef3378f28e868bbc85080fe7bc4c3c0",
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "native_returncode": 2,
+    "native_started": true,
+    "no_chips_detected": true,
+    "absent_result_refused": true,
+    "timing_evidence": false,
+    "streams": {
+      "stdout": {
+        "byte_count": 768,
+        "sha256": "a43d408ba1dc6d16845a64b1181e2c5e9b148983757792d1dab8fbf7295e5b21"
+      },
+      "stderr": {
+        "byte_count": 2224,
+        "sha256": "079d21a6427e8e3b5c7ad73e9080a44e4163101cf46bd1298b626858e85484c4"
+      }
+    }
+  },
+  "native_startup_isolation": {
+    "network": "none",
+    "device_mappings": 0,
+    "device_requests": 0,
+    "readonly_root": true,
+    "readonly_source": true,
+    "masked_paths": [
+      "/sys",
+      "/proc/bus",
+      "/proc/driver"
+    ],
+    "cap_drop": [
+      "ALL"
+    ],
+    "user": "unprivileged host UID/GID"
+  },
+  "root_publication_then_host_readback": {
+    "fixture_only": true,
+    "publisher_euid": 0,
+    "reader_euid": 1000,
+    "launcher_exit": 0,
+    "snapshot_mode": "0o644"
+  },
+  "fixture_publisher_isolation": {
+    "network": "none",
+    "device_mappings": 0,
+    "device_requests": 0,
+    "readonly_root": true,
+    "readonly_source": true,
+    "only_writable_mount": "fresh fixture output",
+    "masked_paths": [
+      "/sys",
+      "/proc/bus",
+      "/proc/driver"
+    ],
+    "cap_drop": [
+      "ALL"
+    ],
+    "cap_add": [
+      "DAC_OVERRIDE"
+    ]
+  },
+  "permission_and_power_red": {
+    "new_tests_failed": 8,
+    "legacy_archive_tests_passed": 1,
+    "actual_cross_uid_before_fix": "PermissionError on root-owned0600 snapshot",
+    "after_fix": "unprivileged real launcher post-child validation succeeded; snapshot0644"
+  },
+  "containers_remaining": 0,
+  "native_and_device_recompile_required": false,
+  "reason": "CPP/device/generated source and CTA unchanged; existing source-bound receipt and compiler proof verified",
+  "fixture_private_native_result_mode": "0o600",
+  "mandatory_CI_seam": "spawned child, restrictive077 umask; actual launcher host readback with POSIX other-UID permission seam",
+  "test_process_state_restored": true
+}

@@ -5,7 +5,9 @@ import math
 
 from .plan import configuration_digest
 
-SCHEMA = "issue120-production-v1"
+LEGACY_SCHEMA = "issue120-production-v1"
+SCHEMA = "issue120-production-v2"
+READABLE_SCHEMAS = (LEGACY_SCHEMA, SCHEMA)
 
 
 class SchemaOutOfScope(ValueError):
@@ -27,7 +29,7 @@ def mapping(value, field: str) -> dict:
 def validate_host_intervals(record: dict) -> None:
     if not isinstance(record, dict):
         raise TypeError("record must be a mapping")
-    if record.get("schema") != SCHEMA:
+    if record.get("schema") not in READABLE_SCHEMAS:
         raise SchemaOutOfScope("legacy/unknown schema uses a different validator")
     native = mapping(record.get("native"), "native result")
     scheduling = mapping(native.get("host_scheduling"), "host scheduling")
@@ -93,7 +95,7 @@ def _validate_comparison(control: dict, loaded: dict) -> None:
             raise ValueError("control comparison requires eligible timing records")
     if control["condition"] != "control" or loaded["condition"] != "loaded":
         raise ValueError("control and loaded roles differ")
-    for key in ("session_id", "session_manifest_sha256", "host_boot_id_sha256", "configuration_sha256", "program_identity", "environment"):
+    for key in ("schema", "session_id", "session_manifest_sha256", "host_boot_id_sha256", "configuration_sha256", "program_identity", "environment"):
         if control.get(key) is None or control.get(key) != loaded.get(key):
             raise ValueError("unlike session/device/program configuration")
     if control.get("attempt_identity") == loaded.get("attempt_identity"):
@@ -122,7 +124,7 @@ def compare_records(control: dict, loaded: dict) -> dict:
 
 def _calibration_observation(record: dict, count: int) -> tuple[float, float, float]:
     validate_record(record)
-    if (record.get("phase") != "calibration" or not record.get("timing_evidence") or
+    if (record.get("schema") != SCHEMA or record.get("phase") != "calibration" or not record.get("timing_evidence") or
             record.get("coverage_analysis", {}).get("coverage") != "covered"):
         raise ValueError("calibration is not causally covered")
     native = record["native"]

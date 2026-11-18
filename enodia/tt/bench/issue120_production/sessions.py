@@ -94,6 +94,7 @@ def _committed_admission(kind: str, bindings: dict | None = None) -> dict:
 
 def _records_from_receipt(receipt: dict) -> list[dict]:
     from .recording import load_validated_record
+    from .records import SCHEMA
 
     refs = receipt.get("records")
     if not isinstance(refs, list) or len(refs) != 2:
@@ -107,6 +108,8 @@ def _records_from_receipt(receipt: dict) -> list[dict]:
         if runtime.sha(path) != ref["sha256"]:
             raise ValueError("stage record digest differs")
         record = load_validated_record(path)
+        if record.get("schema") != SCHEMA:
+            raise ValueError("new stage admission requires the current record version")
         if record["program_identity"] != receipt["program_identity"]:
             raise ValueError("stage record program differs")
         records.append(record)

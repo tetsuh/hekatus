@@ -113,6 +113,11 @@ healthy frames, but host reread of a protected snapshot failed; B2/C/P were not
 run. Exact evidence is archived, with reference-only control metrics and #182/
 #183 follow-ups. This is not a completed B unit or a production timing result.
 
+The [board-free B3 follow-up](issue120-production-b3-plan.md) adds readable v2
+publication, an explicit v2 power scope and full post-child readback tests while
+preserving B1 bytes/interpretation. Its [cap study](issue120-production-b3-cap-study.md)
+does not change600s,500000 frames or the550s target and grants no B/C/P approval.
+
 ## Issue #137 duration-bounded runner (revision 2)
 
 The board-free planning command prints the immutable configurations and their

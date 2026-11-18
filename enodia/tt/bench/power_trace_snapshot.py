@@ -73,6 +73,13 @@ from enodia.tt.bench.telemetry import (
 
 DEFAULT_SNAPSHOT_PREFIX = "power-trace-snapshot"
 ISSUE118_LOAD_INTERVAL_SOURCE = "issue118_program_host_interval"
+ISSUE120_V2_LOAD_INTERVAL_SOURCE = "issue120_v2_enqueue_to_l1_terminal_observed_upper_bound"
+LEGACY_LOAD_INTERVAL_CONTRACT = "issue118-v1"
+ISSUE120_V2_LOAD_INTERVAL_CONTRACT = "issue120-production-v2"
+_LOAD_INTERVAL_SOURCES = {
+    LEGACY_LOAD_INTERVAL_CONTRACT: ISSUE118_LOAD_INTERVAL_SOURCE,
+    ISSUE120_V2_LOAD_INTERVAL_CONTRACT: ISSUE120_V2_LOAD_INTERVAL_SOURCE,
+}
 POWER_TRACE_SHA256_DEFINITION = (
     "SHA-256 of the complete immutable per-run power CSV snapshot bytes"
 )
@@ -111,6 +118,7 @@ class PowerTraceCsvOptions:
     read_text_fn: Callable[[Path], str] | None = None
     error_factory: Callable[[str, Exception | None], Any] | None = None
     immutable_snapshot: bool = False
+    load_interval_contract: str = LEGACY_LOAD_INTERVAL_CONTRACT
     reject_incomplete_rows: bool = True
     read_options: PowerTraceReadOptions = field(default_factory=PowerTraceReadOptions)
 
@@ -130,6 +138,7 @@ class PowerTraceSnapshotOptions:
     load_interval_end: datetime.datetime | str | None = None
     load_interval_source: str | None = None
     include_issue118_metadata: bool = False
+    load_interval_contract: str = LEGACY_LOAD_INTERVAL_CONTRACT
     require_explicit_load_interval: bool = False
     require_all_rows_valid: bool = False
     read_text_fn: Callable[[Path], str] | None = None
@@ -140,6 +149,7 @@ class PowerTraceSnapshotOptions:
 class _TraceRunFactsOptions:
     """Normalized values needed to calculate run and interval coverage facts."""
 
+    load_interval_contract: str
     start_text: str | None
     end_text: str | None
     load_interval_start_text: str | None
@@ -158,6 +168,7 @@ class _TraceRunFactsOptions:
 class _TraceEvaluationOptions:
     """Normalized values needed to evaluate parsed power-trace rows."""
 
+    load_interval_contract: str
     start_text: str | None
     end_text: str | None
     load_interval_start_text: str | None
@@ -411,8 +422,15 @@ def atomic_power_trace_snapshot(
     snapshot_number: int,
     snapshot_prefix: str = DEFAULT_SNAPSHOT_PREFIX,
     read_text_fn: Callable[[Path], str] | None = None,
+    publish_mode: int = 0o600,
 ) -> Path:
-    """Copy one live sampler read to an atomic, never-overwritten snapshot."""
+    """Atomically publish fresh bytes, never chmod or overwrite old evidence.
+
+    Legacy publication stays0600. An explicit0644 mode permits cross-user host
+    readback without granting group/world write; hashes establish byte identity.
+    """
+    if type(publish_mode) is not int or publish_mode not in (0o600, 0o644):
+        raise ValueError("snapshot publication mode must be0600 or0644")
     run_id = validate_run_id(run_id)
     if (
         isinstance(snapshot_number, bool)
@@ -450,6 +468,7 @@ def atomic_power_trace_snapshot(
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
             handle.flush()
+            os.fchmod(handle.fileno(), publish_mode)
             os.fsync(handle.fileno())
         # The temporary file is complete before this same-directory hard-link
         # creates the destination.  Link creation is atomic and exclusive:
@@ -1001,6 +1020,7 @@ def _set_load_interval_trace_facts(
     start_text: str | None,
     end_text: str | None,
     source: str | None,
+    load_interval_contract: str,
     require_explicit_load_interval: bool,
     error_factory: Callable[[str, Exception | None], Any] | None,
 ) -> None:
@@ -1017,7 +1037,7 @@ def _set_load_interval_trace_facts(
     else:
         resolved_source = None
     trace["load_interval_source"] = resolved_source
-    if require_explicit_load_interval and trace["load_interval_source"] != ISSUE118_LOAD_INTERVAL_SOURCE:
+    if require_explicit_load_interval and trace["load_interval_source"] != _LOAD_INTERVAL_SOURCES[load_interval_contract]:
         trace["aiclk_mhz_load_interval_weighted_source"] = (
             "load_interval_provenance_invalid"
         )
@@ -1078,6 +1098,7 @@ def _set_trace_run_facts(
             else options.load_interval_end_text or options.end_text
         ),
         source=options.load_interval_source,
+        load_interval_contract=options.load_interval_contract,
         require_explicit_load_interval=options.require_explicit_load_interval,
         error_factory=options.error_factory,
     )
@@ -1155,6 +1176,7 @@ def _evaluate_trace_rows(
             usable_rows,
             parsed_timestamps,
             _TraceRunFactsOptions(
+                load_interval_contract=options.load_interval_contract,
                 start_text=options.start_text,
                 end_text=options.end_text,
                 load_interval_start_text=options.load_interval_start_text,
@@ -1180,6 +1202,10 @@ def read_power_trace_csv(
 ) -> dict[str, Any]:
     """Read power CSV bytes and evaluate one named run-coverage contract."""
     options = _csv_options_from_legacy(options, legacy_options)
+    if options.load_interval_contract not in _LOAD_INTERVAL_SOURCES:
+        raise ValueError("unknown load interval contract")
+    if options.load_interval_contract != LEGACY_LOAD_INTERVAL_CONTRACT and not options.require_explicit_load_interval:
+        raise ValueError("versioned load interval requires an explicit interval")
     read_options = options.read_options
     definition = canonical_coverage_definition(options.coverage_definition)
     path = Path(path)
@@ -1272,6 +1298,7 @@ def read_power_trace_csv(
         trace,
         samples,
         _TraceEvaluationOptions(
+            load_interval_contract=options.load_interval_contract,
             start_text=start_text,
             end_text=end_text,
             load_interval_start_text=load_start_text,
@@ -1363,6 +1390,9 @@ def read_power_trace_snapshot(
     compatibility behavior; resident callers opt into all-row validity. The
     ``include_issue118_metadata`` switch preserves the historical #111/#12
     public snapshot shape unless the Issue #118 fields are explicitly requested.
+    ``load_interval_contract`` defaults to the old Issue #118 label check. A
+    versioned contract accepts only its own explicit source, never a relabeled
+    historical record or a fallback from missing interval bounds.
     """
     options = _snapshot_options_from_legacy(options, legacy_options)
     definition = canonical_coverage_definition(options.coverage_definition)
@@ -1393,6 +1423,7 @@ def read_power_trace_snapshot(
             load_interval_start=options.load_interval_start,
             load_interval_end=options.load_interval_end,
             load_interval_source=options.load_interval_source,
+            load_interval_contract=options.load_interval_contract,
             require_explicit_load_interval=options.require_explicit_load_interval,
             require_all_rows_valid=options.require_all_rows_valid,
             read_text_fn=options.read_text_fn,
@@ -1481,6 +1512,9 @@ __all__ = [
     "EXTENDED_POWER_TRACE_SCHEMA",
     "EXTENDED_POWER_TRACE_SCHEMA_VERSION",
     "ISSUE118_LOAD_INTERVAL_SOURCE",
+    "ISSUE120_V2_LOAD_INTERVAL_CONTRACT",
+    "ISSUE120_V2_LOAD_INTERVAL_SOURCE",
+    "LEGACY_LOAD_INTERVAL_CONTRACT",
     "ONE_INTERVAL_BOUND",
     "POWER_TRACE_COLUMNS",
     "POWER_TRACE_SHA256_DEFINITION",

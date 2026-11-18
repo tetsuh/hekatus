@@ -278,6 +278,31 @@ identities; paths must be new, never resumed/overwritten. Native internal caps
 and outer wrapper caps must match; an omitted generic wrapper timeout is not an
 approved production command. Stage A will not run any of them.
 
+## Post-B1 publication/power refinement (board-free, next run only)
+
+[B3 invariants](issue120-production-b3-plan.md) precede RED and implementation of
+#182/#183. New outer records use `issue120-production-v2`; native/kernel/wire,
+work and open configuration do not change. The v2 explicit power contract has
+its own enqueue-to-terminal-observed upper-bound label. Legacy v1/B1 records
+still reproduce their original frozen interpretation and cannot be reused for
+new stage admissions. Watcher remains timing-ineligible; non-Watcher v2 timing
+also requires complete coverage and error-free positive finite weighted facts.
+
+The public snapshot is created0644 before its exclusive atomic link, along
+with explicit readable modes on new public record/capture/Watcher companions.
+Existing files are never chmodded. The shared legacy snapshot default and
+ADR-0018 private native result mode/transport remain unchanged. This follows the
+#172 root-container/public-companion model rather than changing UID/device/JIT
+cache behavior. No privileged flags, broad ownership repair or writable mounts
+are added. #172 did not perform the new host frozen-snapshot reread; production
+must test that post-child boundary with a mandatory permission seam and an
+actual root-publisher/unprivileged-reader no-device fixture check.
+
+A rerun starts from B1 with a new session and separately authorized B scope;
+no repaired reader changes the old invocation's exit2 into success. C/P remain
+separate approvals. No cap, frame-count or550s work target is changed by these
+reader/publication fixes; the B3 report separates cap options from authorization.
+
 ## Operational admission (board-free implementation)
 
 The new runner defaults to a JSON proposal and never imports an accelerator

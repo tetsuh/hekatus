@@ -5,6 +5,7 @@ import contextlib
 import csv
 import datetime as dt
 import json
+import math
 import os
 import shutil
 import time
@@ -12,11 +13,15 @@ from pathlib import Path
 
 from enodia.tt.bench import issue120_probe, issue120_results
 from enodia.tt.bench.power_trace_snapshot import (
+    ISSUE120_V2_LOAD_INTERVAL_CONTRACT,
+    ISSUE120_V2_LOAD_INTERVAL_SOURCE,
+    LEGACY_LOAD_INTERVAL_CONTRACT,
     PowerTraceSnapshotOptions,
     atomic_power_trace_snapshot,
     public_power_trace_snapshot,
     read_power_trace_snapshot,
 )
+from enodia.tt.bench.resident_clock import AICLK_SOURCE_LOAD_INTERVAL_TRACE
 from enodia.tt.bench.run_binding import validate_run_id
 
 from . import artifacts, checks, coverage, diagnostics, plan, protocol, records, runtime
@@ -26,6 +31,7 @@ def copy_exclusive(source: Path, target: Path) -> None:
     with source.open("rb") as src, target.open("xb") as dst:
         shutil.copyfileobj(src, dst, 1024 * 1024)
         dst.flush()
+        os.fchmod(dst.fileno(), 0o644)
         os.fsync(dst.fileno())
 
 
@@ -35,6 +41,7 @@ def write_record(path: Path, value: dict) -> None:
         json.dump(value, output, sort_keys=True, indent=2)
         output.write("\n")
         output.flush()
+        os.fchmod(output.fileno(), 0o644)
         os.fsync(output.fileno())
     os.link(temporary, path)
     temporary.unlink()
@@ -62,13 +69,15 @@ def freeze_power(output: Path, identity: str, run_start: int, run_end: int, nati
         if last is not None and last >= utc(run_end):
             break
         time.sleep(.05)
-    snapshot = atomic_power_trace_snapshot(source, output, run_id=identity, snapshot_number=1)
+    snapshot = atomic_power_trace_snapshot(source, output, run_id=identity, snapshot_number=1,
+                                           publish_mode=0o644)
     program = native["program_host_interval"]
     metadata = read_power_trace_snapshot(snapshot, options=PowerTraceSnapshotOptions(
         run_id=identity, run_start=utc(run_start), run_end=utc(run_end), source_path=source,
         sampler_interval_seconds=2, coverage_definition="explicit_final_sample",
         load_interval_start=utc(program["start_utc_ns"]), load_interval_end=utc(program["end_utc_ns"]),
-        load_interval_source="issue120_enqueue_to_l1_terminal_observed_upper_bound",
+        load_interval_source=ISSUE120_V2_LOAD_INTERVAL_SOURCE,
+        load_interval_contract=ISSUE120_V2_LOAD_INTERVAL_CONTRACT,
         include_issue118_metadata=True, require_explicit_load_interval=True, require_all_rows_valid=True))
     return public_power_trace_snapshot(metadata), time.monotonic() - began
 
@@ -167,6 +176,7 @@ def make_record(spec: plan.RunSpec, attempt, native: dict, program_identity: dic
         target = output / f"results-{identity}-watcher.log"
         with target.open("xb") as handle:
             handle.write(fresh)
+            os.fchmod(handle.fileno(), 0o644)
         watcher["artifact"] = {"file": target.name, "sha256": runtime.sha(target), "byte_count": len(fresh)}
     record["watcher"] = watcher
     power, waited = freeze_power(output, identity, start_utc_ns, end_utc_ns, native)
@@ -176,7 +186,11 @@ def make_record(spec: plan.RunSpec, attempt, native: dict, program_identity: dic
     native_start = native["program_host_interval"]["start_ns"]
     retrieval = max(0, execute_end_ns - native["host_scheduling"]["drain_end_ns"]) / 1e9
     record["overhead"] = {"setup_seconds": max(0, native_start - execute_start_ns) / 1e9,
+                          "native_retrieval_verify_close_publish_seconds": retrieval,
+                          "python_frame_analysis_seconds": analysis_seconds,
+                          "analysis_frame_count": spec.frame_count,
                           "per_frame_analysis_seconds": (retrieval + analysis_seconds) / spec.frame_count,
+                          "per_frame_term_is_amortized_not_linear_slope": True,
                           "sampler_wait_seconds": waited}
     return record
 
@@ -244,20 +258,25 @@ def _recheck_power(output: Path, record: dict) -> None:
     old = record["power_trace_snapshot"]
     execution = record["execution_interval"]
     program = record["native"]["program_host_interval"]
+    source, contract = _power_contract(record["schema"])
     metadata = read_power_trace_snapshot(output / old["file"], options=PowerTraceSnapshotOptions(
         run_id=record["attempt_identity"], run_start=utc(execution["start_utc_ns"]),
         run_end=utc(execution["end_utc_ns"]), sampler_interval_seconds=2,
         coverage_definition="explicit_final_sample", include_issue118_metadata=True,
         load_interval_start=utc(program["start_utc_ns"]), load_interval_end=utc(program["end_utc_ns"]),
-        load_interval_source="issue120_enqueue_to_l1_terminal_observed_upper_bound",
+        load_interval_source=source, load_interval_contract=contract,
         require_explicit_load_interval=True, require_all_rows_valid=True))
-    for key in ("sha256", "byte_count", "coverage_complete", "aiclk_mhz_load_interval_weighted"):
+    keys = ["sha256", "byte_count", "coverage_complete", "aiclk_mhz_load_interval_weighted"]
+    if record["schema"] == records.SCHEMA:
+        keys += ["errors", "load_interval_source", "aiclk_mhz_load_interval_weighted_seconds",
+                 "aiclk_mhz_load_interval_weighted_source"]
+    for key in keys:
         if metadata.get(key) != old.get(key):
             raise ValueError("frozen power interpretation differs")
     execution, timing = eligibility(record, metadata)
     if (record["execution_eligible"], record["timing_evidence"]) != (execution, timing):
         raise ValueError("execution eligibility differs from recomputation")
-    if record["clock"] != clock_metadata(metadata, record["metrics"]):
+    if record["clock"] != clock_metadata(metadata, record["metrics"], schema=record["schema"]):
         raise ValueError("timing/clock interpretation differs from recomputation")
 
 
@@ -288,16 +307,38 @@ def _recheck_watcher(output: Path, record: dict) -> None:
         raise ValueError("Watcher evidence scan differs")
 
 
+def _power_contract(schema: str) -> tuple[str, str]:
+    if schema == records.LEGACY_SCHEMA:
+        return "issue120_enqueue_to_l1_terminal_observed_upper_bound", LEGACY_LOAD_INTERVAL_CONTRACT
+    return ISSUE120_V2_LOAD_INTERVAL_SOURCE, ISSUE120_V2_LOAD_INTERVAL_CONTRACT
+
+
+def _positive_finite(value) -> bool:
+    return type(value) in (int, float) and math.isfinite(value) and value > 0
+
+
+def _valid_v2_weighting(power: dict) -> bool:
+    return (power.get("errors") == [] and power.get("load_interval_source") == ISSUE120_V2_LOAD_INTERVAL_SOURCE
+            and power.get("aiclk_mhz_load_interval_weighted_source") == AICLK_SOURCE_LOAD_INTERVAL_TRACE
+            and _positive_finite(power.get("aiclk_mhz_load_interval_weighted"))
+            and _positive_finite(power.get("aiclk_mhz_load_interval_weighted_seconds")))
+
+
 def eligibility(record: dict, power: dict) -> tuple[bool, bool]:
     causal = record["condition"] == "control" or record["coverage_analysis"]["coverage"] == "covered"
     watch = record["watcher"]
     watch_ok = watch["scan_passed"] and (not watch["requested"] or watch["fresh"])
     execution = bool(record["resident_integrity_passed"] and causal and record["warning_check"]["passed"] and watch_ok)
-    return execution, bool(execution and power.get("coverage_complete") and not watch["requested"])
+    timing = bool(execution and power.get("coverage_complete") and not watch["requested"])
+    if record.get("schema") != records.LEGACY_SCHEMA:
+        timing = timing and _valid_v2_weighting(power)
+    return execution, timing
 
 
-def clock_metadata(power: dict, metrics: dict) -> dict:
+def clock_metadata(power: dict, metrics: dict, *, schema: str = records.SCHEMA) -> dict:
     weighted = power.get("aiclk_mhz_load_interval_weighted")
+    if schema != records.LEGACY_SCHEMA and not _valid_v2_weighting(power):
+        weighted = None
     estimates = None
     intervals = metrics.get("frame_intervals")
     if type(weighted) in (int, float) and weighted > 0 and intervals is not None:

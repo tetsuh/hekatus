@@ -95,6 +95,17 @@ interval bindings (#180), without rewriting accepted evidence or measured code.
     from a successful plan/build/test. First-kernel, calibration and production
     control/loaded approval units remain separate.
 
+11. Following the B1 integration failure, fresh publication uses outer record
+    `issue120-production-v2`. Its power reader explicitly recognizes the v2
+    enqueue-to-terminal-observed upper-bound source without borrowing the #118
+    label. New non-Watcher timing requires error-free, complete, positive finite
+    weighted provenance. Existing v1 records retain their original interpretation,
+    including B1's null weighted clock/error, and cannot supply new stage admission.
+    Public v2 companions are created0644 before exclusive publication so the host
+    user can read root-published bytes; the shared snapshot default remains0600.
+    Hash/manifest checks, not mode, establish immutable evidence. No extra
+    container privilege or ADR-0018 native transport change is introduced.
+
 ## Consequences
 
 - At500000 frames the original timestamp pages occupy2048000000 device bytes;
@@ -118,3 +129,7 @@ interval bindings (#180), without rewriting accepted evidence or measured code.
   the carrying PR. The owner accepts it by merging that PR; no separate pre-merge
   acceptance or later header transition is implied. No board execution occurred
   in this preparation stage.
+- 2026-11-18: Added the versioned power/readback refinement for #182/#183 in the
+  same still-unmerged carrying PR. B1 native/wrapper succeeded but host reread
+  failed; old evidence and measured native/kernel bytes remain unchanged. This
+  refinement is board-free and grants no B rerun, calibration or production.
