@@ -118,6 +118,14 @@ publication, an explicit v2 power scope and full post-child readback tests while
 preserving B1 bytes/interpretation. Its [cap study](issue120-production-b3-cap-study.md)
 does not change600s,500000 frames or the550s target and grants no B/C/P approval.
 
+The [renewed B4 v2 control/load archive](issue120-production/2026-11-18-b4/README.md)
+at9873978 records healthy same-session4096-frame Watcher rows, actual launcher
+readback and loaded causal coverage. Reference loaded-control P50/P99/max changes
+are+3/+185.82/+45 ticks; overflow/drop/abort/paired outliers are0. No production
+timing or C/P execution is claimed. Its inclusive worker rate41153.868writes/s
+contains a possible fixed lead; the updated cap study and B4 plan retain that
+uncertainty rather than adopt an uncalibrated shorter target.
+
 ## Issue #137 duration-bounded runner (revision 2)
 
 The board-free planning command prints the immutable configurations and their

@@ -148,3 +148,100 @@ cap, fewer frames with changed AC/sample sufficiency, split cap semantics with
 bounded publication, or no run. Extending the #118800s exception, moving cap
 boundaries, or changing500000 frames requires an owner decision; none follows
 from this study. No B/C/P execution is authorized here.
+
+## B4 observed-baseline update
+
+B4's [original v2 control/loaded archives](issue120-production/2026-11-18-b4/README.md)
+at9873978 were healthy; hardware stopped after B2, no C/P. Both Watcher rows are
+reference evidence only. This update preserves the old run8 table above rather
+than presenting its rates as measurements of the new Linux149/KMD2.12 baseline.
+
+B2 measured262144 writes in6.369850819s: **41153.868writes/s inclusive**. The
+load-start-to-terminal-observed upper bound is4.878675135s. Raw frame first/last
+span5528250346 ticks converts to about4.095000256s with the observed-envelope
+weighted1350MHz, not an exact frame wall-time clock. A conditional500k estimate
+scales only499999 frame intervals, then keeps the mixed-clock residual fixed:
+499.999031294+0.783674879=500.782706172s. No residual clock/tail constant is proven.
+
+B2 post-drain native retrieval/verify/close/publication0.173632572s and Python
+analysis0.050221829s total0.223854401s,54.652us/frame **amortized**. Linear500k
+components would be21.195382s and6.130594s; the native term includes fixed close
+and is not a measured slope. B1 components0.177773968/0.041842053s support only
+a bounded phase comparison, not a fitted scaling law.
+
+Using the same existing formula, Rlinear=setup2.432002305+snapshot2.115272208+
+27.325976685 linear post-processing+5 reserve=**36.873251198s**. R20 remains the
+optimistic planning floor. Both are scenarios, not upper/lower guarantees; extra
+public copy/hash/serialization costs and long-run behavior remain unknown.
+Use a common time origin: setup plus max(worker end, terminal observation),
+then non-overlapping drain/retrieval/analysis/snapshot phases. Do not add the
+concurrent worker and frame spans, or count a phase again in the reserve.
+A worker that ends early can fit a cap while failing causal coverage.
+
+### A fixed-worker-start ambiguity matters more than small rounding
+
+Main enqueue returns0.679886107s after worker start. If that entire interval
+were fixed worker stall, the remaining-duration proxy is
+`262144/(6.369850819-0.679886107)=46071.287writes/s`.
+This is **not a measured steady rate or a bound**: no cumulative submission
+counter was sampled at enqueue-return, and contention may vary. The raw inclusive
+average contains that possible fixed lead. Extrapolating it as pure per-write
+cost could make work finish much earlier than a500-second frame window.
+
+| Total fast-side worker target T | N from inclusive average+2% | N from lead-removed proxy+2% | Fast-side frame-envelope margin | Inclusive-model600s margin R20 | Inclusive-model margin Rlinear |
+|---:|---:|---:|---:|---:|---:|
+|550s |23087320 |25814043 |+49.217s |+7.551s |−9.322s |
+|530s |22247782 |24874189 |+29.217s |+28.367s |+11.494s |
+|520s |21828012 |24404262 |+19.217s |+38.776s |+21.902s |
+
+Both target definitions use total worker time. With L=0.679886107s, proxy N is
+`ceil(proxy*1.02*(T-L))`, and proxy slow elapsed is `L+N/(proxy*0.98)`.
+Its Rlinear cap margins are−9.294/+11.522/+21.930s. Do not omit L or confuse
+a post-lead processing target with a total-worker target.
+
+The two cap columns shown are specifically the inclusive model, whose slow
+host time is approximately T*1.02/0.98. Similar paired-model margins are
+arithmetic, **not empirical agreement between the models**. The displayed
+coverage margin is at the planning-fast rate, not the observed average rate
+(which predicts about1.02T). It applies only if rate/residual assumptions
+extrapolate. B4 is not a new calibrated count.
+
+Stress the assumptions separately:
+
+| Target | Inclusive N coverage margin if fixed lead + fast proxy governs | Proxy-fast N cap margin if inclusive-slow rate governs, Rlinear |
+|---:|---:|---:|
+|550s |−8.807s |−76.931s |
+|530s |−26.672s |−53.628s |
+|520s |−35.605s |−41.976s |
+
+These are unresolved hypothesis checks, not demonstrated bounds or a claim that
+the extremes must occur together. They show why a positive530/520s cap margin
+cannot establish a count that covers frames. No robust fixed count has been
+established across this ambiguity; do not silently adopt a shorter target.
+
+### C preparation, still not approval
+
+| Existing proposed identity | Frames/writes | Inclusive worker forecast | Fixed-lead proxy forecast | Fixed-lead fast-proxy forecast | Conditional terminal envelope | Fast-proxy frame margin |
+|---|---|---:|---:|---:|---:|---:|
+|`production-v1-calibration-small` |16384/1048576 |25.479s |23.440s |22.993s |17.167s |+5.827s |
+|`production-v1-calibration-large` |32768/1572864 |38.219s |34.820s |34.150s |33.551s |+0.600s |
+
+Both are still60s/Watcher off and have not run. No-Watcher may have a faster
+worker than B4; C2's0.600s illustrative margin is not a safe guaranteed cushion.
+An owner can approve C1 first and make C2 conditional on its observed rate/span,
+or request a new C2 count/precommit. An unadopted1835008-write C2 example gives
+39.729s under the fast proxy and6.178s frame margin, but inclusive-slow worker
+45.499s plus the same R20 planning scenario is **65.499s**, beyond60s. A smaller
+phase-only cost estimate gives56.837s but omits unknown costs; it does not establish
+cap feasibility. Count increases are therefore not a ready solution.
+Changing counts is not an arbitrary CLI override: it needs fresh committed plan
+and admission/program-identity compatibility review. Do not rewrite B4 identities.
+
+C must separately observe worker enqueue lead and elapsed time, frame span/tail,
+join/drain, native post-drain, Python analysis, publication/snapshot costs and
+cold/warm/AICLK conditions. A two-point worker intercept+slope in N is conditional
+on like contention; F also changes, so two total times do not identify a+bF+cN,
+variance or nonlinear500-second behavior. A missed C2 endpoint is not repaired
+by extrapolation or adaptive work. The current550s floor and automatic proposal
+remain unchanged; only eligible C plus a later precommit/owner decision can
+select production work. No bounded C admission or execution is granted here.

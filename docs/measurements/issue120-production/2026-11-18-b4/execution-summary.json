@@ -1,0 +1,229 @@
+{
+  "C_executed": false,
+  "P_executed": false,
+  "board_health_before": [
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "000004033191411c",
+        "board_type": "p150a",
+        "bus_id": "0000:06:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0,
+      "limits": {
+        "asic_fmax": "1350",
+        "board_power_limit": "300",
+        "bus_peak_limit": 0,
+        "fan_rpm_limit": 0,
+        "tdc_limit": "200",
+        "tdp_limit": "150",
+        "therm_trip_l1_limit": "90",
+        "thm_limit": "110",
+        "vdd_max": "0.90",
+        "vdd_min": "0.70"
+      }
+    },
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "0000040331914124",
+        "board_type": "p150a",
+        "bus_id": "0000:09:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0,
+      "limits": {
+        "asic_fmax": "1350",
+        "board_power_limit": "300",
+        "bus_peak_limit": 0,
+        "fan_rpm_limit": 0,
+        "tdc_limit": "200",
+        "tdp_limit": "150",
+        "therm_trip_l1_limit": "90",
+        "thm_limit": "110",
+        "vdd_max": "0.90",
+        "vdd_min": "0.70"
+      }
+    }
+  ],
+  "container_lifecycle": {
+    "B1": "hekatus-bench-142976-5812",
+    "B2": "hekatus-bench-143914-22311",
+    "both_destroyed": true,
+    "both_direct_exit": 0,
+    "survivors": 0
+  },
+  "coverage_source": "frame/map evaluator only, never diagnostic snapshots",
+  "harness_commit": "98739788c1a07c1e3e3ea1b6f7b41a056d002f1a",
+  "host_quiescent_preflights": true,
+  "kernel": "Linux 6.8.0-149-generic",
+  "kmd_version": "2.12.0",
+  "not_same_environment_as_run8": true,
+  "owner_baseline_decision_date": "2026-11-18",
+  "post_B1": [
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "000004033191411c",
+        "board_type": "p150a",
+        "bus_id": "0000:06:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0
+    },
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "0000040331914124",
+        "board_type": "p150a",
+        "bus_id": "0000:09:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0
+    }
+  ],
+  "post_B2": [
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "000004033191411c",
+        "board_type": "p150a",
+        "bus_id": "0000:06:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0
+    },
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "0000040331914124",
+        "board_type": "p150a",
+        "bus_id": "0000:09:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0
+    }
+  ],
+  "preboard_CI": {
+    "checks_exit": 0,
+    "gate": "OK",
+    "head": "98739788c1a07c1e3e3ea1b6f7b41a056d002f1a",
+    "hotspots": 0,
+    "issues": 0
+  },
+  "preboard_publication_check": {
+    "fixture_only": true,
+    "head": "98739788c1a07c1e3e3ea1b6f7b41a056d002f1a",
+    "launcher_exit": 0,
+    "publisher_euid": 0,
+    "reader_euid": 1000,
+    "snapshot_mode": "0o644"
+  },
+  "preflight_setup": {
+    "baseline_checks_before_stop": "board, serial, PCI, firmware, image, native/kernel,800MHz,DRAM matched",
+    "first_stop": "ambient HEKATUS_TT_DEVICE_NODE absent, explicit preflight assertion rejected it",
+    "resolution": "use same explicit device0 environment for fresh preflight; no baseline redefinition",
+    "scope": "preflight setup only, no B case launched",
+    "source": "issue120_production.runner.wrapper_command always sets HEKATUS_TT_DEVICE_NODE=/dev/tenstorrent/0"
+  },
+  "regression": {
+    "adr_guard": "pass",
+    "diff": "pass",
+    "head": "98739788c1a07c1e3e3ea1b6f7b41a056d002f1a",
+    "passed": 6211,
+    "ruff": "pass",
+    "seconds": 198.48,
+    "skipped": 1057,
+    "subtests": 8
+  },
+  "reset_count": 0,
+  "retry_count": 0,
+  "schema": "issue120-b4-execution-summary-v1",
+  "session_id": "8caa5d94ed7443d9982606ea45072452",
+  "timing_evidence": false
+}

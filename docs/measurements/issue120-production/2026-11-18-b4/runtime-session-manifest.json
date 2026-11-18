@@ -1,0 +1,140 @@
+{
+  "admission_hashes": {},
+  "created_monotonic_ns": 9656912641778,
+  "harness_commit": "98739788c1a07c1e3e3ea1b6f7b41a056d002f1a",
+  "host_boot_id_sha256": "c2a4c97beb06d3aed7a593602935fa3a7b16810bf22f45cc7b4c530ea5030c6a",
+  "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+  "program_identity": {
+    "compile_manifest_sha256": "eeaeb2cdcd0249dd7472e7687f43daab62960f87153996c33783405f1fa5785f",
+    "device_compile_proof_sha256": "0259164a64b5044e60accaca7a14389be1354d7ec5a5905d336cbbe51004b92c",
+    "kernel_sources_sha256": {
+      "device.hpp": "eead1032618e6ebaf4ddca36b5b089c5c49cce063ee028b78d7326a2803c64c2",
+      "production_consumer.cpp": "864680c4782a58e966e60570c4039cfdb3cbd9e689bf28073e2baa9684269c56",
+      "production_producer.cpp": "1ba9af269b3317c99dacc4a2486e2fd822e8c16ccaf6610cb411fbb366f8e149",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+      "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c"
+    },
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "native_sha256": "bd0ac1384aeebcce715a9cb7527211453ef3378f28e868bbc85080fe7bc4c3c0",
+    "python_sources_sha256": {
+      "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
+      "artifacts.py": "77bf193bf88b4ee03d86f2d7a2a806e86d8f653d85447cf4324e5c89d3942825",
+      "checks.py": "cd6140b706c28cc0f130ae8ffd434cc763e678bb2711290b930833c942ca415d",
+      "coverage.py": "ca1342299f2582a649e6cd15d2ae2fe003f000124846a74c0b799fa0d98b93a2",
+      "diagnostics.py": "f962505540536e8129e40014f1ac83fa41a50bfb3b15a78641a38c90a2dc7ced",
+      "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
+      "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
+      "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
+      "recording.py": "7fdaf0a16e679afcbe0ad84eeb65c4d265c14c2704cdbe8c52ad6439643fea94",
+      "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
+      "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
+      "runner.py": "8d8763e5489175095a124e8cc8b1509fccc6f6b996eb16d6d8c5e12f9ac53604",
+      "runtime.py": "26617d4e2969fbd48a7a21d42784d6d3e68b719ac085476f0e614952f093c298",
+      "sessions.py": "6e9084bef1e12463023feb6ba698e2975bda37b6adb7aad61925a16840d0166c"
+    }
+  },
+  "runs": {
+    "production-v2-control-watch-b4": {
+      "configuration": {
+        "command_queues": 2,
+        "cycle_budget_ticks": 100000,
+        "device": 0,
+        "frame_count": 4096,
+        "memory": {
+          "device_cb_scratch_bytes": 12288,
+          "fixed_auxiliary_buffer_bytes": 24576,
+          "frame_evidence_bytes": 524288,
+          "host_payload_bytes": 4096,
+          "resident_timestamp_bytes": 16777216,
+          "retrieval_chunk_bytes": 1048576,
+          "ring_bytes": 16384,
+          "transition_bytes": 32792,
+          "transition_capacity": 4099
+        },
+        "outer_cap_seconds": 60,
+        "period_ticks": 1350000,
+        "protocol": "issue120-wide-progress-v1",
+        "repeat_count": 262144,
+        "resident_cores": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "resident_subdevice": 0,
+        "ring_pages": 4,
+        "run_budget_ticks": 6668120000,
+        "sampler_interval_seconds": 2,
+        "schema": "issue120-production-program-v1",
+        "stall_group": [
+          1
+        ],
+        "tables_enabled": false,
+        "transfer_core": [
+          2,
+          0
+        ],
+        "transfer_subdevice": 1,
+        "watcher": true,
+        "work_per_frame": 64
+      },
+      "configuration_sha256": "f692dfd9b995ba2072948101a211805b0f393e8c9f8e6de667faae41f2f24741"
+    },
+    "production-v2-load-watch-b4": {
+      "configuration": {
+        "command_queues": 2,
+        "cycle_budget_ticks": 100000,
+        "device": 0,
+        "frame_count": 4096,
+        "memory": {
+          "device_cb_scratch_bytes": 12288,
+          "fixed_auxiliary_buffer_bytes": 24576,
+          "frame_evidence_bytes": 524288,
+          "host_payload_bytes": 4096,
+          "resident_timestamp_bytes": 16777216,
+          "retrieval_chunk_bytes": 1048576,
+          "ring_bytes": 16384,
+          "transition_bytes": 32792,
+          "transition_capacity": 4099
+        },
+        "outer_cap_seconds": 60,
+        "period_ticks": 1350000,
+        "protocol": "issue120-wide-progress-v1",
+        "repeat_count": 262144,
+        "resident_cores": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "resident_subdevice": 0,
+        "ring_pages": 4,
+        "run_budget_ticks": 6668120000,
+        "sampler_interval_seconds": 2,
+        "schema": "issue120-production-program-v1",
+        "stall_group": [
+          1
+        ],
+        "tables_enabled": false,
+        "transfer_core": [
+          2,
+          0
+        ],
+        "transfer_subdevice": 1,
+        "watcher": true,
+        "work_per_frame": 64
+      },
+      "configuration_sha256": "f692dfd9b995ba2072948101a211805b0f393e8c9f8e6de667faae41f2f24741"
+    }
+  },
+  "schema": "issue120-production-session-v1",
+  "session_id": "8caa5d94ed7443d9982606ea45072452"
+}

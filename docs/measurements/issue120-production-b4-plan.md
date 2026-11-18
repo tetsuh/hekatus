@@ -115,3 +115,42 @@ costs and frame/byte slopes. Two points cannot establish long-run variance or
 a+bF+cN from total times alone. Precommitting C predictions/admission evidence
 is not approval to execute it; ask the owner if coverage/cap feasibility remains
 unresolved. No C/P launch follows this B unit.
+
+## B4 outcome and C prediction update (after B hardware)
+
+The [B4 archive](issue120-production/2026-11-18-b4/README.md) records both new
+v2 rows at9873978, direct native/container/wrapper/launcher0, full4096-frame
+integrity and only the known warning classes. B2 causal coverage is covered;
+Watcher dumps7/8 were healthy, reset/retry0, no survivors and both cards800MHz
+with healthy DRAM. Hardware stopped after B2. The original pre-run predictions
+above are retained; no latency threshold or production result is added.
+
+B2 inclusive worker41153.868writes/s contains a possible fixed enqueue/JIT lead.
+Removing the whole0.679886107s lead gives an unproven46071.287writes/s proxy.
+The [updated cap study](issue120-production-b3-cap-study.md#b4-observed-baseline-update)
+shows why this ambiguity can defeat naive530/520s counts despite positive cap
+headroom. Native/Python post-drain components are0.173632572/0.050221829s; their
+54.652us/frame sum is amortized, not a measured proportional slope.
+
+C identities/work remain unchanged and unexecuted. B4-based forecasts:
+
+| Case | Inclusive worker | Fixed-lead proxy worker | Fast-proxy worker | Conditional terminal envelope | Fast-proxy frame margin |
+|---|---:|---:|---:|---:|---:|
+| C1 `production-v1-calibration-small`,16384/1048576 |25.479s |23.440s |22.993s |17.167s |5.827s |
+| C2 `production-v1-calibration-large`,32768/1572864 |38.219s |34.820s |34.150s |33.551s |0.600s |
+
+No-Watcher may increase the worker rate further. The owner should decide whether
+to approve C1 first with C2 conditional on observed coverage/rate, keep both fixed
+proposals despite the bounded falsifier risk, or request a different precommitted
+C2 count/admission compatibility review. The unadopted1835008-write illustration
+has a65.499s inclusive-slow+R20 cap scenario, beyond60s; the smaller phase-only
+estimate omits unknown costs. It is not a ready count fix, new RunSpec or
+execution authority. Any insufficient
+C work must be recorded as not_covered, without extension or automatic retry.
+
+Separate C phase timers/rate observations must distinguish fixed enqueue lead
+from per-write cost and fixed teardown from frame/byte costs. Two points cannot
+identify total a+bF+cN or long-run variance; unchanged550s-floor/600s feasibility
+still needs evidence. B4 records can support a later committed bounded admission
+receipt after the required operator/owner review; none is installed here. The
+archive replay command is board-free and not a C launch. C/P remain unauthorized.

@@ -1,0 +1,120 @@
+{
+  "archive": {
+    "byte_count": 203831,
+    "file": "B1-evidence.tar.gz",
+    "sha256": "e4652097838ffd712f7b85a288706cfe56f16aecb59c7e430ea6f8e1f8a3370e"
+  },
+  "archive_metadata": "deterministic zero timestamps/UID/GID, empty owner names; payload bytes unchanged",
+  "artifacts": [
+    {
+      "byte_count": 4434,
+      "file": "env-20261118T1445539271829941429764960Z.json",
+      "sha256": "f91f5aef4159daaf17bccff40c6307de9c31650a7e977af50935867b49191793"
+    },
+    {
+      "byte_count": 282,
+      "file": "power-20261118T1445539271829941429764960Z.csv",
+      "sha256": "9e5058efadcb5504e54c62f032b48ab5193f5610ef26b99f71fc2f5320cef38b"
+    },
+    {
+      "byte_count": 282,
+      "file": "power-trace-snapshot-20261118T1445539271829941429764960Z-1.csv",
+      "sha256": "9e5058efadcb5504e54c62f032b48ab5193f5610ef26b99f71fc2f5320cef38b"
+    },
+    {
+      "byte_count": 524312,
+      "file": "results-20261118T1445539271829941429764960Z-frames.bin",
+      "sha256": "62b0a6e4a3f199ef3ea158b418fc0f5a74ac7608696ce13e3805938e54e09abe"
+    },
+    {
+      "byte_count": 530,
+      "file": "results-20261118T1445539271829941429764960Z-native-execution.json",
+      "sha256": "2f78184663fff3a683cb7053c304f9b166f4fcc3eff4137373f1f2460035c9cb"
+    },
+    {
+      "byte_count": 13115,
+      "file": "results-20261118T1445539271829941429764960Z-native-result.json",
+      "sha256": "e45929e083a578c1d9edf2f99b4ae0020f88569c8691cc988f92271668fb85a7"
+    },
+    {
+      "byte_count": 0,
+      "file": "results-20261118T1445539271829941429764960Z-native-stderr.bin",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "byte_count": 5567,
+      "file": "results-20261118T1445539271829941429764960Z-native-stdout.bin",
+      "sha256": "fe5e68a0f55f7a62fd27dbd67de0410ed89563cb01b328c1f3a33f201e9588a3"
+    },
+    {
+      "byte_count": 24,
+      "file": "results-20261118T1445539271829941429764960Z-transitions.bin",
+      "sha256": "6e13b00da40edd060294c49fb1956519d97a4c5edc1fbbf6e3e1e92586435160"
+    },
+    {
+      "byte_count": 130564,
+      "file": "results-20261118T1445539271829941429764960Z-watcher.log",
+      "sha256": "8a6263c55d3069883a3bf599d66b0faf867e21e077e6391f6ec7e7f7a448ae0b"
+    },
+    {
+      "byte_count": 206967,
+      "file": "results-20261118T1445539271829941429764960Z.json",
+      "sha256": "871161088bd3260dd9f3d785c1c31dbdc882f28ac1088adf97bc187bbb07fc26"
+    }
+  ],
+  "attempt_identity": "20261118T1445539271829941429764960Z",
+  "case": "B1",
+  "harness_commit": "98739788c1a07c1e3e3ea1b6f7b41a056d002f1a",
+  "original_payload_count": 11,
+  "original_permissions_unchanged": true,
+  "plan_identity": "production-v2-control-watch-b4",
+  "private_native_result_mode": "0o600",
+  "public_derivatives": [
+    {
+      "byte_count": 529,
+      "file": "B1-wrapper.normalized.log",
+      "normalization": "project/home/host identifiers replaced; per-line trailing whitespace removed",
+      "original_archived": false,
+      "original_byte_count": 601,
+      "original_file": "wrapper.log",
+      "original_sha256": "0e01f6ca69799a24e6a984429ade932e979555238244a1b089ddb82e4bae0864",
+      "sha256": "c74d83e60e75e616a7117645df075cd33c0af9f6ab0d7c1db061c3b28ddb329b"
+    },
+    {
+      "byte_count": 5567,
+      "file": "B1-native-stdout.normalized.log",
+      "normalization": "project/home/host identifiers replaced; per-line trailing whitespace removed",
+      "original_archived": true,
+      "original_byte_count": 5567,
+      "original_file": "results-20261118T1445539271829941429764960Z-native-stdout.bin",
+      "original_sha256": "fe5e68a0f55f7a62fd27dbd67de0410ed89563cb01b328c1f3a33f201e9588a3",
+      "sha256": "fe5e68a0f55f7a62fd27dbd67de0410ed89563cb01b328c1f3a33f201e9588a3"
+    },
+    {
+      "byte_count": 1,
+      "file": "B1-native-stderr.normalized.log",
+      "normalization": "project/home/host identifiers replaced; per-line trailing whitespace removed",
+      "original_archived": true,
+      "original_byte_count": 0,
+      "original_file": "results-20261118T1445539271829941429764960Z-native-stderr.bin",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "byte_count": 129640,
+      "file": "B1-watcher.normalized.log",
+      "normalization": "project/home/host identifiers replaced; per-line trailing whitespace removed",
+      "original_archived": true,
+      "original_byte_count": 130564,
+      "original_file": "results-20261118T1445539271829941429764960Z-watcher.log",
+      "original_sha256": "8a6263c55d3069883a3bf599d66b0faf867e21e077e6391f6ec7e7f7a448ae0b",
+      "sha256": "5d849d67806ad1cc77a0f419b105f2ee590d8cadcc849ced75102354ceba83eb"
+    }
+  ],
+  "public_snapshot_mode": "0o644",
+  "record_file": "results-20261118T1445539271829941429764960Z.json",
+  "record_sha256": "871161088bd3260dd9f3d785c1c31dbdc882f28ac1088adf97bc187bbb07fc26",
+  "schema": "issue120-b4-artifact-manifest-v1",
+  "session_id": "8caa5d94ed7443d9982606ea45072452",
+  "wrapper_privacy": "original wrapper retained privately, hash recorded; never publish its user-specific absolute paths"
+}
