@@ -1,0 +1,50 @@
+[
+  {
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "aiclk_mhz": 800,
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "gddr_uncorrected_errors": 0
+  },
+  {
+    "board": {
+      "bus_id": "0000:09:00.0",
+      "board_type": "p150a",
+      "board_id": "0000040331914124",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "aiclk_mhz": 800,
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "gddr_uncorrected_errors": 0
+  }
+]

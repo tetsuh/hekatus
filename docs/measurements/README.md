@@ -107,6 +107,12 @@ control/load pair. **No production result is present.** New-kernel validation,
 calibration, fixed-count precommit and separate owner approvals remain gates;
 no feasibility record is relabeled as production evidence.
 
+The [2026-11-18 B attempt](issue120-production/2026-11-18-b/README.md) used the
+owner-approved Linux6.8.0-149/KMD2.12.0 baseline. B1 native/wrapper completed4096
+healthy frames, but host reread of a protected snapshot failed; B2/C/P were not
+run. Exact evidence is archived, with reference-only control metrics and #182/
+#183 follow-ups. This is not a completed B unit or a production timing result.
+
 ## Issue #137 duration-bounded runner (revision 2)
 
 The board-free planning command prints the immutable configurations and their

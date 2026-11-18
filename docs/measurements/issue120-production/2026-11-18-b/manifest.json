@@ -1,0 +1,132 @@
+{
+  "schema": "issue120-production-b-archive-manifest-v1",
+  "archive_sha256": "713740885cc86daab2666b10f0f57ef79447d4a53eb969ae8810a2c56b0b2efb",
+  "archive_byte_count": 203714,
+  "primary_record": "results-20261118T124104054310116761824398Z.json",
+  "members": {
+    "env-20261118T124104054310116761824398Z.json": {
+      "sha256": "752ac6da1fccbee5ad20050df412b5324733e19ed2546a444f5c3c4dd1d1551b",
+      "byte_count": 4432
+    },
+    "power-20261118T124104054310116761824398Z.csv": {
+      "sha256": "cef0777edef68ab0222c4e2c913e8c84010de852baa009a7682f74e4051675ae",
+      "byte_count": 282
+    },
+    "power-20261118T124104054310116761824398Z.csv.complete": {
+      "sha256": "330ab21fa59adf9b790bb0d9fec1ddeda1291e28001d14c37380ca1f65e6f526",
+      "byte_count": 72
+    },
+    "power-trace-snapshot-20261118T124104054310116761824398Z-1.csv": {
+      "sha256": "cef0777edef68ab0222c4e2c913e8c84010de852baa009a7682f74e4051675ae",
+      "byte_count": 282
+    },
+    "results-20261118T124104054310116761824398Z-frames.bin": {
+      "sha256": "4af1964aad1fc0431f2a64b9e2a5407d78f1965dca9ff90804cfd45622b7d8d4",
+      "byte_count": 524312
+    },
+    "results-20261118T124104054310116761824398Z-native-execution.json": {
+      "sha256": "01f01c67263c47044a139eece426893daeab98211f714ed452befa594b365f56",
+      "byte_count": 529
+    },
+    "results-20261118T124104054310116761824398Z-native-result.json": {
+      "sha256": "6890408f8d13f3daabb8f9a2dbe10fff6c6c170e41990ba355d0b834d97475bc",
+      "byte_count": 13114
+    },
+    "results-20261118T124104054310116761824398Z-native-stderr.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byte_count": 0
+    },
+    "results-20261118T124104054310116761824398Z-native-stdout.bin": {
+      "sha256": "1e6b96e7f5076ed64cefcca5867986b21f21d813bd51e5be4ad2205547314c0f",
+      "byte_count": 5567
+    },
+    "results-20261118T124104054310116761824398Z-transitions.bin": {
+      "sha256": "6e13b00da40edd060294c49fb1956519d97a4c5edc1fbbf6e3e1e92586435160",
+      "byte_count": 24
+    },
+    "results-20261118T124104054310116761824398Z-watcher.log": {
+      "sha256": "0376b9bd0a76b27a2b78962e1dd35e1d3241a713fad60d0398f66d5c45bcf1f5",
+      "byte_count": 130564
+    },
+    "results-20261118T124104054310116761824398Z.json": {
+      "sha256": "f0e8a1c6aa0ddd6fc9d4b6e8eb5aae491a44cd5658c3ab17735a311e6583c6c1",
+      "byte_count": 205247
+    }
+  },
+  "extracted_artifact_recomputation": "passed on host-owned byte copies",
+  "original_measurement_bytes_modified": false,
+  "companions": {
+    "B-reference-summary.json": {
+      "sha256": "3c0cb515ba9dcec5fd0f61c81a9c605a3340bc6f27c15d00aa53379455483389",
+      "byte_count": 3612
+    },
+    "B1-container-lifecycle.json": {
+      "sha256": "e55645b35852101d297fe64781471f18aedc05b8dfbb8497135a08906dd0c4d7",
+      "byte_count": 774
+    },
+    "B1-copy-validation.json": {
+      "sha256": "09691fa152001f4f02537a650f62cb77c4ee7144fc875b77a635f6f0deac68bc",
+      "byte_count": 469
+    },
+    "B1-docker-after.txt": {
+      "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+      "byte_count": 71
+    },
+    "B1-docker-before.txt": {
+      "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+      "byte_count": 71
+    },
+    "B1-launcher-public.log": {
+      "sha256": "4b9da811df9d96cd7d03bd4c082fc27261c28e1ee82b6b69d5b0e60b1606a358",
+      "byte_count": 131
+    },
+    "B1-post-health.json": {
+      "sha256": "1dfa8d526c6296cce4e32180ef4c9692233141763f08f7f36e7509e59715c7ae",
+      "byte_count": 1157
+    },
+    "B1-watcher-public.log": {
+      "sha256": "cbbeb10c89108e50957d02cbb2f035303e4284af1fab8f18f0abf602dd621a3a",
+      "byte_count": 129640
+    },
+    "B1-wrapper-public.log": {
+      "sha256": "4cac80b47f141942bb466e969098843b2e2ac056070167d80a69ccdee0e170b3",
+      "byte_count": 209
+    },
+    "baseline-session.json": {
+      "sha256": "72e4d92ac319452c771073e79b5dee07cfb2700f53c2ce2d5c2a3a290643d1c8",
+      "byte_count": 888
+    },
+    "baseline-warning-verification.json": {
+      "sha256": "36b98a4115dbea86a8e404e80f2f345204dc629ba4a072181646a9deb3c8f5d7",
+      "byte_count": 3365
+    },
+    "before-B1-preflight.json": {
+      "sha256": "445c7b732363e9f8888b558709f224ed5d2542145f9860dfd1e8ea90e4d988a5",
+      "byte_count": 8481
+    },
+    "final-docker-ps.txt": {
+      "sha256": "f95becc007e273e85566e7ed2126c0fec7ebe43307f85564bcb1537f50aa0a98",
+      "byte_count": 71
+    },
+    "fresh-baseline.json": {
+      "sha256": "445c7b732363e9f8888b558709f224ed5d2542145f9860dfd1e8ea90e4d988a5",
+      "byte_count": 8481
+    },
+    "program-identity.json": {
+      "sha256": "351be6b36b1f572d03c3b90dca37e97679dbf6af08fc8331c99c3413e343d567",
+      "byte_count": 2132
+    },
+    "provisional-projection.json": {
+      "sha256": "2b0a47bccc0420113c137cd8988b209d5c21fbf1bc6ed2ad9605395d1244936b",
+      "byte_count": 808
+    },
+    "runtime-session-manifest.json": {
+      "sha256": "af81743c28acd8e20fc7275baf445c5aba0164b2a023c3034a3052e9ca6c1a4a",
+      "byte_count": 5517
+    },
+    "session.json": {
+      "sha256": "7f92eb0fed0a5f100e49895f5956f6cbdb2e84072e60071c7d30b464b9ce99d5",
+      "byte_count": 2013
+    }
+  }
+}
