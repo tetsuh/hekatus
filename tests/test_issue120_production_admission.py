@@ -20,7 +20,7 @@ def test_wrapper_command_has_literal_caps_image_device_and_watcher(monkeypatch):
     assert environment["HEKATUS_TT_IMAGE"] == runtime.PINNED_IMAGE
     assert "TT_METAL_WATCHER" not in environment
     assert "--production-approved" in command
-    first = plan.run_spec("production-v1-control-watch")
+    first = plan.run_spec("production-v2-control-watch-b4")
     _, env = runner.wrapper_command(first, "0123456789abcdef" * 2)
     assert env["TT_METAL_WATCHER"] == "1"
     assert env["HEKATUS_TT_CONTAINER_TIMEOUT_S"] == "60"
@@ -174,7 +174,7 @@ def test_no_count_that_covers_window_and_fits_cap_means_stop():
 def test_no_execute_side_effect_without_explicit_authority(monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: calls.append(a))
-    assert runner.main(["--launch", "production-v1-control-watch", "--session-id", "s"]) == 2
+    assert runner.main(["--launch", "production-v2-control-watch-b4", "--session-id", "s"]) == 2
     assert calls == []
     assert "approval" in capsys.readouterr().err
     assert json.loads(json.dumps(plan.proposal()))["execution_authorized"] is False

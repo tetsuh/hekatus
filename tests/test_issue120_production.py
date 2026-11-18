@@ -63,8 +63,8 @@ def test_precommitted_estimate_and_control_configuration():
     assert estimate["operations"] == 800839073792
     assert estimate["submitted_bytes"] == 100104884224
     assert estimate["slow_planning_seconds"] < 580
-    control = plan.run_spec("production-v1-control-watch")
-    loaded = plan.run_spec("production-v1-load-watch")
+    control = plan.run_spec("production-v2-control-watch-b4")
+    loaded = plan.run_spec("production-v2-load-watch-b4")
     assert plan.program_configuration(control) == plan.program_configuration(loaded)
     assert control.condition == "control"
     assert loaded.condition == "loaded"
@@ -178,5 +178,5 @@ def test_runner_default_is_board_free_and_unauthorized_run_stops(monkeypatch, ca
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: called.append(a))
     assert runner.main([]) == 0
     assert json.loads(capsys.readouterr().out)["board_access"] is False
-    assert runner.main(["--run", "production-v1-load-watch"]) == 2
+    assert runner.main(["--run", "production-v2-load-watch-b4"]) == 2
     assert called == []

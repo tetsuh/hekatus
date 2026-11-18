@@ -31,8 +31,8 @@ class RunSpec:
 
 
 RUNS = (
-    RunSpec("production-v1-control-watch", "startup", "control", 4096, 262144, 60, True),
-    RunSpec("production-v1-load-watch", "startup", "loaded", 4096, 262144, 60, True),
+    RunSpec("production-v2-control-watch-b4", "startup", "control", 4096, 262144, 60, True),
+    RunSpec("production-v2-load-watch-b4", "startup", "loaded", 4096, 262144, 60, True),
     RunSpec("production-v1-calibration-small", "calibration", "loaded", 16384, 1048576, 60, False),
     RunSpec("production-v1-calibration-large", "calibration", "loaded", 32768, 1572864, 60, False),
     RunSpec("production-v1-control-500000", "production", "control", FRAME_COUNT,

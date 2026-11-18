@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import tarfile
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -50,7 +51,7 @@ def _publish_fixture(output: Path, *, watcher: bool) -> Path:
     log = fake_root / "generated/watcher/watcher.log"
     log.parent.mkdir(parents=True)
     log.write_bytes((source / old["watcher"]["artifact"]["file"]).read_bytes())
-    spec = plan.RunSpec("production-v1-control-watch", "startup", "control", 4096, 262144, 60, watcher)
+    spec = replace(plan.RUNS[0], watcher=watcher)
     session = {"harness_commit": old["environment"]["commit"], "session_id": old["session_id"],
                "host_boot_id_sha256": old["host_boot_id_sha256"]}
     bounds = old["execution_interval"]

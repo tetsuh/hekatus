@@ -29,8 +29,10 @@ against that baseline and boot binding; retain each wrapper environment snapshot
 with its record. B2 must use the unchanged manifest and matching environment,
 not an older control. The runtime manifest is not edited between runs.
 
-KMD2.12.0 with tt-metal v0.75.0 has not yet been exercised. Any device-open
-anomaly or warning/error outside the three exact #176 baseline classes stops B1;
+The previous B1 exercised KMD2.12.0 with tt-metal v0.75.0 successfully at the
+native/container layer but failed host reread; it is not a reusable successful
+invocation. Any device-open anomaly or warning/error outside the three exact
+#176 baseline classes stops the renewed B1;
 changed wording is not automatically accepted. Both B runs retain4096 frames,
 Watcher and60s native/outer caps, named containers and pre/post lifecycle/idle
 checks. No automatic retry; the owner permits at most one reset in this B unit,
@@ -262,8 +264,8 @@ clock ambiguity, timeout or survivor stops. No retry/reset is authorized here.
 
 | Approval unit / identity | Purpose / fixed work | Cap | Watcher | Prediction and next branch |
 |---|---|---|---|---|
-| B1 `production-v1-control-watch` |4096-frame new resident adapter/control, no host worker |60s | on | intact frames/healthy instrument permits only approved B2; otherwise stop |
-| B2 `production-v1-load-watch` |4096 frames,262144 writes, new wide/map protocol |60s | on | covered/intact/healthy permits separately approved calibration; missing startup/interval/tail stops |
+| B1 `production-v2-control-watch-b4` |4096-frame new resident adapter/control, no host worker |60s | on | intact frames/healthy instrument permits only approved B2; otherwise stop |
+| B2 `production-v2-load-watch-b4` |4096 frames,262144 writes, new wide/map protocol |60s | on | covered/intact/healthy permits separately approved calibration; missing startup/interval/tail stops |
 | C1 `production-v1-calibration-small` |16384 frames,1048576 writes |60s | off | covered and fixed-work/overhead measurements; insufficient/evidence/cap branch stops |
 | C2 `production-v1-calibration-large` |32768 frames,1572864 writes |60s | off | covered plus rate/overhead agreement allows offline count proposal, not production |
 | P1 `production-v1-control-500000` |500000 frames, same program/open config, no host worker |600s | off | valid control and complete frozen trace required before loaded counterpart |
@@ -302,6 +304,15 @@ A rerun starts from B1 with a new session and separately authorized B scope;
 no repaired reader changes the old invocation's exit2 into success. C/P remain
 separate approvals. No cap, frame-count or550s work target is changed by these
 reader/publication fixes; the B3 report separates cap options from authorization.
+
+## Renewed B4 owner authorization
+
+The owner authorized a new B1 then healthy-conditional B2 after the B3 repair;
+[the B4 precommit](issue120-production-b4-plan.md) records fresh canonical
+identities, predictions, exact stop branches and baseline/preflight gates. These
+replace only the current B launch labels, not old evidence or the native work.
+Final clean/pushed-head CI/Sonar0/0/OK and publication checker precede hardware.
+The old exit2 invocation/session is not resumed; C/P still require approval.
 
 ## Operational admission (board-free implementation)
 
