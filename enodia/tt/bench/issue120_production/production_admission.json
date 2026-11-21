@@ -239,8 +239,8 @@
     "L_fast_seconds": 6.4033e-05,
     "L_slow_seconds": 6.9164e-05,
     "bounds_established": false,
-    "cap_margin_optimistic_seconds": 19.45589003693851,
-    "cap_margin_pessimistic_seconds": 9.455890036938513,
+    "cap_margin_optimistic_seconds": 19.41418382393851,
+    "cap_margin_pessimistic_seconds": 9.414183823938515,
     "fast_worker_seconds": 520.0000111912032,
     "formula": "N=1+ceil(r_fast*(target-L_fast))",
     "fraction": 0.02,
@@ -257,15 +257,15 @@
     "reserve": {
       "components": {
         "CLI_residual_and_guard_seconds": 5.0,
-        "measured_charged_host_seconds": 13.240679517999524,
+        "measured_charged_host_seconds": 13.282385730999522,
         "setup_scenario_seconds": 2.134215262,
         "snapshot_wait_scenario_seconds": 1.109143949999634,
         "unmeasured_native_2GB_retrieval_budget_seconds": 10.0
       },
-      "launcher_reread_outside_cap_seconds": 7.448081419002847,
+      "launcher_reread_outside_cap_seconds": 7.223709921003319,
       "native_retrieval_measured": false,
-      "optimistic_seconds": 31.48403872999916,
-      "pessimistic_seconds": 41.484038729999156
+      "optimistic_seconds": 31.525744942999157,
+      "pessimistic_seconds": 41.525744942999154
     },
     "rounding": "ceil;first observed write counted once",
     "slabs": [
@@ -484,8 +484,8 @@
   "postprocess_proof": {
     "file": "docs/measurements/issue120-production-p-prep/postprocess.json",
     "report": {
-      "artifact_root": "out/issue120-production-p-prep/739dee387d6e461cae0e3986b68122a5",
-      "charged_host_seconds": 13.240679517999524,
+      "artifact_root": "out/issue120-production-p-prep/f1960e43c101475ea919d8065e13f700",
+      "charged_host_seconds": 13.282385730999522,
       "device_retrieval_measured": false,
       "excluded": [
         "synthetic companion generation",
@@ -495,7 +495,7 @@
       "fixture_only": true,
       "fixture_source_sha256": "28c4c21e211dd1c8b482ae53ab265e3ad1895e8fefdda0d7b674a98f60784e57",
       "frames": 500000,
-      "launcher_reread_seconds": 7.448081419002847,
+      "launcher_reread_seconds": 7.223709921003319,
       "measured_python_sources_sha256": {
         "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
         "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
@@ -516,12 +516,12 @@
         "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
         "runner.py": "6b4c3edcf6b94407ccf794b37c6c294666033619867500c3c6ce650a62d91fea",
         "runtime.py": "693672834b89c21d0668f7451bc1a7403567106c8334bc7536dff3ef1b2bcb5b",
-        "sessions.py": "93ed41f5979e3262d4636cb54012881bdc143ce865a8f810bc22d888f78a5e49"
+        "sessions.py": "241940304f6ec39ef82a4869374a760a9f472ba0fbddc8fd8e3dde7594aafc3b"
       },
       "measurement_pending": false,
       "memory_scope": "fresh child lifetime ru_maxrss; separate publisher and reader, not summed",
       "passed": true,
-      "peak_rss_bytes": 115691520,
+      "peak_rss_bytes": 115974144,
       "publishers": [
         {
           "GC_collections": [
@@ -529,24 +529,24 @@
             2,
             0
           ],
-          "analysis_seconds": 5.110579013999086,
-          "charged_host_seconds": 6.052795741998125,
+          "analysis_seconds": 5.045127033998142,
+          "charged_host_seconds": 5.994048682994617,
           "device_retrieval_measured": false,
           "fixture_only": true,
           "frames": 500000,
           "frames_bytes": 64000024,
-          "in_container_control_validation_seconds": 0.0014982159991632216,
+          "in_container_control_validation_seconds": 0.0016491380010847934,
           "io_costs": {
-            "binary_size_hash_seconds": 0.06980538900097599,
-            "copy_fsync_seconds": 0.03686478501185775,
-            "runtime_hash_seconds": 0.007887554944318254
+            "binary_size_hash_seconds": 0.06869551000272622,
+            "copy_fsync_seconds": 0.035523405007552356,
+            "runtime_hash_seconds": 0.007908895022410434
           },
-          "peak_rss_bytes": 107462656,
+          "peak_rss_bytes": 107548672,
           "primary_JSON_bytes": 160728,
-          "publication_seconds": 0.0027865080046467483,
-          "record_construction_seconds": 6.048511017994315,
+          "publication_seconds": 0.002730748994508758,
+          "record_construction_seconds": 5.989668795999023,
           "role": "control",
-          "synthesis_seconds": 4.921497248004016,
+          "synthesis_seconds": 4.916342864999024,
           "synthetic_completion_jitter_ticks": 0,
           "trace_samples": 0,
           "transitions_bytes": 24
@@ -557,24 +557,24 @@
             2,
             0
           ],
-          "analysis_seconds": 6.220864363000146,
-          "charged_host_seconds": 13.240679517999524,
+          "analysis_seconds": 6.212556221995328,
+          "charged_host_seconds": 13.282385730999522,
           "device_retrieval_measured": false,
           "fixture_only": true,
           "frames": 500000,
           "frames_bytes": 64000024,
-          "in_container_control_validation_seconds": 5.946372938000422,
+          "in_container_control_validation_seconds": 5.993493431000388,
           "io_costs": {
-            "binary_size_hash_seconds": 0.07297252798161935,
-            "copy_fsync_seconds": 0.037058567999338266,
-            "runtime_hash_seconds": 0.008142458020302001
+            "binary_size_hash_seconds": 0.07236813798954245,
+            "copy_fsync_seconds": 0.03720501800853526,
+            "runtime_hash_seconds": 0.008313795035064686
           },
-          "peak_rss_bytes": 114405376,
-          "primary_JSON_bytes": 625453,
-          "publication_seconds": 0.011593432995141484,
-          "record_construction_seconds": 7.28271314700396,
+          "peak_rss_bytes": 114884608,
+          "primary_JSON_bytes": 625454,
+          "publication_seconds": 0.011960871997871436,
+          "record_construction_seconds": 7.276931428001262,
           "role": "loaded",
-          "synthesis_seconds": 5.410452215000987,
+          "synthesis_seconds": 5.408589103004488,
           "synthetic_completion_jitter_ticks": 2000,
           "trace_samples": 339,
           "transitions_bytes": 4000040
@@ -589,12 +589,12 @@
           ],
           "fixture_only": true,
           "io_costs": {
-            "binary_size_hash_seconds": 0.03895870000269497,
+            "binary_size_hash_seconds": 0.038037062011426315,
             "copy_fsync_seconds": 0.0,
-            "runtime_hash_seconds": 0.007901751028839499
+            "runtime_hash_seconds": 0.00786931804032065
           },
-          "launcher_reread_seconds": 5.955211018001137,
-          "peak_rss_bytes": 107761664,
+          "launcher_reread_seconds": 6.044493052999314,
+          "peak_rss_bytes": 108154880,
           "role": "control"
         },
         {
@@ -605,18 +605,18 @@
           ],
           "fixture_only": true,
           "io_costs": {
-            "binary_size_hash_seconds": 0.0401884299935773,
+            "binary_size_hash_seconds": 0.03988457600644324,
             "copy_fsync_seconds": 0.0,
-            "runtime_hash_seconds": 0.007937284986837767
+            "runtime_hash_seconds": 0.0078585260125692
           },
-          "launcher_reread_seconds": 7.448081419002847,
-          "peak_rss_bytes": 115691520,
+          "launcher_reread_seconds": 7.223709921003319,
+          "peak_rss_bytes": 115974144,
           "role": "loaded"
         }
       ],
       "schema": "issue120-production-host-postprocess-v1"
     },
-    "sha256": "ef4d22a32785847bef23470fe02d5f738f2fd8c6bd9a36febb5ea4546e2a1f0c"
+    "sha256": "16ea760fe44b32ce82143bfce862217b962082a75df8ca5d3873972ff386e22c"
   },
   "program_identity": {
     "calibration_compatibility_contract": "issue120-calibration-compatibility-v1",
@@ -653,7 +653,7 @@
       "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
       "runner.py": "6b4c3edcf6b94407ccf794b37c6c294666033619867500c3c6ce650a62d91fea",
       "runtime.py": "693672834b89c21d0668f7451bc1a7403567106c8334bc7536dff3ef1b2bcb5b",
-      "sessions.py": "93ed41f5979e3262d4636cb54012881bdc143ce865a8f810bc22d888f78a5e49"
+      "sessions.py": "241940304f6ec39ef82a4869374a760a9f472ba0fbddc8fd8e3dde7594aafc3b"
     }
   },
   "python_transition": {
@@ -677,7 +677,7 @@
       "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
       "runner.py": "6b4c3edcf6b94407ccf794b37c6c294666033619867500c3c6ce650a62d91fea",
       "runtime.py": "693672834b89c21d0668f7451bc1a7403567106c8334bc7536dff3ef1b2bcb5b",
-      "sessions.py": "93ed41f5979e3262d4636cb54012881bdc143ce865a8f810bc22d888f78a5e49"
+      "sessions.py": "241940304f6ec39ef82a4869374a760a9f472ba0fbddc8fd8e3dde7594aafc3b"
     },
     "before": {
       "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
@@ -718,7 +718,7 @@
         "before": "8b52f8dde08c147ce68dac777282b751c6e8329c24f39395e733c59f2f10a04f"
       },
       "sessions.py": {
-        "after": "93ed41f5979e3262d4636cb54012881bdc143ce865a8f810bc22d888f78a5e49",
+        "after": "241940304f6ec39ef82a4869374a760a9f472ba0fbddc8fd8e3dde7594aafc3b",
         "before": "e07f920a5b33036ff00efcfceb07aff3ac98f4a7eae1a1549b773f40b1bea885"
       }
     },

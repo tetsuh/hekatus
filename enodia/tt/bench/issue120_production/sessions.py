@@ -17,6 +17,7 @@ from . import admission_bridge, bounded_evidence, plan, runtime
 
 SESSIONS = runtime.ROOT / "out/issue120-production/sessions"
 MEASUREMENTS_ROOT = runtime.ROOT / "docs/measurements"
+LAUNCH_CLAIM_FILE = "launch-claim.json"
 
 
 def boot_fingerprint() -> str:
@@ -174,14 +175,14 @@ def reserve_production_launch(spec: plan.RunSpec, manifest: dict, digest: str, r
     case = runtime.fixed_path(session_path(manifest["session_id"]) / "cases" / spec.identity, SESSIONS, exists=False)
     case.mkdir(parents=True, exist_ok=False)
     if claim is not None:
-        _persist_claim(case / "launch-claim.json", claim)
+        _persist_claim(case / LAUNCH_CLAIM_FILE, claim)
 
 
 def enter_production_native(spec: plan.RunSpec, manifest: dict, digest: str, receipt: dict, output: Path) -> None:
     claim = _production_claim(spec, manifest, digest, receipt)
     if claim is None:
         return
-    path = runtime.fixed_path(output / "launch-claim.json", output)
+    path = runtime.fixed_path(output / LAUNCH_CLAIM_FILE, output)
     if json.loads(path.read_bytes()) != claim:
         raise ValueError("container launch claim differs from its session origin")
     _persist_claim(output / "native-entry.json", {"schema": "issue120-production-native-entry-v1",
@@ -194,7 +195,7 @@ def _completion_facts(spec: plan.RunSpec, manifest: dict, digest: str, receipt: 
         return None
     case = session_path(manifest["session_id"]) / "cases" / spec.identity
     primary = runtime.fixed_path(primary, case)
-    launch = runtime.fixed_path(case / "launch-claim.json", case)
+    launch = runtime.fixed_path(case / LAUNCH_CLAIM_FILE, case)
     entry = runtime.fixed_path(case / "native-entry.json", case)
     stamp = json.loads(entry.read_bytes())
     if (json.loads(launch.read_bytes()) != claim or stamp.get("schema") != "issue120-production-native-entry-v1"

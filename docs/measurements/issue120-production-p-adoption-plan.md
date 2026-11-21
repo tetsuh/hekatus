@@ -61,20 +61,20 @@ to bypass a failed gate. No hardware execution has consumed this authority.
 ## Source-matched adopted-v2 host-cost measurement
 
 The final adopted-v2 CPU measurement completed without native/device access:
-control construction6.048511s/publication0.002787s;loaded construction7.282713s/
-publication0.011593s plus5.946373s in-wrapper P1 reread/entry/ack check,total13.240680s.
-Outer reader7.448081s is separate. Peak115691520bytes(110.33MiB);real native2GB
+control construction5.989669s/publication0.002731s;loaded construction7.276931s/
+publication0.011961s plus5.993493s in-wrapper P1 reread/entry/ack check,total13.282386s.
+Outer reader7.223710s is separate. Peak115974144bytes(110.60MiB);real native2GB
 retrieval remains unmeasured. The new receipt is generated through
 `uv run python tools/prepare_issue120_production_admission.py --adopt-owner-decision --write`.
 It records the dated decision but does not substitute for fresh runtime gates.
 
 | Target | Count | Frame margin | Optimistic cap margin | Pessimistic cap margin |
 |---|---:|---:|---:|---:|
-|550s scenario,not selected |23433350 |49.291s |−12.221s |−22.221s |
-|530s scenario,not selected |22581228 |29.291s |8.897s |−1.103s |
-|520s adopted |22155167 |19.291s |19.456s |9.456s |
+|550s scenario,not selected |23433350 |49.291s |−12.262s |−22.262s |
+|530s scenario,not selected |22581228 |29.291s |8.855s |−1.145s |
+|520s adopted |22155167 |19.291s |19.414s |9.414s |
 
-Reserve31.484039s/41.484039s includes measured host13.240680s,setup2.134215s,
+Reserve31.525745s/41.525745s includes measured host13.282386s,setup2.134215s,
 snapshot1.109144s,unmeasured-native budget10s and guard5s,plus10s pessimistic
 stress. These are conditional assumptions,not bounds. The selected premise
 remains feasible under this model;no count/target/cap change is made. If later

@@ -4,9 +4,9 @@ The following describes the original non-authorizing preparation at74917fe.
 The owner subsequently adopted520s/N22155167 on2026-11-21 and authorized one P1
 then conditional one P2. The [adoption precommit](../issue120-production-p-adoption-plan.md)
 now describes explicit v2 metadata,durable consumption/external completion and
-the renewed source-matched host proof. Its current host13.240680s and reserves
-31.484039s/41.484039s supersede the historical table below;conditional pessimistic
-cap margin remains positive9.456s. No production run is claimed by this update.
+the renewed source-matched host proof. Its current host13.282386s and reserves
+31.525745s/41.525745s supersede the historical table below;conditional pessimistic
+cap margin remains positive9.414s. No production run is claimed by this update.
 
 This stage is board-free only. No board/device/tt-smi access or real runtime P
 session occurs. The separate startup sandbox invokes the unchanged native only
