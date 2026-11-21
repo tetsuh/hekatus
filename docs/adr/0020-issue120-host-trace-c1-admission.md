@@ -96,6 +96,39 @@ exception that ignores arbitrary native or Python mismatches.
     native is not being declared hardware validated; any device-facing delta
     invalidates this exception and requires stopping for owner disposition.
 
+## C2 refinement in the same unmerged PR
+
+After the single healthy C1,the owner approved only catalog C2 large,
+32768frames/1572864writes,Watcher off/device0/60s. The
+[C2 precommit](../measurements/issue120-production-c2-plan.md) refines admission
+without altering native/device content or rewriting C1/B4 evidence.
+
+- Version3 bounded admission is C2-only and separately binds original B4
+  Watcher health,C1 archive/record/session/environment and C1's preserved v2
+  receipt. v1/v2 semantics remain version-dispatched,not silently expanded.
+- Compatibility requires the exact same native/trace,device/kernel/CTA/library/
+  compiler/image and work units. Complete old/current Python maps and every
+  metadata-only runtime/recording/sessions digest change are explicit. Changed
+  harness commits remain separate original facts,not false record equality.
+- Compare outer environment except the explicitly retained commit plus selected
+  stable raw capture fields,including Linux149/KMD2.12 and board/firmware/tool/
+  limits/image/sampler/device facts. Different boot/session/timestamps and thermal
+  observations are not claimed equal. Each run retains its fresh session binding.
+- New metadata declares its own provenance contract and binds raw environment
+  size/hash and session-verified receipt. Historical native/C1/B4 interpretation
+  is not retrofitted. Removing mandatory provenance from a declared new record
+  must reject on reread.
+- Compatible-pair offline analysis is a new explicit path,not a relaxation of
+  legacy exact-program/environment calibration or production comparison. Both
+  original records are artifact-validated and displayed with their distinct
+  provenance. Healthy valid not_covered retains worker/cost diagnostic value,
+  but never gains coverage/timing/P authority. Invalid/not_evaluable evidence
+  remains unusable. Proposed counts are non-authorizing;550s floor,500000frames,
+ 600s and all P gates remain unchanged pending a separate precommit/decision.
+
+This refines this still-unmerged ADR under the owner's explicit instruction;
+no settled main decision is rewritten and no hardware/P authority is inferred.
+
 ## Consequences
 
 - New native digest/build receipt and full offline startup/publication/tests/CI/
@@ -110,6 +143,10 @@ exception that ignores arbitrary native or Python mismatches.
   not a formal proof for arbitrary malicious compilers or source modifications.
 
 ## Status history
+
+- C2 follow-up: owner-approved same-PR refinement adds explicit C1/C2 metadata
+  compatibility and C2-only evidence admission without changing the native or
+  granting production execution. Earlier C1 evidence retains its identity.
 
 - 2026-11-18: Recorded host-only trace and C1 evidence-compatibility refinement
   in the same carrying PR. Effective through owner merge; no separate pre-merge
