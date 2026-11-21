@@ -161,6 +161,24 @@ full measured Python inventory and fixture source; changed code requires a new
 measurement,not an ignored timing/provenance delta. The preparation plan
 is [precommitted here](../measurements/issue120-production-p-prep-plan.md).
 
+## Dated owner adoption refinement — 2026-11-21
+
+The owner adopted520s/22155167writes and authorized exactly one conditional P1/P2
+pair. A versioned small input binds date,selection-file hash,target/count and
+scope. An explicit v2 adopted receipt captures that decision;v1 non-authorizing
+receipts and historical fixtures retain their original generation/validation.
+Live v2 validates the current input;persisted evidence validates captured facts.
+The declaration records owner authority,not current readiness:all existing
+preflight/session/head/boot/receipt/healthy-control gates still apply.
+
+Exclusive durable session-role launch claims consume each attempt before wrapper
+entry,including failed/partial launches. A non-fixture adoption binds to one
+session across launches. Container entry validates the host claim and exclusively
+records native entry before execute_native;direct/repeated entry rejects. Runtime
+never mutates committed authority inputs. Isolated v1 fixtures retain their old
+meaning;v2 CPU tests exercise consumption. Native/device constructors stay exact.
+See the [pre-implementation invariants](../measurements/issue120-production-p-adoption-plan.md).
+
 ## Consequences
 
 - New native digest/build receipt and full offline startup/publication/tests/CI/
@@ -178,6 +196,10 @@ is [precommitted here](../measurements/issue120-production-p-prep-plan.md).
   not a formal proof for arbitrary malicious compilers or source modifications.
 
 ## Status history
+
+- 2026-11-21: Owner-adopted target/count and single-use conditional pair;
+  same-unmerged-PR refinement adds explicit v2 dated adoption metadata and durable
+  session consumption,without changing native/device content or legacy meanings.
 
 - Production preparation follow-up:owner-authorized board-free versioned
   compatible-production eligibility and synthetic postprocessing validation;
