@@ -347,11 +347,32 @@ fresh baseline/boot/session and an immediate no-heavy-process check; no retry,
 reset,C2 or P followed. Only the actual C1 consumed the one-run authorization.
 No source/native/measurement-validator changes were made for execution.
 
-C2 would need separate approval and compatible precommitted admission. The
-current bridge still rejects C2/P. Existing count proposals require both
-calibration sizes and exact provenance; do not relabel C1/B4 or bypass those
-checks when later commits change harness/environment identity. The archive
-lists the owner decisions still required before P1control/P2loaded.
+At that stage C2 needed separate approval and compatible precommitted admission;
+the C1-only bridge rejected C2/P. Legacy count proposals still require exact
+provenance; do not relabel C1/B4 or silently bypass their identity checks.
+
+## C2 bounded outcome and P proposal — 2026-11-21
+
+The owner then approved exactly one unchanged catalog large calibration.
+[C2](issue120-production/2026-11-21-c2/README.md) atf5d46fb completed all exits0,
+32768healthy frames,covered,25host samples and zero overflow/drop/abort/paired
+outliers/new warnings. Native/device/kernel/CTA/library/proof/image/work content
+remained identical to C1. ADR-0020's explicit metadata-only compatibility and
+C2-only v3 receipt bind both original C1 and new C2 records without relabeling.
+Fresh baseline/session,host quietness twice and post-run800MHz/zero containers
+passed; no retry/reset/P followed.
+
+The artifact-compatible two-point/slab analysis is diagnostic,not production
+admission. It proposes520s/22155167writes for owner consideration:conditional
+frame margin19.291s and600s margins30.940s/14.067s with20s/historical36.873s
+reserves.550s fails the slab/slow-rate model even atR20;530s has only3.508s at
+the stress reserve. None is a measured long-run bound. The current550s floor
+and legacy exact-provenance count path remain unchanged. A chosen520s target
+requires a separate board-free successor production receipt/policy/test precommit
+and matching native/device proofs,then owner approval for same-session500000-frame
+control/load600s Watcher-off runs. The C2 report details predictions,stop/progression
+rules,expected duration and unbounded thermal/AICLK/rate/postprocessing risks.
+Current admission still rejects P; no production count was adopted.
 
 ## Operational admission (board-free implementation)
 

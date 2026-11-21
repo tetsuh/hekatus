@@ -95,10 +95,15 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   supplies bounded Watcher-off causal coverage and host prefix observations,
   not a500-second rate/cost bound. Main enqueue-return is not a full dead lead
   in that run. The two-point native postprocessing slope is negative and cannot
-  be used physically; Python scaling is only descriptive. C2 admission/provenance,
-  longer-run variability and the coverage-versus600s reserve trade still need
-  owner decisions before a matching production control/load pair. No target/count
-  or clock-calibration policy is changed by these observations.
+  be used physically; Python scaling is only descriptive. The separately approved
+  [C2](measurements/issue120-production/2026-11-21-c2/README.md) retains the native
+  identity and explicitly binds the changed metadata sources to original C1.
+  Its37.738s worker/25samples still cannot bound500s variability. Slab scenarios
+  favor owner consideration of520s/22155167writes over550s,but depend on unmeasured
+  long-run rates/frame duration/reserves. A successor board-free production
+  receipt/policy precommit and owner decisions on target/count/risk remain before
+  the matching control/load pair. Current550s floor and C2-only admission remain;
+  no target/count or clock-calibration policy changed and P is unexecuted.
 
 - Newton-Schulz: remaining precision-split questions (TF32/FP32), iteration
   count, and choice of the initial value X0

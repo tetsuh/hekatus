@@ -137,7 +137,16 @@ frame/map evidence and zero overflow/drop/abort/paired outliers. Its17-point
 host trace shows24974committed writes already at main enqueue return,not a
 full dead worker lead. No same-session control difference is available. The
 archive contains unchanged originals and conditional cap/C2 planning,not a
-production count or approval. C2/P remain unexecuted; admission is still C1-only.
+production count or approval. At that stage C2/P remained unexecuted.
+
+The separately approved [single C2](issue120-production/2026-11-21-c2/README.md)
+atf5d46fb completed32768frames/1572864writes,all exits0,covered,zero anomalies,
+with the same native/device identity. Its25-point trace and artifact-validated
+C1/C2 metadata bridge preserve both original origins. Conditional slab-based
+550/530/520s tables recommend owner consideration of520s/22155167writes with
+explicit unbounded rate/frame/reserve assumptions. No count/floor was adopted;
+current admission remains C2-only. P is unexecuted and needs separate board-free
+receipt/policy precommit and owner approval.
 
 ## Issue #137 duration-bounded runner (revision 2)
 
