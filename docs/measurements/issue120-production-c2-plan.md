@@ -42,7 +42,8 @@ boot/session/case. Preserve C1 and B/B4 payloads and measured sources byte-exact
    authenticate its hash,identity,harness/program/admission/image/configuration/
    boot bindings on reread. Reject null/malformed session digests,not merely
    inconsistent duplicates. Bind phase to declared plan/configuration before any
-   provenance early return.
+   provenance early return. Captured native C2 work counts independently select
+   mandatory provenance even if both the declaration and plan name are deleted.
    New declared metadata contracts cannot lose that field on reread. Ordinary
    loading of historical C1/B4 records stays unchanged. Artifact replay always
    precedes offline pair analysis; never rewrite record program/environment to
@@ -51,6 +52,8 @@ boot/session/case. Preserve C1 and B/B4 payloads and measured sources byte-exact
    records.calibration_proposal or production comparison. It accepts validated
    C1 small/C2 large at their exact catalog counts and emits explicit original
    identities/commits,source digest transition and non-authorizing scenarios.
+   CLI record paths must resolve inside program-owned out/issue120-production;
+   replay archived payloads there rather than allowing arbitrary filesystem reads.
    Retain550s floor and current600s/500000frame rules;530/520s are unadopted
    owner-discussion scenarios. No production receipt or P admission is created.
 6. A valid healthy `not_covered` C2 is retained as genuine evidence. Its worker

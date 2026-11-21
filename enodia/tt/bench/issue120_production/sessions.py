@@ -15,6 +15,7 @@ from pathlib import Path
 from . import admission_bridge, bounded_evidence, plan, runtime
 
 SESSIONS = runtime.ROOT / "out/issue120-production/sessions"
+MEASUREMENTS_ROOT = runtime.ROOT / "docs/measurements"
 
 
 def boot_fingerprint() -> str:
@@ -125,7 +126,7 @@ def _records_from_receipt(receipt: dict) -> list[dict]:
         relative = Path(ref["file"])
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError("stage record reference is not repository-relative")
-        path = runtime.fixed_path(runtime.ROOT / relative, runtime.ROOT / "docs/measurements")
+        path = runtime.fixed_path(runtime.ROOT / relative, MEASUREMENTS_ROOT)
         if runtime.sha(path) != ref["sha256"]:
             raise ValueError("stage record digest differs")
         record = load_validated_record(path)
@@ -255,7 +256,7 @@ def _copy_c1_archive(archive, directory: Path, facts: dict) -> None:
 def c1_calibration_evidence() -> tuple[dict, dict]:
     from .recording import load_validated_record
 
-    directory = runtime.fixed_path(runtime.ROOT / C1_DIRECTORY, runtime.ROOT / "docs/measurements")
+    directory = runtime.fixed_path(runtime.ROOT / C1_DIRECTORY, MEASUREMENTS_ROOT)
     checks = (("C1-evidence.tar.gz", C1_ARCHIVE_SHA), ("C1-manifest.json", C1_MANIFEST_SHA),
               ("runtime-session-manifest.json", C1_SESSION_SHA))
     for name, digest in checks:
@@ -318,7 +319,7 @@ def _python_transition(old: dict, current: dict) -> dict:
 
 
 def _c2_fields(current: dict, c1: dict, raw: dict) -> dict:
-    path = runtime.fixed_path(runtime.ROOT / C1_ADMISSION_PATH, runtime.ROOT / "docs/measurements")
+    path = runtime.fixed_path(runtime.ROOT / C1_ADMISSION_PATH, MEASUREMENTS_ROOT)
     if runtime.sha(path) != C1_ADMISSION_SHA:
         raise ValueError("C1 original admission was modified")
     original = json.loads(path.read_bytes())

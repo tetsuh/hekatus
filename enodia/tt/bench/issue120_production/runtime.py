@@ -21,6 +21,7 @@ PROTOCOL_HEADER = "protocol.hpp"
 COMPILE_MANIFEST = "compile_args.json"
 NATIVE_SOURCE_NAME = "native_trace.cpp"
 CALIBRATION_CONTRACT = "issue120-calibration-compatibility-v1"
+CALIBRATION_RECORD_ROOT = ROOT / "out/issue120-production"
 LIBRARY_SHA256 = "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
 PINNED_IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
 

@@ -81,6 +81,7 @@ def paired(tmp_path, monkeypatch):
     # Compatibility policy tests use an artifact-loader seam; actual trace replay is covered separately.
     for key in ("frames_consumed", "frames_produced", "frames_attempted"):
         c2["metrics"][key] = spec.frame_count
+    monkeypatch.setattr(runtime, "CALIBRATION_RECORD_ROOT", tmp_path, raising=False)
     directory = tmp_path / "C2"
     directory.mkdir()
     raw = copy.deepcopy(raw)
@@ -202,6 +203,35 @@ def test_session_artifact_bindings_survive_duplicated_claim_rehash(paired, field
     row["calibration_provenance"]["session_manifest"].update(sha256=digest, byte_count=len(content))
     with pytest.raises(ValueError):
         recording.recheck_calibration_provenance(paths[1].parent, row)
+
+
+@pytest.mark.parametrize("remove_phase", [False, True])
+def test_coordinated_discriminator_deletion_cannot_hide_native_c2_work(paired, remove_phase):
+    paths, rows, _ = paired
+    row = rows[1]
+    del row["program_identity"]["calibration_compatibility_contract"]
+    del row["plan_identity"]
+    del row["calibration_provenance"]
+    if remove_phase:
+        del row["phase"]
+    with pytest.raises(ValueError):
+        recording.recheck_calibration_provenance(paths[1].parent, row)
+
+
+@pytest.mark.parametrize("redirected", [False, True])
+def test_pair_cli_paths_must_stay_in_program_owned_record_root(tmp_path, monkeypatch, redirected):
+    root = tmp_path / "approved"
+    root.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}")
+    path = outside
+    if redirected:
+        path = root / "redirected.json"
+        path.symlink_to(outside)
+    monkeypatch.setattr(runtime, "CALIBRATION_RECORD_ROOT", root, raising=False)
+    monkeypatch.setattr(sessions, "_committed_admission", lambda *a: pytest.fail("unvalidated path reached admission"))
+    with pytest.raises(ValueError):
+        recording.calibration_pair_analysis([path, path])
 
 
 def test_legacy_exact_provenance_proposal_was_not_weakened(paired):

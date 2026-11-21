@@ -428,7 +428,10 @@ def _check_calibration_session(manifest: dict, record: dict, admission_sha: str)
 
 def recheck_calibration_provenance(output: Path, record: dict) -> None:
     contract = record.get("program_identity", {}).get("calibration_compatibility_contract")
-    if contract is None and record.get("plan_identity") != plan.RUNS[3].identity:
+    native = record.get("native", {})
+    # Native work is independently bound to captured result bytes on full reread.
+    c2_work = (native.get("frame_count"), native.get("repeat_count")) == (32768, 1572864)
+    if contract is None and record.get("plan_identity") != plan.RUNS[3].identity and not c2_work:
         return  # Historical C1 has no new declaration and keeps its interpretation.
     if contract != runtime.CALIBRATION_CONTRACT:
         raise ValueError("declared calibration metadata contract is missing or unknown")
@@ -498,6 +501,8 @@ def calibration_pair_analysis(paths: list[Path]) -> dict:
 
     if len(paths) != 2:
         raise ValueError("C1 small and C2 large record paths are required")
+    paths = [issue120_probe._bounded_path(path, runtime.CALIBRATION_RECORD_ROOT,
+                                          "calibration record", "file") for path in paths]
     receipt = sessions._committed_admission("bounded")
     if receipt.get("schema") != sessions.C2_SCHEMA:
         raise ValueError("explicit C2 compatible-pair admission is required")
