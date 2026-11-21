@@ -134,6 +134,24 @@ without altering native/device content or rewriting C1/B4 evidence.
 This refines this still-unmerged ADR under the owner's explicit instruction;
 no settled main decision is rewritten and no hardware/P authority is inferred.
 
+## Compatible production preparation refinement
+
+The owner permits board-free preparation only,not P1/P2 execution or count
+adoption. A distinct versioned compatible-production receipt roots eligibility
+in byte-exact original C1/C2 primary/archive/session/environment and build/device/
+image/baseline proofs. Complete metadata-only successor maps are explicit; legacy
+exact-provenance,C1 and C2 admission remain unchanged and separately dispatched.
+One committed selection contains target and N; regeneration rejects inconsistent
+rounding or changed source/selection/proofs rather than silently choosing a count.
+The receipt carries the40slab model,offset/frame/reserve assumptions,margins and
+rejected models plus device-free500000frame postprocessing/peak-memory evidence.
+Native2GB device retrieval remains unmeasured. Synthetic evidence is fixture-only,
+never calibration or production evidence. New production records capture their
+actual receipt/session/environment companions so later selection changes cannot
+rewrite historical interpretation. Boot/head/receipt drift and failed P1 block
+P2; a technical receipt/session grants no owner authority. The preparation plan
+is [precommitted here](../measurements/issue120-production-p-prep-plan.md).
+
 ## Consequences
 
 - New native digest/build receipt and full offline startup/publication/tests/CI/
@@ -148,6 +166,10 @@ no settled main decision is rewritten and no hardware/P authority is inferred.
   not a formal proof for arbitrary malicious compilers or source modifications.
 
 ## Status history
+
+- Production preparation follow-up:owner-authorized board-free versioned
+  compatible-production eligibility and synthetic postprocessing validation;
+  no adopted count or hardware authority,legacy receipts/records unchanged.
 
 - C2 follow-up: owner-approved same-PR refinement adds explicit C1/C2 metadata
   compatibility and C2-only evidence admission without changing the native or
