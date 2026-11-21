@@ -1,0 +1,96 @@
+{
+  "P1_exit": 0,
+  "P2_exit": 0,
+  "P_executed": false,
+  "actual_launcher_rereads": [
+    {
+      "identity": "production-v1-control-500000",
+      "seconds": 6.035749208997004
+    },
+    {
+      "identity": "production-v1-control-500000",
+      "seconds": 5.926904596002714
+    },
+    {
+      "identity": "production-v1-control-500000",
+      "seconds": 5.9192848750026315
+    },
+    {
+      "identity": "production-v1-control-500000",
+      "seconds": 6.1519421550037805
+    },
+    {
+      "identity": "production-v1-loaded-500000",
+      "seconds": 7.265412136002851
+    },
+    {
+      "identity": "production-v1-loaded-500000",
+      "seconds": 7.925645996001549
+    },
+    {
+      "identity": "production-v1-control-500000",
+      "seconds": 7.249816447998455
+    },
+    {
+      "identity": "production-v1-calibration-small",
+      "seconds": 0.21266180300153792
+    }
+  ],
+  "comparison": {
+    "control_attempt": "synthetic-p1",
+    "latency_threshold": null,
+    "loaded_attempt": "synthetic-p2",
+    "loaded_minus_control_counts": {
+      "frames_aborted": 0,
+      "frames_dropped": 0,
+      "overflow_count": 0,
+      "paired_outlier_count": 0
+    },
+    "loaded_minus_control_ticks": {
+      "max_ticks": 1996,
+      "p50": 183.0,
+      "p99": 1483.0,
+      "p99_9": 1783.0,
+      "p99_99": 1934.000800000038
+    },
+    "schema": "issue120-production-comparison-v1"
+  },
+  "comparison_recomputed": true,
+  "external_state_simulated": [
+    "clean/pushed Git state",
+    "fixture native result/clock/telemetry claims"
+  ],
+  "fixture_only": true,
+  "fixture_publisher_invocations": 3,
+  "fixture_root": "out/issue120-production-p-prep/4798f8cfeecb4ee9a8c25d62d579c1c8",
+  "head": "4fd4900b8813e813263ed3d5148e3b5feb3a59b8",
+  "launcher_peak_rss_bytes": 114606080,
+  "native_invoked": false,
+  "positive_launches": 2,
+  "real_paths": [
+    "committed receipt validation",
+    "session creation/read/head/boot checks",
+    "admission",
+    "launcher/control gate",
+    "record construction/publication",
+    "artifact-based launcher reread/comparison"
+  ],
+  "rejected": {
+    "boot": true,
+    "dirty_source": true,
+    "environment_summary": true,
+    "failed_P1": true,
+    "head": true,
+    "historical_P1": true,
+    "mismatched_adoption": true,
+    "missing_P1": true,
+    "missing_adoption": true,
+    "missing_approval": true,
+    "missing_receipt": true,
+    "modified_receipt": true,
+    "unacknowledged_P1": true,
+    "used_roles": true
+  },
+  "schema": "issue120-production-fixture-dry-run-v1",
+  "source_sha256": "f0a8c96a7cf35e5495cdd71d0c8a2766d98f6fca54644a8fe9ef99104d616d04"
+}

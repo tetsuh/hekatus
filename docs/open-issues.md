@@ -90,7 +90,8 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
 
 ## Parameters decided by measurement
 
-- Issue #120 production fixed-count feasibility remains open. The
+- Issue #120's adopted fixed count completed one healthy production pair;future
+  rate/cost bounds and portability remain open. The
   [2026-11-21 C1](measurements/issue120-production/2026-11-21-c1/README.md)
   supplies bounded Watcher-off causal coverage and host prefix observations,
   not a500-second rate/cost bound. Main enqueue-return is not a full dead lead
@@ -103,11 +104,17 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   long-run rates/frame duration/reserves. The subsequent
   [board-free P preparation](measurements/issue120-production-p-prep/README.md)
   adds a separate versioned receipt/selection and CPU-only500000-frame pipeline
-  proof without weakening legacy admission. Measured charged host cost13.231s
-  includes in-wrapper P1 reread; native2GB retrieval remains unmeasured. Updated
-  520s scenario margins are19.291s frame/9.465s pessimistic cap,not guarantees.
-  Owner target/count/risk choices and explicit P authority remain;legacy550s floor
-  and historical records are unchanged. No count is adopted and P is unexecuted.
+  proof without weakening legacy admission. The final adopted-v2 proof measured
+  13.282s charged host cost including P1 reread,with conditional19.291s frame/
+  9.414s pessimistic cap margins. Owner adopted520s/22155167writes on2026-11-21;
+  the [single actual pair](measurements/issue120-production/2026-11-21-p/README.md)
+  verified500000frames each and full loaded causal coverage at4fd4900,with zero
+  integrity/paired anomalies and descriptive quantile/max differences−22..+19ticks.
+  Actual worker531.795s and native2GB retrieval/verify/close/publication aggregate
+  0.574/0.469s replace unknown costs only for these runs,not with a standalone DMA
+  timer or a future bound. Weighted clock scope,single-pair ordering,other loads/
+  machines and generalization remain explicit limits. Legacy rules/records are
+  unchanged;this decision is carried by a separate versioned adopted receipt.
 
 - Newton-Schulz: remaining precision-split questions (TF32/FP32), iteration
   count, and choice of the initial value X0

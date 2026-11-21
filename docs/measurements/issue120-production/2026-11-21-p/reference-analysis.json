@@ -1,0 +1,2566 @@
+{
+  "comparison": {
+    "control_attempt": "20261121T16080360639616673963217100Z",
+    "latency_threshold": null,
+    "loaded_attempt": "20261121T16190313060076874183029578Z",
+    "loaded_minus_control_counts": {
+      "frames_aborted": 0,
+      "frames_dropped": 0,
+      "overflow_count": 0,
+      "paired_outlier_count": 0
+    },
+    "loaded_minus_control_ticks": {
+      "max_ticks": 19,
+      "p50": -10.0,
+      "p99": 18.0,
+      "p99_9": 5.0,
+      "p99_99": -22.0
+    },
+    "schema": "issue120-production-comparison-v1"
+  },
+  "harness_commit": "4fd4900b8813e813263ed3d5148e3b5feb3a59b8",
+  "latency_threshold": null,
+  "limitations": [
+    "one sequential control/loaded pair;no significance or population bound",
+    "cycle-domain intervals;weighted host-envelope AICLK conversion is not exact frame wall time",
+    "fixed count and short-cadence host samples do not bound future rates",
+    "native read/verify/close/publication aggregate is not isolated DMA duration",
+    "synthetic resident work and causal instrument,not full ultrasound processing or host data path"
+  ],
+  "predictions": {
+    "N": 22155167,
+    "cap_margin_pessimistic_seconds": 9.414183823938515,
+    "frame_envelope_seconds": 500.70873831194046,
+    "frame_margin_seconds": 19.291272879262692,
+    "latency_scope": "centers near1350000ticks;C2 quantile references;differences nearzero without established sign or bound",
+    "r_fast": 42606.09279112019,
+    "r_slow": 40351.08351821494,
+    "reserve": {
+      "components": {
+        "CLI_residual_and_guard_seconds": 5.0,
+        "measured_charged_host_seconds": 13.282385730999522,
+        "setup_scenario_seconds": 2.134215262,
+        "snapshot_wait_scenario_seconds": 1.109143949999634,
+        "unmeasured_native_2GB_retrieval_budget_seconds": 10.0
+      },
+      "launcher_reread_outside_cap_seconds": 7.223709921003319,
+      "native_retrieval_measured": false,
+      "optimistic_seconds": 31.525744942999157,
+      "pessimistic_seconds": 41.525744942999154
+    },
+    "target_seconds": 520,
+    "worker_fast_seconds": 520.0000111912032,
+    "worker_slow_seconds": 549.0600712330623
+  },
+  "rows": {
+    "P1": {
+      "arithmetic_max_ticks": 1125,
+      "arithmetic_min_ticks": 1078,
+      "attempt_identity": "20261121T16080360639616673963217100Z",
+      "clock": {
+        "aiclk_mhz": 1350.0,
+        "basis": "consumer_low32_wrap_tracked_cycle_domain",
+        "conversion_scope": "host_observed_program_upper_bound_not_exact_frame_window",
+        "observed_envelope_conversion_us": {
+          "max": 1001.2281481481483,
+          "p50": 1000.0007407407409,
+          "p99": 1000.6044444444447,
+          "p99_9": 1000.788888888889,
+          "p99_99": 1000.908888888889
+        },
+        "observed_host_envelope_weighted_aiclk_mhz": 1349.9999999999998,
+        "product_wall_time_guarantee": false
+      },
+      "consumer_first_to_last_ticks": 674998649957,
+      "consumer_span_weighted_clock_seconds_estimate": 499.9989999681482,
+      "consumer_work_iterations_per_frame": 64,
+      "container_creation_to_destroy_seconds": 511.68358403,
+      "container_minus_native_seconds": 8.211472850999996,
+      "container_start_to_die_seconds": 511.587126091,
+      "container_window_margin_seconds": 88.41287390899998,
+      "coverage": {
+        "byte_scope": "fresh_challenge_issue_to_scan_completion_not_scan_end_to_scan_end",
+        "challenge_interval_bytes_lower_bound": 0,
+        "challenge_interval_transfers_lower_bound": 0,
+        "coverage": "not_applicable",
+        "first_through_last_bytes_lower_bound": 0,
+        "first_through_last_cpu_operations_lower_bound": 0,
+        "first_through_last_transfers_lower_bound": 0,
+        "frame_count": 500000,
+        "reason": null,
+        "schema": "issue120-production-coverage-v1",
+        "verified_frames": 0
+      },
+      "histogram_bin_width_ticks": 1,
+      "histogram_bins": 2408,
+      "histogram_count": 499999,
+      "histogram_location": "P1-evidence.tar.gz: primary.metrics.frame_intervals.histogram",
+      "integrity": {
+        "checksum_passed": true,
+        "frames_aborted": 0,
+        "frames_attempted": 500000,
+        "frames_consumed": 500000,
+        "frames_dropped": 0,
+        "frames_produced": 500000,
+        "overflow_count": 0,
+        "paired_outlier_count": 0
+      },
+      "intervals": {
+        "N": 499999,
+        "max_ticks": 1351658,
+        "min_ticks": 1348509,
+        "percentiles": {
+          "p50": {
+            "minimum_samples": 40,
+            "status": "ok",
+            "value_ticks": 1350001.0
+          },
+          "p99": {
+            "minimum_samples": 2000,
+            "status": "ok",
+            "value_ticks": 1350816.0
+          },
+          "p99_9": {
+            "minimum_samples": 20000,
+            "status": "ok",
+            "value_ticks": 1351065.0
+          },
+          "p99_99": {
+            "minimum_samples": 200000,
+            "status": "ok",
+            "value_ticks": 1351227.0
+          }
+        }
+      },
+      "launcher_wall_seconds": 520.14,
+      "load_accounting": {
+        "cpu_operations": 0,
+        "separate_terminal_observer_reads": 98135,
+        "submitted_bytes": 0,
+        "submitted_transfers": 0,
+        "targeted_load_read_bytes": 0,
+        "targeted_load_reads": 0
+      },
+      "native_cap_margin_seconds": 96.62434675999998,
+      "native_execute_seconds": 503.37565324,
+      "native_retrieval_device_bytes": 2048000000,
+      "native_retrieval_scope": "drain to execute return includes all2GB retrieval,verification,close and result publication;not isolated DMA",
+      "overhead": {
+        "analysis_frame_count": 500000,
+        "native_retrieval_verify_close_publish_seconds": 0.57380512,
+        "per_frame_analysis_seconds": 1.1678378756007812e-05,
+        "per_frame_term_is_amortized_not_linear_slope": true,
+        "python_frame_analysis_seconds": 5.265384258003905,
+        "sampler_wait_seconds": 0.0014551469939760864,
+        "setup_seconds": 2.08062565
+      },
+      "post_native_container_seconds": 6.29145806,
+      "power": {
+        "aiclk_mhz_in_run_max": 1350.0,
+        "aiclk_mhz_in_run_min": 800.0,
+        "aiclk_mhz_load_interval_weighted": 1349.9999999999998,
+        "aiclk_mhz_load_interval_weighted_seconds": 500.72092800000013,
+        "aiclk_mhz_load_interval_weighted_source": "load_interval_trace_samples",
+        "aiclk_source": "run_trace_samples",
+        "byte_count": 10985,
+        "coverage_complete": true,
+        "csv_row_count": 228,
+        "errors": [],
+        "in_run_valid_row_count": 225,
+        "invalid_row_count": 0,
+        "load_interval_source": "issue120_v2_enqueue_to_l1_terminal_observed_upper_bound",
+        "sample_count": 228,
+        "sampling_source": "immutable per-run CSV snapshot captured by run_in_container.sh",
+        "source_file": "power-20261121T16080360639616673963217100Z.csv",
+        "valid_row_count": 228
+      },
+      "pre_native_container_seconds": 1.920014739,
+      "program_host_upper_bound_seconds": 500.720927842,
+      "record_sha256": "ccb70c085160a463c26fc9ae1b1ebe948be3a3aaf427a2467ab4e91931b5c2fe",
+      "routing": {
+        "consumer_cta": [
+          1,
+          4096,
+          1,
+          1,
+          4,
+          4,
+          514,
+          1,
+          4096,
+          1,
+          1,
+          1,
+          1,
+          258,
+          2,
+          4096,
+          2,
+          4096,
+          2,
+          4096,
+          2,
+          4096,
+          2,
+          4096
+        ],
+        "consumer_runtime": [
+          1556480,
+          1548288,
+          1052800,
+          257056896,
+          500000,
+          4,
+          64,
+          100000,
+          3066050240,
+          185,
+          0,
+          257052800,
+          257056896,
+          0,
+          0,
+          1048704,
+          1544192,
+          22155167,
+          1350000,
+          1,
+          2
+        ],
+        "producer_cta": [
+          1,
+          4096,
+          1,
+          1,
+          4,
+          4,
+          514,
+          1,
+          4096,
+          1,
+          1,
+          1,
+          1,
+          514,
+          2,
+          4096,
+          2,
+          4096
+        ],
+        "producer_runtime": [
+          1556480,
+          1552384,
+          257052800,
+          500000,
+          1350000,
+          4,
+          3066050240,
+          185,
+          0,
+          257052800,
+          2,
+          2
+        ]
+      },
+      "startup_diagnostics": {
+        "consumer_peer_runtime_xy": [
+          1,
+          2
+        ],
+        "consumer_reported_expectation": 500002,
+        "consumer_self_noc0": [
+          2,
+          2
+        ],
+        "expected_after_consumed_frames": 500002,
+        "expected_after_full_run": 500002,
+        "mailbox_post_finish": 500002,
+        "producer_peer_runtime_xy": [
+          2,
+          2
+        ]
+      },
+      "startup_ticks": 135069260
+    },
+    "P2": {
+      "arithmetic_max_ticks": 1128,
+      "arithmetic_min_ticks": 1078,
+      "attempt_identity": "20261121T16190313060076874183029578Z",
+      "clock": {
+        "aiclk_mhz": 1350.0,
+        "basis": "consumer_low32_wrap_tracked_cycle_domain",
+        "conversion_scope": "host_observed_program_upper_bound_not_exact_frame_window",
+        "observed_envelope_conversion_us": {
+          "max": 1001.2654192636751,
+          "p50": 1000.016501440202,
+          "p99": 1000.6409603519386,
+          "p99_9": 1000.8157792169087,
+          "p99_99": 1000.9157815337348
+        },
+        "observed_host_envelope_weighted_aiclk_mhz": 1349.9687235718334,
+        "product_wall_time_guarantee": false
+      },
+      "consumer_first_to_last_ticks": 674998650151,
+      "consumer_span_weighted_clock_seconds_estimate": 500.01058421934806,
+      "consumer_work_iterations_per_frame": 64,
+      "container_creation_to_destroy_seconds": 549.73204497,
+      "container_minus_native_seconds": 15.39369968799997,
+      "container_start_to_die_seconds": 549.632006187,
+      "container_window_margin_seconds": 50.367993813,
+      "coverage": {
+        "byte_scope": "fresh_challenge_issue_to_scan_completion_not_scan_end_to_scan_end",
+        "challenge_interval_bytes_lower_bound": 2048004096,
+        "challenge_interval_transfers_lower_bound": 500001,
+        "coverage": "covered",
+        "first_through_last_bytes_lower_bound": 2047995904,
+        "first_through_last_cpu_operations_lower_bound": 16383967232,
+        "first_through_last_transfers_lower_bound": 499999,
+        "frame_count": 500000,
+        "reason": null,
+        "schema": "issue120-production-coverage-v1",
+        "verified_frames": 500000
+      },
+      "histogram_bin_width_ticks": 1,
+      "histogram_bins": 2411,
+      "histogram_count": 499999,
+      "histogram_location": "P2-evidence.tar.gz: primary.metrics.frame_intervals.histogram",
+      "host_submission": {
+        "duration_seconds": 531.795383779,
+        "first_commit_observed_lead_seconds": 7.7768e-05,
+        "first_half_mean_rate": 41649.59017687315,
+        "inclusive_writes_per_second": 41661.07430749549,
+        "last_half_mean_rate": 41672.984770853574,
+        "main_enqueue_return_observation": {
+          "after_ns": 57999230214232,
+          "before_ns": 57999230214125,
+          "committed_count": 25218
+        },
+        "sample_count": 339,
+        "scope": "committed host submissions,not retirement or exact API-return count",
+        "slab_count": 338,
+        "slab_max_rate": 41900.121296810496,
+        "slab_min_rate": 41253.15879196714,
+        "slab_population_CV_percent": 0.20209961097024332,
+        "slabs": [
+          {
+            "first_committed": 1,
+            "last_committed": 65536,
+            "seconds": 1.580684584,
+            "writes_per_second": 41459.8843206027
+          },
+          {
+            "first_committed": 65536,
+            "last_committed": 131072,
+            "seconds": 1.572095998,
+            "writes_per_second": 41687.02171074416
+          },
+          {
+            "first_committed": 131072,
+            "last_committed": 196608,
+            "seconds": 1.571730492,
+            "writes_per_second": 41696.71602960796
+          },
+          {
+            "first_committed": 196608,
+            "last_committed": 262144,
+            "seconds": 1.577923295,
+            "writes_per_second": 41533.07084550013
+          },
+          {
+            "first_committed": 262144,
+            "last_committed": 327680,
+            "seconds": 1.574863289,
+            "writes_per_second": 41613.77083188838
+          },
+          {
+            "first_committed": 327680,
+            "last_committed": 393216,
+            "seconds": 1.574930143,
+            "writes_per_second": 41612.00437446958
+          },
+          {
+            "first_committed": 393216,
+            "last_committed": 458752,
+            "seconds": 1.56962048,
+            "writes_per_second": 41752.76815959996
+          },
+          {
+            "first_committed": 458752,
+            "last_committed": 524288,
+            "seconds": 1.572706397,
+            "writes_per_second": 41670.842138756816
+          },
+          {
+            "first_committed": 524288,
+            "last_committed": 589824,
+            "seconds": 1.573138488,
+            "writes_per_second": 41659.39648664931
+          },
+          {
+            "first_committed": 589824,
+            "last_committed": 655360,
+            "seconds": 1.570012252,
+            "writes_per_second": 41742.34940938537
+          },
+          {
+            "first_committed": 655360,
+            "last_committed": 720896,
+            "seconds": 1.574649821,
+            "writes_per_second": 41619.41221850874
+          },
+          {
+            "first_committed": 720896,
+            "last_committed": 786432,
+            "seconds": 1.570476902,
+            "writes_per_second": 41729.99928654793
+          },
+          {
+            "first_committed": 786432,
+            "last_committed": 851968,
+            "seconds": 1.576790222,
+            "writes_per_second": 41562.91628754151
+          },
+          {
+            "first_committed": 851968,
+            "last_committed": 917504,
+            "seconds": 1.571207643,
+            "writes_per_second": 41710.59139889889
+          },
+          {
+            "first_committed": 917504,
+            "last_committed": 983040,
+            "seconds": 1.576408538,
+            "writes_per_second": 41572.979605366745
+          },
+          {
+            "first_committed": 983040,
+            "last_committed": 1048576,
+            "seconds": 1.576670424,
+            "writes_per_second": 41566.074305964146
+          },
+          {
+            "first_committed": 1048576,
+            "last_committed": 1114112,
+            "seconds": 1.573541562,
+            "writes_per_second": 41648.72513230763
+          },
+          {
+            "first_committed": 1114112,
+            "last_committed": 1179648,
+            "seconds": 1.574700764,
+            "writes_per_second": 41618.06579272098
+          },
+          {
+            "first_committed": 1179648,
+            "last_committed": 1245184,
+            "seconds": 1.579765163,
+            "writes_per_second": 41484.64691773938
+          },
+          {
+            "first_committed": 1245184,
+            "last_committed": 1310720,
+            "seconds": 1.576886853,
+            "writes_per_second": 41560.36932854053
+          },
+          {
+            "first_committed": 1310720,
+            "last_committed": 1376256,
+            "seconds": 1.573964559,
+            "writes_per_second": 41637.5321955391
+          },
+          {
+            "first_committed": 1376256,
+            "last_committed": 1441792,
+            "seconds": 1.581295402,
+            "writes_per_second": 41444.50171493005
+          },
+          {
+            "first_committed": 1441792,
+            "last_committed": 1507328,
+            "seconds": 1.577796566,
+            "writes_per_second": 41536.40679174859
+          },
+          {
+            "first_committed": 1507328,
+            "last_committed": 1572864,
+            "seconds": 1.575527295,
+            "writes_per_second": 41596.232707602816
+          },
+          {
+            "first_committed": 1572864,
+            "last_committed": 1638400,
+            "seconds": 1.568463736,
+            "writes_per_second": 41783.56087921691
+          },
+          {
+            "first_committed": 1638400,
+            "last_committed": 1703936,
+            "seconds": 1.571514525,
+            "writes_per_second": 41702.44624369603
+          },
+          {
+            "first_committed": 1703936,
+            "last_committed": 1769472,
+            "seconds": 1.569872436,
+            "writes_per_second": 41746.06706706964
+          },
+          {
+            "first_committed": 1769472,
+            "last_committed": 1835008,
+            "seconds": 1.570196332,
+            "writes_per_second": 41737.455797342926
+          },
+          {
+            "first_committed": 1835008,
+            "last_committed": 1900544,
+            "seconds": 1.571514987,
+            "writes_per_second": 41702.43398385102
+          },
+          {
+            "first_committed": 1900544,
+            "last_committed": 1966080,
+            "seconds": 1.571992096,
+            "writes_per_second": 41689.77704580011
+          },
+          {
+            "first_committed": 1966080,
+            "last_committed": 2031616,
+            "seconds": 1.568505086,
+            "writes_per_second": 41782.45935250987
+          },
+          {
+            "first_committed": 2031616,
+            "last_committed": 2097152,
+            "seconds": 1.567429577,
+            "writes_per_second": 41811.128845375875
+          },
+          {
+            "first_committed": 2097152,
+            "last_committed": 2162688,
+            "seconds": 1.568227406,
+            "writes_per_second": 41789.85761201523
+          },
+          {
+            "first_committed": 2162688,
+            "last_committed": 2228224,
+            "seconds": 1.570322354,
+            "writes_per_second": 41734.10627000474
+          },
+          {
+            "first_committed": 2228224,
+            "last_committed": 2293760,
+            "seconds": 1.568500409,
+            "writes_per_second": 41782.5839406587
+          },
+          {
+            "first_committed": 2293760,
+            "last_committed": 2359296,
+            "seconds": 1.570690628,
+            "writes_per_second": 41724.321029055
+          },
+          {
+            "first_committed": 2359296,
+            "last_committed": 2424832,
+            "seconds": 1.569662358,
+            "writes_per_second": 41751.654211484885
+          },
+          {
+            "first_committed": 2424832,
+            "last_committed": 2490368,
+            "seconds": 1.566820411,
+            "writes_per_second": 41827.38464465919
+          },
+          {
+            "first_committed": 2490368,
+            "last_committed": 2555904,
+            "seconds": 1.570340424,
+            "writes_per_second": 41733.62603317916
+          },
+          {
+            "first_committed": 2555904,
+            "last_committed": 2621440,
+            "seconds": 1.570407833,
+            "writes_per_second": 41731.83463737856
+          },
+          {
+            "first_committed": 2621440,
+            "last_committed": 2686976,
+            "seconds": 1.56981,
+            "writes_per_second": 41747.72743198222
+          },
+          {
+            "first_committed": 2686976,
+            "last_committed": 2752512,
+            "seconds": 1.570430606,
+            "writes_per_second": 41731.22947910759
+          },
+          {
+            "first_committed": 2752512,
+            "last_committed": 2818048,
+            "seconds": 1.573253538,
+            "writes_per_second": 41656.34998877085
+          },
+          {
+            "first_committed": 2818048,
+            "last_committed": 2883584,
+            "seconds": 1.571333773,
+            "writes_per_second": 41707.24331526221
+          },
+          {
+            "first_committed": 2883584,
+            "last_committed": 2949120,
+            "seconds": 1.574724544,
+            "writes_per_second": 41617.43731607196
+          },
+          {
+            "first_committed": 2949120,
+            "last_committed": 3014656,
+            "seconds": 1.569994104,
+            "writes_per_second": 41742.8319208516
+          },
+          {
+            "first_committed": 3014656,
+            "last_committed": 3080192,
+            "seconds": 1.571473568,
+            "writes_per_second": 41703.53312617727
+          },
+          {
+            "first_committed": 3080192,
+            "last_committed": 3145728,
+            "seconds": 1.572633903,
+            "writes_per_second": 41672.763047382934
+          },
+          {
+            "first_committed": 3145728,
+            "last_committed": 3211264,
+            "seconds": 1.575995218,
+            "writes_per_second": 41583.882521653686
+          },
+          {
+            "first_committed": 3211264,
+            "last_committed": 3276800,
+            "seconds": 1.575998898,
+            "writes_per_second": 41583.785422164685
+          },
+          {
+            "first_committed": 3276800,
+            "last_committed": 3342336,
+            "seconds": 1.569024411,
+            "writes_per_second": 41768.62994644638
+          },
+          {
+            "first_committed": 3342336,
+            "last_committed": 3407872,
+            "seconds": 1.5743606,
+            "writes_per_second": 41627.057994210474
+          },
+          {
+            "first_committed": 3407872,
+            "last_committed": 3473408,
+            "seconds": 1.5661652,
+            "writes_per_second": 41844.88328562019
+          },
+          {
+            "first_committed": 3473408,
+            "last_committed": 3538944,
+            "seconds": 1.573520567,
+            "writes_per_second": 41649.28083841182
+          },
+          {
+            "first_committed": 3538944,
+            "last_committed": 3604480,
+            "seconds": 1.56969453,
+            "writes_per_second": 41750.79848179123
+          },
+          {
+            "first_committed": 3604480,
+            "last_committed": 3670016,
+            "seconds": 1.570319819,
+            "writes_per_second": 41734.17364224198
+          },
+          {
+            "first_committed": 3670016,
+            "last_committed": 3735552,
+            "seconds": 1.572450795,
+            "writes_per_second": 41677.61573741327
+          },
+          {
+            "first_committed": 3735552,
+            "last_committed": 3801088,
+            "seconds": 1.572073438,
+            "writes_per_second": 41687.619939291915
+          },
+          {
+            "first_committed": 3801088,
+            "last_committed": 3866624,
+            "seconds": 1.571397917,
+            "writes_per_second": 41705.54083787805
+          },
+          {
+            "first_committed": 3866624,
+            "last_committed": 3932160,
+            "seconds": 1.570210237,
+            "writes_per_second": 41737.086191216826
+          },
+          {
+            "first_committed": 3932160,
+            "last_committed": 3997696,
+            "seconds": 1.570983264,
+            "writes_per_second": 41716.548802139245
+          },
+          {
+            "first_committed": 3997696,
+            "last_committed": 4063232,
+            "seconds": 1.569290099,
+            "writes_per_second": 41761.558326125654
+          },
+          {
+            "first_committed": 4063232,
+            "last_committed": 4128768,
+            "seconds": 1.570839954,
+            "writes_per_second": 41720.35466319696
+          },
+          {
+            "first_committed": 4128768,
+            "last_committed": 4194304,
+            "seconds": 1.567640008,
+            "writes_per_second": 41805.51635934007
+          },
+          {
+            "first_committed": 4194304,
+            "last_committed": 4259840,
+            "seconds": 1.57507635,
+            "writes_per_second": 41608.141725955065
+          },
+          {
+            "first_committed": 4259840,
+            "last_committed": 4325376,
+            "seconds": 1.573853645,
+            "writes_per_second": 41640.46651237384
+          },
+          {
+            "first_committed": 4325376,
+            "last_committed": 4390912,
+            "seconds": 1.567522718,
+            "writes_per_second": 41808.644460105366
+          },
+          {
+            "first_committed": 4390912,
+            "last_committed": 4456448,
+            "seconds": 1.573146407,
+            "writes_per_second": 41659.186779047195
+          },
+          {
+            "first_committed": 4456448,
+            "last_committed": 4521984,
+            "seconds": 1.573497145,
+            "writes_per_second": 41649.90080105929
+          },
+          {
+            "first_committed": 4521984,
+            "last_committed": 4587520,
+            "seconds": 1.575952608,
+            "writes_per_second": 41585.00685066286
+          },
+          {
+            "first_committed": 4587520,
+            "last_committed": 4653056,
+            "seconds": 1.573767076,
+            "writes_per_second": 41642.75705053573
+          },
+          {
+            "first_committed": 4653056,
+            "last_committed": 4718592,
+            "seconds": 1.571621248,
+            "writes_per_second": 41699.61438444487
+          },
+          {
+            "first_committed": 4718592,
+            "last_committed": 4784128,
+            "seconds": 1.56784223,
+            "writes_per_second": 41800.12423826599
+          },
+          {
+            "first_committed": 4784128,
+            "last_committed": 4849664,
+            "seconds": 1.571653101,
+            "writes_per_second": 41698.769250225276
+          },
+          {
+            "first_committed": 4849664,
+            "last_committed": 4915200,
+            "seconds": 1.570956758,
+            "writes_per_second": 41717.25266546134
+          },
+          {
+            "first_committed": 4915200,
+            "last_committed": 4980736,
+            "seconds": 1.570332748,
+            "writes_per_second": 41733.83003281799
+          },
+          {
+            "first_committed": 4980736,
+            "last_committed": 5046272,
+            "seconds": 1.568207869,
+            "writes_per_second": 41790.37823715957
+          },
+          {
+            "first_committed": 5046272,
+            "last_committed": 5111808,
+            "seconds": 1.573078017,
+            "writes_per_second": 41660.99792366497
+          },
+          {
+            "first_committed": 5111808,
+            "last_committed": 5177344,
+            "seconds": 1.570527323,
+            "writes_per_second": 41728.65956563813
+          },
+          {
+            "first_committed": 5177344,
+            "last_committed": 5242880,
+            "seconds": 1.569960685,
+            "writes_per_second": 41743.72048049088
+          },
+          {
+            "first_committed": 5242880,
+            "last_committed": 5308416,
+            "seconds": 1.569608001,
+            "writes_per_second": 41753.10011050332
+          },
+          {
+            "first_committed": 5308416,
+            "last_committed": 5373952,
+            "seconds": 1.57384929,
+            "writes_per_second": 41640.58173575184
+          },
+          {
+            "first_committed": 5373952,
+            "last_committed": 5439488,
+            "seconds": 1.57459798,
+            "writes_per_second": 41620.78246791603
+          },
+          {
+            "first_committed": 5439488,
+            "last_committed": 5505024,
+            "seconds": 1.574885673,
+            "writes_per_second": 41613.1793714019
+          },
+          {
+            "first_committed": 5505024,
+            "last_committed": 5570560,
+            "seconds": 1.572463543,
+            "writes_per_second": 41677.27785597379
+          },
+          {
+            "first_committed": 5570560,
+            "last_committed": 5636096,
+            "seconds": 1.572989795,
+            "writes_per_second": 41663.33450370541
+          },
+          {
+            "first_committed": 5636096,
+            "last_committed": 5701632,
+            "seconds": 1.570589826,
+            "writes_per_second": 41726.998937022276
+          },
+          {
+            "first_committed": 5701632,
+            "last_committed": 5767168,
+            "seconds": 1.575995466,
+            "writes_per_second": 41583.87597797823
+          },
+          {
+            "first_committed": 5767168,
+            "last_committed": 5832704,
+            "seconds": 1.564100484,
+            "writes_per_second": 41900.121296810496
+          },
+          {
+            "first_committed": 5832704,
+            "last_committed": 5898240,
+            "seconds": 1.576098249,
+            "writes_per_second": 41581.164144799455
+          },
+          {
+            "first_committed": 5898240,
+            "last_committed": 5963776,
+            "seconds": 1.575760066,
+            "writes_per_second": 41590.08811941805
+          },
+          {
+            "first_committed": 5963776,
+            "last_committed": 6029312,
+            "seconds": 1.574475214,
+            "writes_per_second": 41624.02775049338
+          },
+          {
+            "first_committed": 6029312,
+            "last_committed": 6094848,
+            "seconds": 1.574972432,
+            "writes_per_second": 41610.887065990246
+          },
+          {
+            "first_committed": 6094848,
+            "last_committed": 6160384,
+            "seconds": 1.575275976,
+            "writes_per_second": 41602.868956594815
+          },
+          {
+            "first_committed": 6160384,
+            "last_committed": 6225920,
+            "seconds": 1.573274808,
+            "writes_per_second": 41655.786812802
+          },
+          {
+            "first_committed": 6225920,
+            "last_committed": 6291456,
+            "seconds": 1.57285755,
+            "writes_per_second": 41666.837534015714
+          },
+          {
+            "first_committed": 6291456,
+            "last_committed": 6356992,
+            "seconds": 1.577087958,
+            "writes_per_second": 41555.06968876368
+          },
+          {
+            "first_committed": 6356992,
+            "last_committed": 6422528,
+            "seconds": 1.573998245,
+            "writes_per_second": 41636.64108786856
+          },
+          {
+            "first_committed": 6422528,
+            "last_committed": 6488064,
+            "seconds": 1.577765464,
+            "writes_per_second": 41537.22558602031
+          },
+          {
+            "first_committed": 6488064,
+            "last_committed": 6553600,
+            "seconds": 1.573220129,
+            "writes_per_second": 41657.23460559663
+          },
+          {
+            "first_committed": 6553600,
+            "last_committed": 6619136,
+            "seconds": 1.574869646,
+            "writes_per_second": 41613.60285688051
+          },
+          {
+            "first_committed": 6619136,
+            "last_committed": 6684672,
+            "seconds": 1.573061792,
+            "writes_per_second": 41661.427626868455
+          },
+          {
+            "first_committed": 6684672,
+            "last_committed": 6750208,
+            "seconds": 1.573293882,
+            "writes_per_second": 41655.28179432658
+          },
+          {
+            "first_committed": 6750208,
+            "last_committed": 6815744,
+            "seconds": 1.569624969,
+            "writes_per_second": 41752.64875007222
+          },
+          {
+            "first_committed": 6815744,
+            "last_committed": 6881280,
+            "seconds": 1.56854383,
+            "writes_per_second": 41781.42729999454
+          },
+          {
+            "first_committed": 6881280,
+            "last_committed": 6946816,
+            "seconds": 1.570725838,
+            "writes_per_second": 41723.38572048116
+          },
+          {
+            "first_committed": 6946816,
+            "last_committed": 7012352,
+            "seconds": 1.5707044,
+            "writes_per_second": 41723.955188512875
+          },
+          {
+            "first_committed": 7012352,
+            "last_committed": 7077888,
+            "seconds": 1.570342003,
+            "writes_per_second": 41733.58406945701
+          },
+          {
+            "first_committed": 7077888,
+            "last_committed": 7143424,
+            "seconds": 1.576384506,
+            "writes_per_second": 41573.613385920966
+          },
+          {
+            "first_committed": 7143424,
+            "last_committed": 7208960,
+            "seconds": 1.576549436,
+            "writes_per_second": 41569.26418132314
+          },
+          {
+            "first_committed": 7208960,
+            "last_committed": 7274496,
+            "seconds": 1.573691703,
+            "writes_per_second": 41644.75155779607
+          },
+          {
+            "first_committed": 7274496,
+            "last_committed": 7340032,
+            "seconds": 1.576476347,
+            "writes_per_second": 41571.191426191435
+          },
+          {
+            "first_committed": 7340032,
+            "last_committed": 7405568,
+            "seconds": 1.571462019,
+            "writes_per_second": 41703.839614083605
+          },
+          {
+            "first_committed": 7405568,
+            "last_committed": 7471104,
+            "seconds": 1.573784977,
+            "writes_per_second": 41642.28338545132
+          },
+          {
+            "first_committed": 7471104,
+            "last_committed": 7536640,
+            "seconds": 1.572940521,
+            "writes_per_second": 41664.6396510501
+          },
+          {
+            "first_committed": 7536640,
+            "last_committed": 7602176,
+            "seconds": 1.572930209,
+            "writes_per_second": 41664.91280097222
+          },
+          {
+            "first_committed": 7602176,
+            "last_committed": 7667712,
+            "seconds": 1.576497162,
+            "writes_per_second": 41570.642548356205
+          },
+          {
+            "first_committed": 7667712,
+            "last_committed": 7733248,
+            "seconds": 1.571877743,
+            "writes_per_second": 41692.80994775177
+          },
+          {
+            "first_committed": 7733248,
+            "last_committed": 7798784,
+            "seconds": 1.575286087,
+            "writes_per_second": 41602.601927887146
+          },
+          {
+            "first_committed": 7798784,
+            "last_committed": 7864320,
+            "seconds": 1.574373626,
+            "writes_per_second": 41626.71358164634
+          },
+          {
+            "first_committed": 7864320,
+            "last_committed": 7929856,
+            "seconds": 1.571062396,
+            "writes_per_second": 41714.447603645654
+          },
+          {
+            "first_committed": 7929856,
+            "last_committed": 7995392,
+            "seconds": 1.576709571,
+            "writes_per_second": 41565.04229148235
+          },
+          {
+            "first_committed": 7995392,
+            "last_committed": 8060928,
+            "seconds": 1.573095949,
+            "writes_per_second": 41660.5230225534
+          },
+          {
+            "first_committed": 8060928,
+            "last_committed": 8126464,
+            "seconds": 1.575427201,
+            "writes_per_second": 41598.875503990996
+          },
+          {
+            "first_committed": 8126464,
+            "last_committed": 8192000,
+            "seconds": 1.577757359,
+            "writes_per_second": 41537.43896433951
+          },
+          {
+            "first_committed": 8192000,
+            "last_committed": 8257536,
+            "seconds": 1.577034465,
+            "writes_per_second": 41556.47923648897
+          },
+          {
+            "first_committed": 8257536,
+            "last_committed": 8323072,
+            "seconds": 1.573210329,
+            "writes_per_second": 41657.49410103193
+          },
+          {
+            "first_committed": 8323072,
+            "last_committed": 8388608,
+            "seconds": 1.578587509,
+            "writes_per_second": 41515.59519276545
+          },
+          {
+            "first_committed": 8388608,
+            "last_committed": 8454144,
+            "seconds": 1.572978182,
+            "writes_per_second": 41663.64209621313
+          },
+          {
+            "first_committed": 8454144,
+            "last_committed": 8519680,
+            "seconds": 1.579469316,
+            "writes_per_second": 41492.417317716354
+          },
+          {
+            "first_committed": 8519680,
+            "last_committed": 8585216,
+            "seconds": 1.579022309,
+            "writes_per_second": 41504.16344750959
+          },
+          {
+            "first_committed": 8585216,
+            "last_committed": 8650752,
+            "seconds": 1.588629863,
+            "writes_per_second": 41253.15879196714
+          },
+          {
+            "first_committed": 8650752,
+            "last_committed": 8716288,
+            "seconds": 1.575407919,
+            "writes_per_second": 41599.38464800874
+          },
+          {
+            "first_committed": 8716288,
+            "last_committed": 8781824,
+            "seconds": 1.581069128,
+            "writes_per_second": 41450.433026227554
+          },
+          {
+            "first_committed": 8781824,
+            "last_committed": 8847360,
+            "seconds": 1.573129111,
+            "writes_per_second": 41659.64480711971
+          },
+          {
+            "first_committed": 8847360,
+            "last_committed": 8912896,
+            "seconds": 1.57170761,
+            "writes_per_second": 41697.32307906812
+          },
+          {
+            "first_committed": 8912896,
+            "last_committed": 8978432,
+            "seconds": 1.573558353,
+            "writes_per_second": 41648.280710438965
+          },
+          {
+            "first_committed": 8978432,
+            "last_committed": 9043968,
+            "seconds": 1.573790426,
+            "writes_per_second": 41642.139205642874
+          },
+          {
+            "first_committed": 9043968,
+            "last_committed": 9109504,
+            "seconds": 1.577675652,
+            "writes_per_second": 41539.590166661204
+          },
+          {
+            "first_committed": 9109504,
+            "last_committed": 9175040,
+            "seconds": 1.569356047,
+            "writes_per_second": 41759.80340807901
+          },
+          {
+            "first_committed": 9175040,
+            "last_committed": 9240576,
+            "seconds": 1.578780604,
+            "writes_per_second": 41510.517569038995
+          },
+          {
+            "first_committed": 9240576,
+            "last_committed": 9306112,
+            "seconds": 1.573898969,
+            "writes_per_second": 41639.26738044645
+          },
+          {
+            "first_committed": 9306112,
+            "last_committed": 9371648,
+            "seconds": 1.577317995,
+            "writes_per_second": 41549.009272540505
+          },
+          {
+            "first_committed": 9371648,
+            "last_committed": 9437184,
+            "seconds": 1.573927029,
+            "writes_per_second": 41638.52503482231
+          },
+          {
+            "first_committed": 9437184,
+            "last_committed": 9502720,
+            "seconds": 1.578894248,
+            "writes_per_second": 41507.529768390166
+          },
+          {
+            "first_committed": 9502720,
+            "last_committed": 9568256,
+            "seconds": 1.570309003,
+            "writes_per_second": 41734.461099564876
+          },
+          {
+            "first_committed": 9568256,
+            "last_committed": 9633792,
+            "seconds": 1.580720429,
+            "writes_per_second": 41459.57678389693
+          },
+          {
+            "first_committed": 9633792,
+            "last_committed": 9699328,
+            "seconds": 1.582046461,
+            "writes_per_second": 41424.826397686935
+          },
+          {
+            "first_committed": 9699328,
+            "last_committed": 9764864,
+            "seconds": 1.576169147,
+            "writes_per_second": 41579.29377360157
+          },
+          {
+            "first_committed": 9764864,
+            "last_committed": 9830400,
+            "seconds": 1.570551534,
+            "writes_per_second": 41728.01629316036
+          },
+          {
+            "first_committed": 9830400,
+            "last_committed": 9895936,
+            "seconds": 1.57325637,
+            "writes_per_second": 41656.275003672796
+          },
+          {
+            "first_committed": 9895936,
+            "last_committed": 9961472,
+            "seconds": 1.575001938,
+            "writes_per_second": 41610.10752991213
+          },
+          {
+            "first_committed": 9961472,
+            "last_committed": 10027008,
+            "seconds": 1.576205498,
+            "writes_per_second": 41578.33485745144
+          },
+          {
+            "first_committed": 10027008,
+            "last_committed": 10092544,
+            "seconds": 1.579277583,
+            "writes_per_second": 41497.45472579154
+          },
+          {
+            "first_committed": 10092544,
+            "last_committed": 10158080,
+            "seconds": 1.576302439,
+            "writes_per_second": 41575.777832061074
+          },
+          {
+            "first_committed": 10158080,
+            "last_committed": 10223616,
+            "seconds": 1.571289267,
+            "writes_per_second": 41708.42465253089
+          },
+          {
+            "first_committed": 10223616,
+            "last_committed": 10289152,
+            "seconds": 1.573716099,
+            "writes_per_second": 41644.10597416148
+          },
+          {
+            "first_committed": 10289152,
+            "last_committed": 10354688,
+            "seconds": 1.572523127,
+            "writes_per_second": 41675.698674796025
+          },
+          {
+            "first_committed": 10354688,
+            "last_committed": 10420224,
+            "seconds": 1.575616978,
+            "writes_per_second": 41593.8650795625
+          },
+          {
+            "first_committed": 10420224,
+            "last_committed": 10485760,
+            "seconds": 1.576758217,
+            "writes_per_second": 41563.75993060704
+          },
+          {
+            "first_committed": 10485760,
+            "last_committed": 10551296,
+            "seconds": 1.578746043,
+            "writes_per_second": 41511.42629340544
+          },
+          {
+            "first_committed": 10551296,
+            "last_committed": 10616832,
+            "seconds": 1.580076938,
+            "writes_per_second": 41476.46131899939
+          },
+          {
+            "first_committed": 10616832,
+            "last_committed": 10682368,
+            "seconds": 1.576968765,
+            "writes_per_second": 41558.21057115231
+          },
+          {
+            "first_committed": 10682368,
+            "last_committed": 10747904,
+            "seconds": 1.57473658,
+            "writes_per_second": 41617.1192263788
+          },
+          {
+            "first_committed": 10747904,
+            "last_committed": 10813440,
+            "seconds": 1.573706952,
+            "writes_per_second": 41644.34802598495
+          },
+          {
+            "first_committed": 10813440,
+            "last_committed": 10878976,
+            "seconds": 1.573527431,
+            "writes_per_second": 41649.099157013676
+          },
+          {
+            "first_committed": 10878976,
+            "last_committed": 10944512,
+            "seconds": 1.574208803,
+            "writes_per_second": 41631.0719868335
+          },
+          {
+            "first_committed": 10944512,
+            "last_committed": 11010048,
+            "seconds": 1.574926088,
+            "writes_per_second": 41612.11151389601
+          },
+          {
+            "first_committed": 11010048,
+            "last_committed": 11075584,
+            "seconds": 1.576420981,
+            "writes_per_second": 41572.65146168465
+          },
+          {
+            "first_committed": 11075584,
+            "last_committed": 11141120,
+            "seconds": 1.570424896,
+            "writes_per_second": 41731.381212132794
+          },
+          {
+            "first_committed": 11141120,
+            "last_committed": 11206656,
+            "seconds": 1.575021532,
+            "writes_per_second": 41609.58988083218
+          },
+          {
+            "first_committed": 11206656,
+            "last_committed": 11272192,
+            "seconds": 1.57491019,
+            "writes_per_second": 41612.5315691811
+          },
+          {
+            "first_committed": 11272192,
+            "last_committed": 11337728,
+            "seconds": 1.573020734,
+            "writes_per_second": 41662.51504730643
+          },
+          {
+            "first_committed": 11337728,
+            "last_committed": 11403264,
+            "seconds": 1.57305099,
+            "writes_per_second": 41661.71371215373
+          },
+          {
+            "first_committed": 11403264,
+            "last_committed": 11468800,
+            "seconds": 1.575280164,
+            "writes_per_second": 41602.75835225968
+          },
+          {
+            "first_committed": 11468800,
+            "last_committed": 11534336,
+            "seconds": 1.572541419,
+            "writes_per_second": 41675.21389781594
+          },
+          {
+            "first_committed": 11534336,
+            "last_committed": 11599872,
+            "seconds": 1.572954024,
+            "writes_per_second": 41664.28198158194
+          },
+          {
+            "first_committed": 11599872,
+            "last_committed": 11665408,
+            "seconds": 1.57703606,
+            "writes_per_second": 41556.43720664193
+          },
+          {
+            "first_committed": 11665408,
+            "last_committed": 11730944,
+            "seconds": 1.575258627,
+            "writes_per_second": 41603.327146863485
+          },
+          {
+            "first_committed": 11730944,
+            "last_committed": 11796480,
+            "seconds": 1.572977331,
+            "writes_per_second": 41663.664636753754
+          },
+          {
+            "first_committed": 11796480,
+            "last_committed": 11862016,
+            "seconds": 1.570458014,
+            "writes_per_second": 41730.50117594548
+          },
+          {
+            "first_committed": 11862016,
+            "last_committed": 11927552,
+            "seconds": 1.571083744,
+            "writes_per_second": 41713.88078470246
+          },
+          {
+            "first_committed": 11927552,
+            "last_committed": 11993088,
+            "seconds": 1.575382702,
+            "writes_per_second": 41600.05052537387
+          },
+          {
+            "first_committed": 11993088,
+            "last_committed": 12058624,
+            "seconds": 1.576453996,
+            "writes_per_second": 41571.78082347289
+          },
+          {
+            "first_committed": 12058624,
+            "last_committed": 12124160,
+            "seconds": 1.576398911,
+            "writes_per_second": 41573.23348975594
+          },
+          {
+            "first_committed": 12124160,
+            "last_committed": 12189696,
+            "seconds": 1.574608792,
+            "writes_per_second": 41620.49668016841
+          },
+          {
+            "first_committed": 12189696,
+            "last_committed": 12255232,
+            "seconds": 1.578717823,
+            "writes_per_second": 41512.16832116552
+          },
+          {
+            "first_committed": 12255232,
+            "last_committed": 12320768,
+            "seconds": 1.571203217,
+            "writes_per_second": 41710.70889552538
+          },
+          {
+            "first_committed": 12320768,
+            "last_committed": 12386304,
+            "seconds": 1.570521203,
+            "writes_per_second": 41728.822173692104
+          },
+          {
+            "first_committed": 12386304,
+            "last_committed": 12451840,
+            "seconds": 1.576281649,
+            "writes_per_second": 41576.32618610787
+          },
+          {
+            "first_committed": 12451840,
+            "last_committed": 12517376,
+            "seconds": 1.573117445,
+            "writes_per_second": 41659.95374871709
+          },
+          {
+            "first_committed": 12517376,
+            "last_committed": 12582912,
+            "seconds": 1.571317983,
+            "writes_per_second": 41707.66242672092
+          },
+          {
+            "first_committed": 12582912,
+            "last_committed": 12648448,
+            "seconds": 1.572184957,
+            "writes_per_second": 41684.66293244148
+          },
+          {
+            "first_committed": 12648448,
+            "last_committed": 12713984,
+            "seconds": 1.567949702,
+            "writes_per_second": 41797.25913172182
+          },
+          {
+            "first_committed": 12713984,
+            "last_committed": 12779520,
+            "seconds": 1.569009603,
+            "writes_per_second": 41769.02415045321
+          },
+          {
+            "first_committed": 12779520,
+            "last_committed": 12845056,
+            "seconds": 1.575161737,
+            "writes_per_second": 41605.88621509919
+          },
+          {
+            "first_committed": 12845056,
+            "last_committed": 12910592,
+            "seconds": 1.573854348,
+            "writes_per_second": 41640.447912655254
+          },
+          {
+            "first_committed": 12910592,
+            "last_committed": 12976128,
+            "seconds": 1.572899741,
+            "writes_per_second": 41665.71987502158
+          },
+          {
+            "first_committed": 12976128,
+            "last_committed": 13041664,
+            "seconds": 1.571420089,
+            "writes_per_second": 41704.952392268926
+          },
+          {
+            "first_committed": 13041664,
+            "last_committed": 13107200,
+            "seconds": 1.573645769,
+            "writes_per_second": 41645.96714904013
+          },
+          {
+            "first_committed": 13107200,
+            "last_committed": 13172736,
+            "seconds": 1.573447896,
+            "writes_per_second": 41651.204445094634
+          },
+          {
+            "first_committed": 13172736,
+            "last_committed": 13238272,
+            "seconds": 1.571066197,
+            "writes_per_second": 41714.346680708324
+          },
+          {
+            "first_committed": 13238272,
+            "last_committed": 13303808,
+            "seconds": 1.569528977,
+            "writes_per_second": 41755.20233163558
+          },
+          {
+            "first_committed": 13303808,
+            "last_committed": 13369344,
+            "seconds": 1.57075608,
+            "writes_per_second": 41722.5824139417
+          },
+          {
+            "first_committed": 13369344,
+            "last_committed": 13434880,
+            "seconds": 1.570185197,
+            "writes_per_second": 41737.751779352686
+          },
+          {
+            "first_committed": 13434880,
+            "last_committed": 13500416,
+            "seconds": 1.577199502,
+            "writes_per_second": 41552.13079695735
+          },
+          {
+            "first_committed": 13500416,
+            "last_committed": 13565952,
+            "seconds": 1.568082562,
+            "writes_per_second": 41793.7177468593
+          },
+          {
+            "first_committed": 13565952,
+            "last_committed": 13631488,
+            "seconds": 1.569846888,
+            "writes_per_second": 41746.74645085515
+          },
+          {
+            "first_committed": 13631488,
+            "last_committed": 13697024,
+            "seconds": 1.568325635,
+            "writes_per_second": 41787.24018625124
+          },
+          {
+            "first_committed": 13697024,
+            "last_committed": 13762560,
+            "seconds": 1.573576431,
+            "writes_per_second": 41647.80223503488
+          },
+          {
+            "first_committed": 13762560,
+            "last_committed": 13828096,
+            "seconds": 1.57044803,
+            "writes_per_second": 41730.76647432898
+          },
+          {
+            "first_committed": 13828096,
+            "last_committed": 13893632,
+            "seconds": 1.573926893,
+            "writes_per_second": 41638.528632727284
+          },
+          {
+            "first_committed": 13893632,
+            "last_committed": 13959168,
+            "seconds": 1.568392316,
+            "writes_per_second": 41785.46358040178
+          },
+          {
+            "first_committed": 13959168,
+            "last_committed": 14024704,
+            "seconds": 1.573197984,
+            "writes_per_second": 41657.82099044439
+          },
+          {
+            "first_committed": 14024704,
+            "last_committed": 14090240,
+            "seconds": 1.57030833,
+            "writes_per_second": 41734.47898604728
+          },
+          {
+            "first_committed": 14090240,
+            "last_committed": 14155776,
+            "seconds": 1.57214091,
+            "writes_per_second": 41685.83082034295
+          },
+          {
+            "first_committed": 14155776,
+            "last_committed": 14221312,
+            "seconds": 1.571027167,
+            "writes_per_second": 41715.383016034124
+          },
+          {
+            "first_committed": 14221312,
+            "last_committed": 14286848,
+            "seconds": 1.57514367,
+            "writes_per_second": 41606.36343731108
+          },
+          {
+            "first_committed": 14286848,
+            "last_committed": 14352384,
+            "seconds": 1.57117507,
+            "writes_per_second": 41711.45612691016
+          },
+          {
+            "first_committed": 14352384,
+            "last_committed": 14417920,
+            "seconds": 1.572882255,
+            "writes_per_second": 41666.18307992801
+          },
+          {
+            "first_committed": 14417920,
+            "last_committed": 14483456,
+            "seconds": 1.571717235,
+            "writes_per_second": 41697.067729870636
+          },
+          {
+            "first_committed": 14483456,
+            "last_committed": 14548992,
+            "seconds": 1.573509595,
+            "writes_per_second": 41649.5712566659
+          },
+          {
+            "first_committed": 14548992,
+            "last_committed": 14614528,
+            "seconds": 1.572070353,
+            "writes_per_second": 41687.701746258936
+          },
+          {
+            "first_committed": 14614528,
+            "last_committed": 14680064,
+            "seconds": 1.572375575,
+            "writes_per_second": 41679.60952967614
+          },
+          {
+            "first_committed": 14680064,
+            "last_committed": 14745600,
+            "seconds": 1.577091609,
+            "writes_per_second": 41554.973487909796
+          },
+          {
+            "first_committed": 14745600,
+            "last_committed": 14811136,
+            "seconds": 1.576450751,
+            "writes_per_second": 41571.86639571717
+          },
+          {
+            "first_committed": 14811136,
+            "last_committed": 14876672,
+            "seconds": 1.575149992,
+            "writes_per_second": 41606.19644659211
+          },
+          {
+            "first_committed": 14876672,
+            "last_committed": 14942208,
+            "seconds": 1.574797796,
+            "writes_per_second": 41615.50147356188
+          },
+          {
+            "first_committed": 14942208,
+            "last_committed": 15007744,
+            "seconds": 1.572450366,
+            "writes_per_second": 41677.627108008826
+          },
+          {
+            "first_committed": 15007744,
+            "last_committed": 15073280,
+            "seconds": 1.571603256,
+            "writes_per_second": 41700.09176921685
+          },
+          {
+            "first_committed": 15073280,
+            "last_committed": 15138816,
+            "seconds": 1.57156351,
+            "writes_per_second": 41701.146395286305
+          },
+          {
+            "first_committed": 15138816,
+            "last_committed": 15204352,
+            "seconds": 1.57710123,
+            "writes_per_second": 41554.71998458843
+          },
+          {
+            "first_committed": 15204352,
+            "last_committed": 15269888,
+            "seconds": 1.574783121,
+            "writes_per_second": 41615.88927774646
+          },
+          {
+            "first_committed": 15269888,
+            "last_committed": 15335424,
+            "seconds": 1.572139685,
+            "writes_per_second": 41685.86330164422
+          },
+          {
+            "first_committed": 15335424,
+            "last_committed": 15400960,
+            "seconds": 1.570128829,
+            "writes_per_second": 41739.25017461099
+          },
+          {
+            "first_committed": 15400960,
+            "last_committed": 15466496,
+            "seconds": 1.567267275,
+            "writes_per_second": 41815.45869385935
+          },
+          {
+            "first_committed": 15466496,
+            "last_committed": 15532032,
+            "seconds": 1.567554351,
+            "writes_per_second": 41807.800768242705
+          },
+          {
+            "first_committed": 15532032,
+            "last_committed": 15597568,
+            "seconds": 1.572583791,
+            "writes_per_second": 41674.09099284046
+          },
+          {
+            "first_committed": 15597568,
+            "last_committed": 15663104,
+            "seconds": 1.570965012,
+            "writes_per_second": 41717.03347903715
+          },
+          {
+            "first_committed": 15663104,
+            "last_committed": 15728640,
+            "seconds": 1.575191759,
+            "writes_per_second": 41605.09323741326
+          },
+          {
+            "first_committed": 15728640,
+            "last_committed": 15794176,
+            "seconds": 1.569030661,
+            "writes_per_second": 41768.463567328596
+          },
+          {
+            "first_committed": 15794176,
+            "last_committed": 15859712,
+            "seconds": 1.569941037,
+            "writes_per_second": 41744.24290814942
+          },
+          {
+            "first_committed": 15859712,
+            "last_committed": 15925248,
+            "seconds": 1.572064657,
+            "writes_per_second": 41687.85279166797
+          },
+          {
+            "first_committed": 15925248,
+            "last_committed": 15990784,
+            "seconds": 1.571256812,
+            "writes_per_second": 41709.28615837244
+          },
+          {
+            "first_committed": 15990784,
+            "last_committed": 16056320,
+            "seconds": 1.568400114,
+            "writes_per_second": 41785.25582535121
+          },
+          {
+            "first_committed": 16056320,
+            "last_committed": 16121856,
+            "seconds": 1.570766221,
+            "writes_per_second": 41722.31304940954
+          },
+          {
+            "first_committed": 16121856,
+            "last_committed": 16187392,
+            "seconds": 1.570669964,
+            "writes_per_second": 41724.869961287426
+          },
+          {
+            "first_committed": 16187392,
+            "last_committed": 16252928,
+            "seconds": 1.568470028,
+            "writes_per_second": 41783.393262265134
+          },
+          {
+            "first_committed": 16252928,
+            "last_committed": 16318464,
+            "seconds": 1.571209915,
+            "writes_per_second": 41710.531084575035
+          },
+          {
+            "first_committed": 16318464,
+            "last_committed": 16384000,
+            "seconds": 1.57582406,
+            "writes_per_second": 41588.39915161595
+          },
+          {
+            "first_committed": 16384000,
+            "last_committed": 16449536,
+            "seconds": 1.569819009,
+            "writes_per_second": 41747.48784686172
+          },
+          {
+            "first_committed": 16449536,
+            "last_committed": 16515072,
+            "seconds": 1.573658973,
+            "writes_per_second": 41645.617712879146
+          },
+          {
+            "first_committed": 16515072,
+            "last_committed": 16580608,
+            "seconds": 1.569076947,
+            "writes_per_second": 41767.23144476865
+          },
+          {
+            "first_committed": 16580608,
+            "last_committed": 16646144,
+            "seconds": 1.575928865,
+            "writes_per_second": 41585.63337184639
+          },
+          {
+            "first_committed": 16646144,
+            "last_committed": 16711680,
+            "seconds": 1.569646644,
+            "writes_per_second": 41752.07219440912
+          },
+          {
+            "first_committed": 16711680,
+            "last_committed": 16777216,
+            "seconds": 1.569904312,
+            "writes_per_second": 41745.21943729778
+          },
+          {
+            "first_committed": 16777216,
+            "last_committed": 16842752,
+            "seconds": 1.570230119,
+            "writes_per_second": 41736.55772297665
+          },
+          {
+            "first_committed": 16842752,
+            "last_committed": 16908288,
+            "seconds": 1.573797316,
+            "writes_per_second": 41641.95689859722
+          },
+          {
+            "first_committed": 16908288,
+            "last_committed": 16973824,
+            "seconds": 1.57197805,
+            "writes_per_second": 41690.14955393302
+          },
+          {
+            "first_committed": 16973824,
+            "last_committed": 17039360,
+            "seconds": 1.575668291,
+            "writes_per_second": 41592.51053938992
+          },
+          {
+            "first_committed": 17039360,
+            "last_committed": 17104896,
+            "seconds": 1.572030671,
+            "writes_per_second": 41688.75404848892
+          },
+          {
+            "first_committed": 17104896,
+            "last_committed": 17170432,
+            "seconds": 1.573677981,
+            "writes_per_second": 41645.11468753912
+          },
+          {
+            "first_committed": 17170432,
+            "last_committed": 17235968,
+            "seconds": 1.572858207,
+            "writes_per_second": 41666.82012932397
+          },
+          {
+            "first_committed": 17235968,
+            "last_committed": 17301504,
+            "seconds": 1.574242036,
+            "writes_per_second": 41630.193135053596
+          },
+          {
+            "first_committed": 17301504,
+            "last_committed": 17367040,
+            "seconds": 1.575462682,
+            "writes_per_second": 41597.93865558537
+          },
+          {
+            "first_committed": 17367040,
+            "last_committed": 17432576,
+            "seconds": 1.573039967,
+            "writes_per_second": 41662.005654558176
+          },
+          {
+            "first_committed": 17432576,
+            "last_committed": 17498112,
+            "seconds": 1.569829842,
+            "writes_per_second": 41747.19975797224
+          },
+          {
+            "first_committed": 17498112,
+            "last_committed": 17563648,
+            "seconds": 1.570896535,
+            "writes_per_second": 41718.85196754858
+          },
+          {
+            "first_committed": 17563648,
+            "last_committed": 17629184,
+            "seconds": 1.577191542,
+            "writes_per_second": 41552.340508303336
+          },
+          {
+            "first_committed": 17629184,
+            "last_committed": 17694720,
+            "seconds": 1.57385239,
+            "writes_per_second": 41640.49971674917
+          },
+          {
+            "first_committed": 17694720,
+            "last_committed": 17760256,
+            "seconds": 1.575528885,
+            "writes_per_second": 41596.19072931183
+          },
+          {
+            "first_committed": 17760256,
+            "last_committed": 17825792,
+            "seconds": 1.572979143,
+            "writes_per_second": 41663.61664211844
+          },
+          {
+            "first_committed": 17825792,
+            "last_committed": 17891328,
+            "seconds": 1.574642267,
+            "writes_per_second": 41619.61187848643
+          },
+          {
+            "first_committed": 17891328,
+            "last_committed": 17956864,
+            "seconds": 1.574250255,
+            "writes_per_second": 41629.97578806173
+          },
+          {
+            "first_committed": 17956864,
+            "last_committed": 18022400,
+            "seconds": 1.571610983,
+            "writes_per_second": 41699.88674608289
+          },
+          {
+            "first_committed": 18022400,
+            "last_committed": 18087936,
+            "seconds": 1.572891972,
+            "writes_per_second": 41665.9256749007
+          },
+          {
+            "first_committed": 18087936,
+            "last_committed": 18153472,
+            "seconds": 1.569843888,
+            "writes_per_second": 41746.826229640996
+          },
+          {
+            "first_committed": 18153472,
+            "last_committed": 18219008,
+            "seconds": 1.569640072,
+            "writes_per_second": 41752.24700812811
+          },
+          {
+            "first_committed": 18219008,
+            "last_committed": 18284544,
+            "seconds": 1.566973474,
+            "writes_per_second": 41823.29891820491
+          },
+          {
+            "first_committed": 18284544,
+            "last_committed": 18350080,
+            "seconds": 1.571979581,
+            "writes_per_second": 41690.10895059457
+          },
+          {
+            "first_committed": 18350080,
+            "last_committed": 18415616,
+            "seconds": 1.571248712,
+            "writes_per_second": 41709.5011753938
+          },
+          {
+            "first_committed": 18415616,
+            "last_committed": 18481152,
+            "seconds": 1.568216889,
+            "writes_per_second": 41790.13786912481
+          },
+          {
+            "first_committed": 18481152,
+            "last_committed": 18546688,
+            "seconds": 1.574140361,
+            "writes_per_second": 41632.882062922974
+          },
+          {
+            "first_committed": 18546688,
+            "last_committed": 18612224,
+            "seconds": 1.570762394,
+            "writes_per_second": 41722.41470150705
+          },
+          {
+            "first_committed": 18612224,
+            "last_committed": 18677760,
+            "seconds": 1.571195808,
+            "writes_per_second": 41710.90558306785
+          },
+          {
+            "first_committed": 18677760,
+            "last_committed": 18743296,
+            "seconds": 1.574184617,
+            "writes_per_second": 41631.71161264117
+          },
+          {
+            "first_committed": 18743296,
+            "last_committed": 18808832,
+            "seconds": 1.572224068,
+            "writes_per_second": 41683.62597537847
+          },
+          {
+            "first_committed": 18808832,
+            "last_committed": 18874368,
+            "seconds": 1.575804112,
+            "writes_per_second": 41588.92561640936
+          },
+          {
+            "first_committed": 18874368,
+            "last_committed": 18939904,
+            "seconds": 1.570751031,
+            "writes_per_second": 41722.71652642322
+          },
+          {
+            "first_committed": 18939904,
+            "last_committed": 19005440,
+            "seconds": 1.574094104,
+            "writes_per_second": 41634.105504533414
+          },
+          {
+            "first_committed": 19005440,
+            "last_committed": 19070976,
+            "seconds": 1.574394882,
+            "writes_per_second": 41626.151576882476
+          },
+          {
+            "first_committed": 19070976,
+            "last_committed": 19136512,
+            "seconds": 1.574222755,
+            "writes_per_second": 41630.703019535504
+          },
+          {
+            "first_committed": 19136512,
+            "last_committed": 19202048,
+            "seconds": 1.574954891,
+            "writes_per_second": 41611.350505657116
+          },
+          {
+            "first_committed": 19202048,
+            "last_committed": 19267584,
+            "seconds": 1.57396721,
+            "writes_per_second": 41637.46206631586
+          },
+          {
+            "first_committed": 19267584,
+            "last_committed": 19333120,
+            "seconds": 1.571308521,
+            "writes_per_second": 41707.913579118176
+          },
+          {
+            "first_committed": 19333120,
+            "last_committed": 19398656,
+            "seconds": 1.572915064,
+            "writes_per_second": 41665.31397654667
+          },
+          {
+            "first_committed": 19398656,
+            "last_committed": 19464192,
+            "seconds": 1.568439681,
+            "writes_per_second": 41784.201709443994
+          },
+          {
+            "first_committed": 19464192,
+            "last_committed": 19529728,
+            "seconds": 1.573581312,
+            "writes_per_second": 41647.67305014868
+          },
+          {
+            "first_committed": 19529728,
+            "last_committed": 19595264,
+            "seconds": 1.571786568,
+            "writes_per_second": 41695.22843256668
+          },
+          {
+            "first_committed": 19595264,
+            "last_committed": 19660800,
+            "seconds": 1.575832075,
+            "writes_per_second": 41588.18762462364
+          },
+          {
+            "first_committed": 19660800,
+            "last_committed": 19726336,
+            "seconds": 1.575757783,
+            "writes_per_second": 41590.148376249526
+          },
+          {
+            "first_committed": 19726336,
+            "last_committed": 19791872,
+            "seconds": 1.576452209,
+            "writes_per_second": 41571.827947497266
+          },
+          {
+            "first_committed": 19791872,
+            "last_committed": 19857408,
+            "seconds": 1.572999682,
+            "writes_per_second": 41663.072631186966
+          },
+          {
+            "first_committed": 19857408,
+            "last_committed": 19922944,
+            "seconds": 1.570682422,
+            "writes_per_second": 41724.53901696495
+          },
+          {
+            "first_committed": 19922944,
+            "last_committed": 19988480,
+            "seconds": 1.57241742,
+            "writes_per_second": 41678.50035647659
+          },
+          {
+            "first_committed": 19988480,
+            "last_committed": 20054016,
+            "seconds": 1.574262352,
+            "writes_per_second": 41629.65589359403
+          },
+          {
+            "first_committed": 20054016,
+            "last_committed": 20119552,
+            "seconds": 1.570946047,
+            "writes_per_second": 41717.53710138716
+          },
+          {
+            "first_committed": 20119552,
+            "last_committed": 20185088,
+            "seconds": 1.567408718,
+            "writes_per_second": 41811.68526587205
+          },
+          {
+            "first_committed": 20185088,
+            "last_committed": 20250624,
+            "seconds": 1.568889682,
+            "writes_per_second": 41772.21684347848
+          },
+          {
+            "first_committed": 20250624,
+            "last_committed": 20316160,
+            "seconds": 1.575571316,
+            "writes_per_second": 41595.07052107313
+          },
+          {
+            "first_committed": 20316160,
+            "last_committed": 20381696,
+            "seconds": 1.573259486,
+            "writes_per_second": 41656.19249919463
+          },
+          {
+            "first_committed": 20381696,
+            "last_committed": 20447232,
+            "seconds": 1.567749233,
+            "writes_per_second": 41802.60377139027
+          },
+          {
+            "first_committed": 20447232,
+            "last_committed": 20512768,
+            "seconds": 1.571134496,
+            "writes_per_second": 41712.53331070646
+          },
+          {
+            "first_committed": 20512768,
+            "last_committed": 20578304,
+            "seconds": 1.569186082,
+            "writes_per_second": 41764.32658418136
+          },
+          {
+            "first_committed": 20578304,
+            "last_committed": 20643840,
+            "seconds": 1.570438006,
+            "writes_per_second": 41731.0328390002
+          },
+          {
+            "first_committed": 20643840,
+            "last_committed": 20709376,
+            "seconds": 1.569397383,
+            "writes_per_second": 41758.70350613424
+          },
+          {
+            "first_committed": 20709376,
+            "last_committed": 20774912,
+            "seconds": 1.576671887,
+            "writes_per_second": 41566.035736641505
+          },
+          {
+            "first_committed": 20774912,
+            "last_committed": 20840448,
+            "seconds": 1.568131428,
+            "writes_per_second": 41792.41537400014
+          },
+          {
+            "first_committed": 20840448,
+            "last_committed": 20905984,
+            "seconds": 1.572908833,
+            "writes_per_second": 41665.47903161276
+          },
+          {
+            "first_committed": 20905984,
+            "last_committed": 20971520,
+            "seconds": 1.572619152,
+            "writes_per_second": 41673.153933457885
+          },
+          {
+            "first_committed": 20971520,
+            "last_committed": 21037056,
+            "seconds": 1.569490841,
+            "writes_per_second": 41756.21691315114
+          },
+          {
+            "first_committed": 21037056,
+            "last_committed": 21102592,
+            "seconds": 1.573955007,
+            "writes_per_second": 41637.78488491444
+          },
+          {
+            "first_committed": 21102592,
+            "last_committed": 21168128,
+            "seconds": 1.577430192,
+            "writes_per_second": 41546.0540392649
+          },
+          {
+            "first_committed": 21168128,
+            "last_committed": 21233664,
+            "seconds": 1.57183348,
+            "writes_per_second": 41693.984021768
+          },
+          {
+            "first_committed": 21233664,
+            "last_committed": 21299200,
+            "seconds": 1.577997124,
+            "writes_per_second": 41531.127657492485
+          },
+          {
+            "first_committed": 21299200,
+            "last_committed": 21364736,
+            "seconds": 1.568277108,
+            "writes_per_second": 41788.53320353382
+          },
+          {
+            "first_committed": 21364736,
+            "last_committed": 21430272,
+            "seconds": 1.57533638,
+            "writes_per_second": 41601.27375462503
+          },
+          {
+            "first_committed": 21430272,
+            "last_committed": 21495808,
+            "seconds": 1.574679144,
+            "writes_per_second": 41618.637199655444
+          },
+          {
+            "first_committed": 21495808,
+            "last_committed": 21561344,
+            "seconds": 1.578214771,
+            "writes_per_second": 41525.40022070291
+          },
+          {
+            "first_committed": 21561344,
+            "last_committed": 21626880,
+            "seconds": 1.575170301,
+            "writes_per_second": 41605.66000920303
+          },
+          {
+            "first_committed": 21626880,
+            "last_committed": 21692416,
+            "seconds": 1.575415117,
+            "writes_per_second": 41599.194582312746
+          },
+          {
+            "first_committed": 21692416,
+            "last_committed": 21757952,
+            "seconds": 1.572078509,
+            "writes_per_second": 41687.485468958854
+          },
+          {
+            "first_committed": 21757952,
+            "last_committed": 21823488,
+            "seconds": 1.57442985,
+            "writes_per_second": 41625.227062355305
+          },
+          {
+            "first_committed": 21823488,
+            "last_committed": 21889024,
+            "seconds": 1.570142119,
+            "writes_per_second": 41738.89688516788
+          },
+          {
+            "first_committed": 21889024,
+            "last_committed": 21954560,
+            "seconds": 1.572017668,
+            "writes_per_second": 41689.098878499375
+          },
+          {
+            "first_committed": 21954560,
+            "last_committed": 22020096,
+            "seconds": 1.576472137,
+            "writes_per_second": 41571.30244287977
+          },
+          {
+            "first_committed": 22020096,
+            "last_committed": 22085632,
+            "seconds": 1.580858176,
+            "writes_per_second": 41455.96423192361
+          },
+          {
+            "first_committed": 22085632,
+            "last_committed": 22151168,
+            "seconds": 1.577742973,
+            "writes_per_second": 41537.81770638252
+          }
+        ],
+        "tail_after_terminal_seconds": 31.070218228
+      },
+      "integrity": {
+        "checksum_passed": true,
+        "frames_aborted": 0,
+        "frames_attempted": 500000,
+        "frames_consumed": 500000,
+        "frames_dropped": 0,
+        "frames_produced": 500000,
+        "overflow_count": 0,
+        "paired_outlier_count": 0
+      },
+      "intervals": {
+        "N": 499999,
+        "max_ticks": 1351677,
+        "min_ticks": 1348282,
+        "percentiles": {
+          "p50": {
+            "minimum_samples": 40,
+            "status": "ok",
+            "value_ticks": 1349991.0
+          },
+          "p99": {
+            "minimum_samples": 2000,
+            "status": "ok",
+            "value_ticks": 1350834.0
+          },
+          "p99_9": {
+            "minimum_samples": 20000,
+            "status": "ok",
+            "value_ticks": 1351070.0
+          },
+          "p99_99": {
+            "minimum_samples": 200000,
+            "status": "ok",
+            "value_ticks": 1351205.0
+          }
+        }
+      },
+      "launcher_wall_seconds": 565.41,
+      "load_accounting": {
+        "cpu_operations": 725980512256,
+        "separate_terminal_observer_reads": 98260,
+        "submitted_bytes": 90747564032,
+        "submitted_transfers": 22155167,
+        "targeted_load_read_bytes": 88620668,
+        "targeted_load_reads": 22155167
+      },
+      "native_cap_margin_seconds": 65.76169350099997,
+      "native_execute_seconds": 534.238306499,
+      "native_retrieval_device_bytes": 2048000000,
+      "native_retrieval_scope": "drain to execute return includes all2GB retrieval,verification,close and result publication;not isolated DMA",
+      "overhead": {
+        "analysis_frame_count": 500000,
+        "native_retrieval_verify_close_publish_seconds": 0.468980391,
+        "per_frame_analysis_seconds": 1.333562998600143e-05,
+        "per_frame_term_is_amortized_not_linear_slope": true,
+        "python_frame_analysis_seconds": 6.198834602000716,
+        "sampler_wait_seconds": 0.0015126770013011992,
+        "setup_seconds": 1.973558617
+      },
+      "post_native_container_seconds": 7.385412539,
+      "power": {
+        "aiclk_mhz_in_run_max": 1350.0,
+        "aiclk_mhz_in_run_min": 800.0,
+        "aiclk_mhz_load_interval_weighted": 1349.9687235718334,
+        "aiclk_mhz_load_interval_weighted_seconds": 500.7252400000001,
+        "aiclk_mhz_load_interval_weighted_source": "load_interval_trace_samples",
+        "aiclk_source": "run_trace_samples",
+        "byte_count": 11844,
+        "coverage_complete": true,
+        "csv_row_count": 246,
+        "errors": [],
+        "in_run_valid_row_count": 238,
+        "invalid_row_count": 0,
+        "load_interval_source": "issue120_v2_enqueue_to_l1_terminal_observed_upper_bound",
+        "sample_count": 246,
+        "sampling_source": "immutable per-run CSV snapshot captured by run_in_container.sh",
+        "source_file": "power-20261121T16190313060076874183029578Z.csv",
+        "valid_row_count": 246
+      },
+      "pre_native_container_seconds": 8.00828742,
+      "program_host_upper_bound_seconds": 500.725240304,
+      "record_sha256": "f47d2f59dcd2afc5d63d23d5242af73db473f4a2fdd2b1e596018c07e95136cb",
+      "routing": {
+        "consumer_cta": [
+          1,
+          4096,
+          1,
+          1,
+          4,
+          4,
+          514,
+          1,
+          4096,
+          1,
+          1,
+          1,
+          1,
+          258,
+          2,
+          4096,
+          2,
+          4096,
+          2,
+          4096,
+          2,
+          4096,
+          2,
+          4096
+        ],
+        "consumer_runtime": [
+          1556480,
+          1548288,
+          1052800,
+          257056896,
+          500000,
+          4,
+          64,
+          100000,
+          3066050240,
+          185,
+          0,
+          257052800,
+          257056896,
+          0,
+          0,
+          1048704,
+          1544192,
+          22155167,
+          1350000,
+          1,
+          2
+        ],
+        "producer_cta": [
+          1,
+          4096,
+          1,
+          1,
+          4,
+          4,
+          514,
+          1,
+          4096,
+          1,
+          1,
+          1,
+          1,
+          514,
+          2,
+          4096,
+          2,
+          4096
+        ],
+        "producer_runtime": [
+          1556480,
+          1552384,
+          257052800,
+          500000,
+          1350000,
+          4,
+          3066050240,
+          185,
+          0,
+          257052800,
+          2,
+          2
+        ]
+      },
+      "startup_diagnostics": {
+        "consumer_peer_runtime_xy": [
+          1,
+          2
+        ],
+        "consumer_reported_expectation": 500002,
+        "consumer_self_noc0": [
+          2,
+          2
+        ],
+        "expected_after_consumed_frames": 500002,
+        "expected_after_full_run": 500002,
+        "mailbox_post_finish": 500002,
+        "producer_peer_runtime_xy": [
+          2,
+          2
+        ]
+      },
+      "startup_ticks": 135068725
+    }
+  },
+  "schema": "issue120-production-p-reference-analysis-v1",
+  "session_id": "a729ec3dec50456998fc668b2100648f"
+}

@@ -107,6 +107,17 @@ pessimistic cap margin,or the observed frame envelope destroys the fast-worker
 coverage margin,stop rather than automatically change N,target or caps. This is
 model feasibility checking,not an advance latency percentile acceptance limit.
 
+## Completed single-use execution
+
+The approved P1 and conditional P2 both completed at4fd4900 in session
+`a729ec3dec50456998fc668b2100648f`,after all exact-head6350tests/CI9/Sonar0/0/OK,
+fixture/startup/publication and fresh per-role physical gates. Both500000-frame
+rows had full integrity,all exits0,zero abort/drop/overflow/paired outliers and
+healthy return;P2 coverage was covered. Both roles are consumed and must not be
+launched again. No reset/retry/count change occurred. See the
+[immutable result and limitations](issue120-production/2026-11-21-p/README.md).
+The above predictions remain their original pre-run statements,not fitted limits.
+
 ## Publication
 
 Use the established bounded byte-exact archive mechanism and repository limits;

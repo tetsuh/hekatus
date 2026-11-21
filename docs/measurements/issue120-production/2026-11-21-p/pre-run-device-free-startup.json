@@ -1,0 +1,29 @@
+{
+  "P_executed": false,
+  "absent_result_refused": true,
+  "board_access": false,
+  "cap_drop_ALL": true,
+  "head": "4fd4900b8813e813263ed3d5148e3b5feb3a59b8",
+  "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+  "native_returncode": 2,
+  "native_sha256": "0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6",
+  "native_started": true,
+  "network_none": true,
+  "no_chips_detected": true,
+  "no_devices_or_requests": true,
+  "no_discovery": true,
+  "nonroot": true,
+  "readonly": true,
+  "schema": "issue120-p-prep-device-free-startup-v1",
+  "streams": {
+    "stderr": {
+      "byte_count": 2224,
+      "sha256": "13338d40b0de149427ff12e038af5d6c7f0283bc33f6750884d3cc9b05337777"
+    },
+    "stdout": {
+      "byte_count": 768,
+      "sha256": "d5521852885cc69f56d6a5f3cccf0c118f6b4b1b1780cab94bbe4f0de70591b0"
+    }
+  },
+  "timing_evidence": false
+}

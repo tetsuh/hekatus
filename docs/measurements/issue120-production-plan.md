@@ -6,6 +6,19 @@ Base: PR #172 merged as `8c96cdc`; preserve all of its measured artifacts and
 sources. Production completes the remaining Issue #120 scope in a later
 owner-authorized phase of this PR.
 
+## Completed production follow-up — 2026-11-21
+
+The stage-A status above is historical. The owner later adopted520s/22155167writes
+and approved the single conditional pair under the
+[dated adoption precommit](issue120-production-p-adoption-plan.md). Both actual
+500000-frame control/loaded runs completed at4fd4900 in one session,full integrity
+and loaded causal coverage,all exits0,zero abort/drop/overflow/paired outliers,
+baseline warnings only and healthy return without reset/retry. See the
+[immutable production archive](issue120-production/2026-11-21-p/README.md) for
+full distributions,prediction contrasts,actual cap/retrieval costs and limits.
+No new advance latency threshold,population bound or product timing guarantee
+is inferred;original stage/calibration decisions and records remain unchanged.
+
 ## Owner-approved execution baseline — 2026-11-18
 
 The owner approved **Linux6.8.0-149-generic and TT-KMD2.12.0 on2026-11-18**

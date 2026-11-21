@@ -98,14 +98,33 @@ short feasibility, not production. Only baseline warnings, healthy postchecks,
 no reset/retry/production; previous bytes unchanged. See run8 for the remaining
 long-run/control gates and #179's legacy expected2 label caveat (actual4098).
 
-## Issue #120 production results (reserved)
+## Issue #120 production results (2026-11-21)
 
-[Stage-A plan](issue120-production-plan.md) and
-[ADR-0019](../adr/0019-issue120-production-causal-instrument.md) describe the new
-versioned resident instrument, bounded calibration proposals and later matching
-control/load pair. **No production result is present.** New-kernel validation,
-calibration, fixed-count precommit and separate owner approvals remain gates;
-no feasibility record is relabeled as production evidence.
+The [single approved P1/P2 pair](issue120-production/2026-11-21-p/README.md)
+completed at4fd4900 in one fresh session:500000frames each,1ms reference period,
+Watcher off,device0,600s native/outer caps;loaded fixed22155167writes adopted by
+owner on2026-11-21. Both rows had full identity/checksum/work integrity,all exits0,
+zero abort/drop/overflow/paired outliers,healthy frozen power and post-run health.
+P2 strict first-to-last causal coverage is covered. No retry/reset occurred.
+
+| Ticks | Control | Loaded | Loaded minus control |
+|---|---:|---:|---:|
+| P50 |1350001 |1349991 |−10 |
+| P99 |1350816 |1350834 |+18 |
+| P99.9 |1351065 |1351070 |+5 |
+| P99.99 |1351227 |1351205 |−22 |
+| Maximum |1351658 |1351677 |+19 |
+
+Full499999-interval histograms,CPU/read/write totals,causal lower bounds,weighted
+AICLK and conversion assumptions,predictions versus observations,actual native/
+container/retrieval costs and byte-exact compressed companions are in the archive.
+Native/device content and all historical records remain unchanged. This is one
+sequential synthetic-instrument pair without significance or product wall-time
+guarantees;no advance latency threshold was imposed. See design section12,
+[Stage-A plan](issue120-production-plan.md),[ADR-0019](../adr/0019-issue120-production-causal-instrument.md)
+and [ADR-0020](../adr/0020-issue120-host-trace-c1-admission.md).
+
+### Historical bounded/calibration/preparation stages
 
 The [2026-11-18 B attempt](issue120-production/2026-11-18-b/README.md) used the
 owner-approved Linux6.8.0-149/KMD2.12.0 baseline. B1 native/wrapper completed4096
@@ -145,7 +164,7 @@ with the same native/device identity. Its25-point trace and artifact-validated
 C1/C2 metadata bridge preserve both original origins. Conditional slab-based
 550/530/520s tables recommend owner consideration of520s/22155167writes with
 explicit unbounded rate/frame/reserve assumptions. No count/floor was adopted;
-that measurement stage kept C2-only admission. P remains unexecuted.
+that measurement stage kept C2-only admission and P remained unexecuted.
 
 The later [board-free P preparation](issue120-production-p-prep/README.md)
 adds a separately versioned compatible-production receipt without changing
@@ -154,7 +173,13 @@ Real500000-row CPU fixtures measure record construction,analysis,hash/copy/fsync
 publication and rereading,including P2's in-wrapper P1 validation; native2GB
 retrieval remains unmeasured. Updated conditional cap margins and a one-screen
 owner checklist accompany the isolated admission/session/launcher dry-run.
-Fresh actual preflight and separate exact-head owner approval remain required.
+That preparation alone granted no hardware authority. The later
+[dated adoption precommit](issue120-production-p-adoption-plan.md) supplied explicit
+v2 authority and durable session-role consumption plus external completion gates;
+the owner-approved actual pair above followed all fresh baseline/proof/resource/
+quiescence checks and exact-head6350tests/CI9/Sonar0/0/OK. Raw64 MB companions are
+stored byte-exactly in20.6/27.4 MB gzip archives,not as uncompressed Git blobs;
+local original transport and wrapper bytes remain untouched.
 
 ## Issue #137 duration-bounded runner (revision 2)
 

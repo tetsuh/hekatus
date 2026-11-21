@@ -1,0 +1,9 @@
+{
+  "load_average": [
+    0.259765625,
+    0.201171875,
+    0.3310546875
+  ],
+  "monotonic_ns": 57980151718751,
+  "no_heavy_host_processes": true
+}
