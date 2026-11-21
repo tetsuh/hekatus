@@ -1,6 +1,6 @@
 {
-  "artifact_root": "out/issue120-production-p-prep/958da00b163f4ea68e2c1fe9821fc489",
-  "charged_host_seconds": 13.231122834000416,
+  "artifact_root": "out/issue120-production-p-prep/bb8282c73c8e4632868cbca3ed5f15fd",
+  "charged_host_seconds": 13.266694311998435,
   "device_retrieval_measured": false,
   "excluded": [
     "synthetic companion generation",
@@ -8,9 +8,9 @@
     "real hardware telemetry"
   ],
   "fixture_only": true,
-  "fixture_source_sha256": "e44cb1d9e404f2c051a8bc02668e2bbd3f8975933df23e33a1c5f083e98abdcf",
+  "fixture_source_sha256": "1a69c0f91b376bd51f1ef26b6ada033d913be6f14224315a681be4056582cd51",
   "frames": 500000,
-  "launcher_reread_seconds": 7.28274345400132,
+  "launcher_reread_seconds": 7.245716199999151,
   "measured_python_sources_sha256": {
     "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
     "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
@@ -24,19 +24,19 @@
     "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
     "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
     "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
-    "production_admission.py": "9db30392f74a678b6f68dc26b4c3492bc1b4b5f0c822e8be0d3ccab3426ee129",
+    "production_admission.py": "cdadaeb9cda7d4cfca5938c0186b8647f38b20927dcc562239940e0d04165d50",
     "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
     "recording.py": "a0ffba0771e5e7f477cf4b88b178fc8e42f36183af712d9d5014efc305cc03c9",
     "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
     "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
-    "runner.py": "251bc8eab88f205e9a4525addc35a25585be7373364f5e5daa1d39727943d1c7",
+    "runner.py": "6603e19e3973a754932ab5dd711e63db0e6130399d2233f91821f44a7a0648ea",
     "runtime.py": "693672834b89c21d0668f7451bc1a7403567106c8334bc7536dff3ef1b2bcb5b",
-    "sessions.py": "b7eadc09ea3cd367f16823eacc04d3728770c16d4c3216cc5bbad617c44d5de5"
+    "sessions.py": "2153cf7efdf2a002bea46fb2f2138259b67042856f718ccd89cdd7e8382cd298"
   },
   "measurement_pending": false,
   "memory_scope": "fresh child lifetime ru_maxrss; separate publisher and reader, not summed",
   "passed": true,
-  "peak_rss_bytes": 115748864,
+  "peak_rss_bytes": 115773440,
   "publishers": [
     {
       "GC_collections": [
@@ -44,24 +44,24 @@
         2,
         0
       ],
-      "analysis_seconds": 5.0834659510001075,
-      "charged_host_seconds": 6.012737888999254,
+      "analysis_seconds": 5.079950024999562,
+      "charged_host_seconds": 6.009579012999893,
       "device_retrieval_measured": false,
       "fixture_only": true,
       "frames": 500000,
       "frames_bytes": 64000024,
-      "in_container_control_validation_seconds": 6.640002538915724e-07,
+      "in_container_control_validation_seconds": 0.0011959890034631826,
       "io_costs": {
-        "binary_size_hash_seconds": 0.06773044600049616,
-        "copy_fsync_seconds": 0.03400010899713379,
-        "runtime_hash_seconds": 0.007941988020320423
+        "binary_size_hash_seconds": 0.06652527800179087,
+        "copy_fsync_seconds": 0.031920545996399596,
+        "runtime_hash_seconds": 0.00774804695538478
       },
-      "peak_rss_bytes": 107593728,
-      "primary_JSON_bytes": 160730,
-      "publication_seconds": 0.002730674998019822,
-      "record_construction_seconds": 6.0100065500009805,
+      "peak_rss_bytes": 103698432,
+      "primary_JSON_bytes": 160729,
+      "publication_seconds": 0.002784553995297756,
+      "record_construction_seconds": 6.005598470001132,
       "role": "control",
-      "synthesis_seconds": 4.877857452000171,
+      "synthesis_seconds": 4.968282839996391,
       "synthetic_completion_jitter_ticks": 0,
       "trace_samples": 0,
       "transitions_bytes": 24
@@ -72,24 +72,24 @@
         2,
         0
       ],
-      "analysis_seconds": 6.205263112999091,
-      "charged_host_seconds": 13.231122834000416,
+      "analysis_seconds": 6.2395571430024575,
+      "charged_host_seconds": 13.266694311998435,
       "device_retrieval_measured": false,
       "fixture_only": true,
       "frames": 500000,
       "frames_bytes": 64000024,
-      "in_container_control_validation_seconds": 5.950489347000257,
+      "in_container_control_validation_seconds": 5.951577496998652,
       "io_costs": {
-        "binary_size_hash_seconds": 0.07285562601100537,
-        "copy_fsync_seconds": 0.03836122400389286,
-        "runtime_hash_seconds": 0.00840800200967351
+        "binary_size_hash_seconds": 0.07128406000265386,
+        "copy_fsync_seconds": 0.035366260999580845,
+        "runtime_hash_seconds": 0.008353418961632997
       },
-      "peak_rss_bytes": 114204672,
-      "primary_JSON_bytes": 625454,
-      "publication_seconds": 0.012238502000400331,
-      "record_construction_seconds": 7.268394984999759,
+      "peak_rss_bytes": 114950144,
+      "primary_JSON_bytes": 625455,
+      "publication_seconds": 0.011690954997902736,
+      "record_construction_seconds": 7.30342586000188,
       "role": "loaded",
-      "synthesis_seconds": 5.3847074109980895,
+      "synthesis_seconds": 5.4492349099964486,
       "synthetic_completion_jitter_ticks": 2000,
       "trace_samples": 339,
       "transitions_bytes": 4000040
@@ -104,12 +104,12 @@
       ],
       "fixture_only": true,
       "io_costs": {
-        "binary_size_hash_seconds": 0.037468213005922735,
+        "binary_size_hash_seconds": 0.036742204982147086,
         "copy_fsync_seconds": 0.0,
-        "runtime_hash_seconds": 0.007912067991128424
+        "runtime_hash_seconds": 0.007768239964207169
       },
-      "launcher_reread_seconds": 5.952597818999493,
-      "peak_rss_bytes": 107790336,
+      "launcher_reread_seconds": 5.96807026299939,
+      "peak_rss_bytes": 103780352,
       "role": "control"
     },
     {
@@ -120,12 +120,12 @@
       ],
       "fixture_only": true,
       "io_costs": {
-        "binary_size_hash_seconds": 0.03901982800744008,
+        "binary_size_hash_seconds": 0.03968706699379254,
         "copy_fsync_seconds": 0.0,
-        "runtime_hash_seconds": 0.00804656502805301
+        "runtime_hash_seconds": 0.007877522992203012
       },
-      "launcher_reread_seconds": 7.28274345400132,
-      "peak_rss_bytes": 115748864,
+      "launcher_reread_seconds": 7.245716199999151,
+      "peak_rss_bytes": 115773440,
       "role": "loaded"
     }
   ],

@@ -96,15 +96,19 @@ def _control(session_id: str, spec: plan.RunSpec) -> dict | None:
 def _launch(args) -> int:
     if not args.owner_approved or not args.session_id:
         raise ValueError("explicit owner approval and session are required")
-    spec, session, _ = _session_spec(args.launch, args.session_id)
+    spec, session, digest = _session_spec(args.launch, args.session_id)
     if spec.phase == "production" and not args.production_approved:
         raise ValueError("production needs separate explicit owner approval")
     if _clean_pushed() != session["harness_commit"]:
         raise ValueError("session source revision changed")
     _control(args.session_id, spec)
-    command, environment = wrapper_command(spec, args.session_id)
     case = sessions.session_path(args.session_id) / "cases" / spec.identity
-    case.mkdir(parents=True, exist_ok=False)
+    if spec.phase == "production" and session.get("production_contract") == runtime.PRODUCTION_CONTRACT:
+        receipt = sessions.compatible_production_receipt(session["admission_hashes"])
+        sessions.reserve_production_launch(spec, session, digest, receipt)
+    else:
+        case.mkdir(parents=True, exist_ok=False)
+    command, environment = wrapper_command(spec, args.session_id)
     # This is a launcher watchdog, not a larger native/container measurement cap.
     with (case / "wrapper.log").open("xb") as output:
         subprocess.run(command, env=environment, cwd=runtime.ROOT, stdout=output,
@@ -132,6 +136,9 @@ def _run(args) -> int:
     attempt = issue120_results.create_attempt(identity)
     watcher_path = runtime.ROOT / "generated/watcher/watcher.log"
     watcher_before = recording.read_watcher_bytes(watcher_path) if spec.watcher and watcher_path.is_file() else None
+    if spec.phase == "production" and session.get("production_contract") == runtime.PRODUCTION_CONTRACT:
+        receipt = sessions.compatible_production_receipt(session["admission_hashes"])
+        sessions.enter_production_native(spec, session, digest, receipt, Path("/out"))
     started, utc_start = time.monotonic_ns(), time.time_ns()
     native, program_identity = runtime.execute_native(spec, attempt)
     ended, utc_end = time.monotonic_ns(), time.time_ns()

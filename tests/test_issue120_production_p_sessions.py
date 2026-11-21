@@ -18,7 +18,7 @@ def receipt(monkeypatch):
     monkeypatch.setattr(production, "postprocess_proof", lambda: {"file": "unit-fixture", "sha256": "a" * 64, "report": report})
     current = production.fixture_identity()
     monkeypatch.setattr(runtime, "program_identity", lambda: current)
-    return production.make_receipt(current)
+    return production.make_receipt(current, adoption=production.owner_adoption())
 
 
 def test_explicit_versioned_production_dispatch_does_not_reinterpret_bounded(receipt, monkeypatch):

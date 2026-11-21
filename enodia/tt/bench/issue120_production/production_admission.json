@@ -231,7 +231,7 @@
   },
   "cap_seconds": 600,
   "device_node": "/dev/tenstorrent/0",
-  "execution_authorized": false,
+  "execution_authorized": true,
   "fixed_repetitions": 22155167,
   "frames": 500000,
   "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
@@ -239,8 +239,8 @@
     "L_fast_seconds": 6.4033e-05,
     "L_slow_seconds": 6.9164e-05,
     "bounds_established": false,
-    "cap_margin_optimistic_seconds": 19.465446720937617,
-    "cap_margin_pessimistic_seconds": 9.46544672093762,
+    "cap_margin_optimistic_seconds": 19.429875242939598,
+    "cap_margin_pessimistic_seconds": 9.429875242939602,
     "fast_worker_seconds": 520.0000111912032,
     "formula": "N=1+ceil(r_fast*(target-L_fast))",
     "fraction": 0.02,
@@ -257,15 +257,15 @@
     "reserve": {
       "components": {
         "CLI_residual_and_guard_seconds": 5.0,
-        "measured_charged_host_seconds": 13.231122834000416,
+        "measured_charged_host_seconds": 13.266694311998435,
         "setup_scenario_seconds": 2.134215262,
         "snapshot_wait_scenario_seconds": 1.109143949999634,
         "unmeasured_native_2GB_retrieval_budget_seconds": 10.0
       },
-      "launcher_reread_outside_cap_seconds": 7.28274345400132,
+      "launcher_reread_outside_cap_seconds": 7.245716199999151,
       "native_retrieval_measured": false,
-      "optimistic_seconds": 31.474482046000052,
-      "pessimistic_seconds": 41.47448204600005
+      "optimistic_seconds": 31.51005352399807,
+      "pessimistic_seconds": 41.51005352399807
     },
     "rounding": "ceil;first observed write counted once",
     "slabs": [
@@ -473,12 +473,19 @@
     "slow_worker_seconds": 549.0600712330623
   },
   "native_device_unchanged": true,
-  "owner_adopted": false,
+  "owner_adopted": true,
+  "owner_decision": {
+    "byte_count": 467,
+    "file": "enodia/tt/bench/issue120_production/production_adoption.json",
+    "selection_text": "{\n  \"schema\": \"issue120-production-selection-v1\",\n  \"status\": \"owner recommendation only; not adopted\",\n  \"target_worker_seconds\": 520,\n  \"fixed_repetitions\": 22155167,\n  \"execution_authorized\": false\n}\n",
+    "sha256": "d41f5c335211be2cdd2f4bbe42ebef6960c6d62bcfe4dcc5b1a9d5c5ecf71381",
+    "text": "{\n  \"schema\": \"issue120-owner-production-adoption-v1\",\n  \"decision_date\": \"2026-11-21\",\n  \"target_worker_seconds\": 520,\n  \"fixed_repetitions\": 22155167,\n  \"selection_file_sha256\": \"1dfa6c958513bb49ebfeb78d2baa73eb92c5a97e1ccdd3df137fe1beb1d81bb2\",\n  \"scope\": {\n    \"production-v1-control-500000\": 1,\n    \"production-v1-loaded-500000\": 1\n  },\n  \"conditional_loaded_requires_healthy_control\": true,\n  \"same_session_required\": true,\n  \"automatic_retry_allowed\": false\n}\n"
+  },
   "postprocess_proof": {
     "file": "docs/measurements/issue120-production-p-prep/postprocess.json",
     "report": {
-      "artifact_root": "out/issue120-production-p-prep/958da00b163f4ea68e2c1fe9821fc489",
-      "charged_host_seconds": 13.231122834000416,
+      "artifact_root": "out/issue120-production-p-prep/bb8282c73c8e4632868cbca3ed5f15fd",
+      "charged_host_seconds": 13.266694311998435,
       "device_retrieval_measured": false,
       "excluded": [
         "synthetic companion generation",
@@ -486,9 +493,9 @@
         "real hardware telemetry"
       ],
       "fixture_only": true,
-      "fixture_source_sha256": "e44cb1d9e404f2c051a8bc02668e2bbd3f8975933df23e33a1c5f083e98abdcf",
+      "fixture_source_sha256": "1a69c0f91b376bd51f1ef26b6ada033d913be6f14224315a681be4056582cd51",
       "frames": 500000,
-      "launcher_reread_seconds": 7.28274345400132,
+      "launcher_reread_seconds": 7.245716199999151,
       "measured_python_sources_sha256": {
         "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
         "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
@@ -502,19 +509,19 @@
         "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
         "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
         "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
-        "production_admission.py": "9db30392f74a678b6f68dc26b4c3492bc1b4b5f0c822e8be0d3ccab3426ee129",
+        "production_admission.py": "cdadaeb9cda7d4cfca5938c0186b8647f38b20927dcc562239940e0d04165d50",
         "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
         "recording.py": "a0ffba0771e5e7f477cf4b88b178fc8e42f36183af712d9d5014efc305cc03c9",
         "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
         "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
-        "runner.py": "251bc8eab88f205e9a4525addc35a25585be7373364f5e5daa1d39727943d1c7",
+        "runner.py": "6603e19e3973a754932ab5dd711e63db0e6130399d2233f91821f44a7a0648ea",
         "runtime.py": "693672834b89c21d0668f7451bc1a7403567106c8334bc7536dff3ef1b2bcb5b",
-        "sessions.py": "b7eadc09ea3cd367f16823eacc04d3728770c16d4c3216cc5bbad617c44d5de5"
+        "sessions.py": "2153cf7efdf2a002bea46fb2f2138259b67042856f718ccd89cdd7e8382cd298"
       },
       "measurement_pending": false,
       "memory_scope": "fresh child lifetime ru_maxrss; separate publisher and reader, not summed",
       "passed": true,
-      "peak_rss_bytes": 115748864,
+      "peak_rss_bytes": 115773440,
       "publishers": [
         {
           "GC_collections": [
@@ -522,24 +529,24 @@
             2,
             0
           ],
-          "analysis_seconds": 5.0834659510001075,
-          "charged_host_seconds": 6.012737888999254,
+          "analysis_seconds": 5.079950024999562,
+          "charged_host_seconds": 6.009579012999893,
           "device_retrieval_measured": false,
           "fixture_only": true,
           "frames": 500000,
           "frames_bytes": 64000024,
-          "in_container_control_validation_seconds": 6.640002538915724e-07,
+          "in_container_control_validation_seconds": 0.0011959890034631826,
           "io_costs": {
-            "binary_size_hash_seconds": 0.06773044600049616,
-            "copy_fsync_seconds": 0.03400010899713379,
-            "runtime_hash_seconds": 0.007941988020320423
+            "binary_size_hash_seconds": 0.06652527800179087,
+            "copy_fsync_seconds": 0.031920545996399596,
+            "runtime_hash_seconds": 0.00774804695538478
           },
-          "peak_rss_bytes": 107593728,
-          "primary_JSON_bytes": 160730,
-          "publication_seconds": 0.002730674998019822,
-          "record_construction_seconds": 6.0100065500009805,
+          "peak_rss_bytes": 103698432,
+          "primary_JSON_bytes": 160729,
+          "publication_seconds": 0.002784553995297756,
+          "record_construction_seconds": 6.005598470001132,
           "role": "control",
-          "synthesis_seconds": 4.877857452000171,
+          "synthesis_seconds": 4.968282839996391,
           "synthetic_completion_jitter_ticks": 0,
           "trace_samples": 0,
           "transitions_bytes": 24
@@ -550,24 +557,24 @@
             2,
             0
           ],
-          "analysis_seconds": 6.205263112999091,
-          "charged_host_seconds": 13.231122834000416,
+          "analysis_seconds": 6.2395571430024575,
+          "charged_host_seconds": 13.266694311998435,
           "device_retrieval_measured": false,
           "fixture_only": true,
           "frames": 500000,
           "frames_bytes": 64000024,
-          "in_container_control_validation_seconds": 5.950489347000257,
+          "in_container_control_validation_seconds": 5.951577496998652,
           "io_costs": {
-            "binary_size_hash_seconds": 0.07285562601100537,
-            "copy_fsync_seconds": 0.03836122400389286,
-            "runtime_hash_seconds": 0.00840800200967351
+            "binary_size_hash_seconds": 0.07128406000265386,
+            "copy_fsync_seconds": 0.035366260999580845,
+            "runtime_hash_seconds": 0.008353418961632997
           },
-          "peak_rss_bytes": 114204672,
-          "primary_JSON_bytes": 625454,
-          "publication_seconds": 0.012238502000400331,
-          "record_construction_seconds": 7.268394984999759,
+          "peak_rss_bytes": 114950144,
+          "primary_JSON_bytes": 625455,
+          "publication_seconds": 0.011690954997902736,
+          "record_construction_seconds": 7.30342586000188,
           "role": "loaded",
-          "synthesis_seconds": 5.3847074109980895,
+          "synthesis_seconds": 5.4492349099964486,
           "synthetic_completion_jitter_ticks": 2000,
           "trace_samples": 339,
           "transitions_bytes": 4000040
@@ -582,12 +589,12 @@
           ],
           "fixture_only": true,
           "io_costs": {
-            "binary_size_hash_seconds": 0.037468213005922735,
+            "binary_size_hash_seconds": 0.036742204982147086,
             "copy_fsync_seconds": 0.0,
-            "runtime_hash_seconds": 0.007912067991128424
+            "runtime_hash_seconds": 0.007768239964207169
           },
-          "launcher_reread_seconds": 5.952597818999493,
-          "peak_rss_bytes": 107790336,
+          "launcher_reread_seconds": 5.96807026299939,
+          "peak_rss_bytes": 103780352,
           "role": "control"
         },
         {
@@ -598,18 +605,18 @@
           ],
           "fixture_only": true,
           "io_costs": {
-            "binary_size_hash_seconds": 0.03901982800744008,
+            "binary_size_hash_seconds": 0.03968706699379254,
             "copy_fsync_seconds": 0.0,
-            "runtime_hash_seconds": 0.00804656502805301
+            "runtime_hash_seconds": 0.007877522992203012
           },
-          "launcher_reread_seconds": 7.28274345400132,
-          "peak_rss_bytes": 115748864,
+          "launcher_reread_seconds": 7.245716199999151,
+          "peak_rss_bytes": 115773440,
           "role": "loaded"
         }
       ],
       "schema": "issue120-production-host-postprocess-v1"
     },
-    "sha256": "155b24c34bae2a091ed9a4924d68189c71dcce34c19dcf457914b4117c89ebb9"
+    "sha256": "d93057344b4c258cb8ac7ec9c9c3f40c429fcb4727e502b8bf25de7268598e27"
   },
   "program_identity": {
     "calibration_compatibility_contract": "issue120-calibration-compatibility-v1",
@@ -639,14 +646,14 @@
       "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
       "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
       "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
-      "production_admission.py": "9db30392f74a678b6f68dc26b4c3492bc1b4b5f0c822e8be0d3ccab3426ee129",
+      "production_admission.py": "cdadaeb9cda7d4cfca5938c0186b8647f38b20927dcc562239940e0d04165d50",
       "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
       "recording.py": "a0ffba0771e5e7f477cf4b88b178fc8e42f36183af712d9d5014efc305cc03c9",
       "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
       "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
-      "runner.py": "251bc8eab88f205e9a4525addc35a25585be7373364f5e5daa1d39727943d1c7",
+      "runner.py": "6603e19e3973a754932ab5dd711e63db0e6130399d2233f91821f44a7a0648ea",
       "runtime.py": "693672834b89c21d0668f7451bc1a7403567106c8334bc7536dff3ef1b2bcb5b",
-      "sessions.py": "b7eadc09ea3cd367f16823eacc04d3728770c16d4c3216cc5bbad617c44d5de5"
+      "sessions.py": "2153cf7efdf2a002bea46fb2f2138259b67042856f718ccd89cdd7e8382cd298"
     }
   },
   "python_transition": {
@@ -663,14 +670,14 @@
       "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
       "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
       "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
-      "production_admission.py": "9db30392f74a678b6f68dc26b4c3492bc1b4b5f0c822e8be0d3ccab3426ee129",
+      "production_admission.py": "cdadaeb9cda7d4cfca5938c0186b8647f38b20927dcc562239940e0d04165d50",
       "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
       "recording.py": "a0ffba0771e5e7f477cf4b88b178fc8e42f36183af712d9d5014efc305cc03c9",
       "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
       "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
-      "runner.py": "251bc8eab88f205e9a4525addc35a25585be7373364f5e5daa1d39727943d1c7",
+      "runner.py": "6603e19e3973a754932ab5dd711e63db0e6130399d2233f91821f44a7a0648ea",
       "runtime.py": "693672834b89c21d0668f7451bc1a7403567106c8334bc7536dff3ef1b2bcb5b",
-      "sessions.py": "b7eadc09ea3cd367f16823eacc04d3728770c16d4c3216cc5bbad617c44d5de5"
+      "sessions.py": "2153cf7efdf2a002bea46fb2f2138259b67042856f718ccd89cdd7e8382cd298"
     },
     "before": {
       "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
@@ -695,7 +702,7 @@
     },
     "changed": {
       "production_admission.py": {
-        "after": "9db30392f74a678b6f68dc26b4c3492bc1b4b5f0c822e8be0d3ccab3426ee129",
+        "after": "cdadaeb9cda7d4cfca5938c0186b8647f38b20927dcc562239940e0d04165d50",
         "before": null
       },
       "recording.py": {
@@ -703,7 +710,7 @@
         "before": "99f59548fbdc7269cefd06bfcc099a9b2ee589209da14359b720f5fb172476a1"
       },
       "runner.py": {
-        "after": "251bc8eab88f205e9a4525addc35a25585be7373364f5e5daa1d39727943d1c7",
+        "after": "6603e19e3973a754932ab5dd711e63db0e6130399d2233f91821f44a7a0648ea",
         "before": "8d8763e5489175095a124e8cc8b1509fccc6f6b996eb16d6d8c5e12f9ac53604"
       },
       "runtime.py": {
@@ -711,13 +718,13 @@
         "before": "8b52f8dde08c147ce68dac777282b751c6e8329c24f39395e733c59f2f10a04f"
       },
       "sessions.py": {
-        "after": "b7eadc09ea3cd367f16823eacc04d3728770c16d4c3216cc5bbad617c44d5de5",
+        "after": "2153cf7efdf2a002bea46fb2f2138259b67042856f718ccd89cdd7e8382cd298",
         "before": "e07f920a5b33036ff00efcfceb07aff3ac98f4a7eae1a1549b773f40b1bea885"
       }
     },
     "scope": "versioned production admission and record metadata only; native/device unchanged"
   },
-  "schema": "issue120-compatible-production-admission-v1",
+  "schema": "issue120-compatible-production-admission-v2",
   "selection": {
     "execution_authorized": false,
     "fixed_repetitions": 22155167,

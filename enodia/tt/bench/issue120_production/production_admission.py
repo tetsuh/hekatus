@@ -1,6 +1,6 @@
 """Versioned production eligibility from original compatible calibration evidence.
 
-No device access, count adoption or owner execution authority is granted here.
+No device access or current readiness is granted here; v2 records dated owner authority.
 Legacy admissions remain in sessions with their original exact-identity rules.
 """
 from __future__ import annotations
@@ -12,11 +12,14 @@ import math
 import tarfile
 import tempfile
 from dataclasses import replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from . import artifacts, bounded_evidence, plan, records, runtime, sessions
 
 SCHEMA = "issue120-compatible-production-admission-v1"
+ADOPTED_SCHEMA = "issue120-compatible-production-admission-v2"
+ADOPTION = runtime.SOURCE / "production_adoption.json"
 SELECTION = runtime.SOURCE / "production_selection.json"
 POSTPROCESS = runtime.ROOT / "docs/measurements/issue120-production-p-prep/postprocess.json"
 C2_DIRECTORY = sessions.MEASUREMENTS_ROOT / "issue120-production/2026-11-21-c2"
@@ -38,6 +41,47 @@ def selection() -> dict:
             or type(value.get("fixed_repetitions")) is not int or value["fixed_repetitions"] <= 0):
         raise ValueError("production selection must be a finite non-authorizing recommendation")
     return value
+
+
+def _adoption_record(reference: dict, selected: dict) -> dict:
+    keys = {"file", "text", "sha256", "byte_count", "selection_text"}
+    if set(reference) != keys or reference["file"] != "enodia/tt/bench/issue120_production/production_adoption.json":
+        raise ValueError("owner adoption reference differs")
+    raw = reference["text"].encode("utf-8")
+    if len(raw) != reference["byte_count"] or hashlib.sha256(raw).hexdigest() != reference["sha256"]:
+        raise ValueError("owner adoption bytes differ")
+    data = json.loads(raw)
+    selection_raw = reference["selection_text"].encode("utf-8")
+    if json.loads(selection_raw) != selected:
+        raise ValueError("owner adoption selection differs")
+    expected = {"schema": "issue120-owner-production-adoption-v1", "decision_date": data.get("decision_date"),
+                "target_worker_seconds": selected["target_worker_seconds"], "fixed_repetitions": selected["fixed_repetitions"],
+                "selection_file_sha256": hashlib.sha256(selection_raw).hexdigest(),
+                "scope": {s.identity: 1 for s in plan.RUNS[4:]},
+                "conditional_loaded_requires_healthy_control": True, "same_session_required": True,
+                "automatic_retry_allowed": False}
+    if data != expected or type(data.get("fixed_repetitions")) is not int:
+        raise ValueError("owner adoption selection/date/scope differs")
+    _adoption_scope_date(data)
+    return data
+
+
+def _adoption_scope_date(data: dict) -> None:
+    day = date.fromisoformat(data["decision_date"])
+    if day.isoformat() != data["decision_date"] or day > datetime.now(UTC).date():
+        raise ValueError("owner adoption decision date is invalid or future")
+    if (any(type(n) is not int for n in data["scope"].values())
+            or data["conditional_loaded_requires_healthy_control"] is not True
+            or data["same_session_required"] is not True or data["automatic_retry_allowed"] is not False):
+        raise ValueError("owner adoption must authorize exactly one conditional pair")
+
+
+def owner_adoption() -> dict:
+    raw = ADOPTION.read_bytes()
+    reference = {"file": "enodia/tt/bench/issue120_production/production_adoption.json", "text": raw.decode("utf-8"),
+                 "sha256": hashlib.sha256(raw).hexdigest(), "byte_count": len(raw), "selection_text": SELECTION.read_text()}
+    _adoption_record(reference, selection())
+    return reference
 
 
 def _names(case: str) -> tuple[str, ...]:
@@ -207,7 +251,8 @@ def _model(facts: list[dict], selected: dict, proof: dict) -> dict:
             "bounds_established": False}
 
 
-def make_receipt(current: dict, *, selected: dict | None = None, proof: dict | None = None, live: bool = True) -> dict:
+def make_receipt(current: dict, *, selected: dict | None = None, proof: dict | None = None,
+                 live: bool = True, adoption: dict | None = None) -> dict:
     refs, baseline, facts = calibration_evidence()
     selected = selection() if selected is None else selected
     proof = postprocess_proof() if proof is None else proof
@@ -215,7 +260,7 @@ def make_receipt(current: dict, *, selected: dict | None = None, proof: dict | N
     model = _model(facts, selected, proof)
     build = runtime.ROOT / "docs/measurements/issue120-production-c1-prep-checks.json"
     build_proof = json.loads(build.read_bytes())
-    return {"schema": SCHEMA, "program_identity": copy.deepcopy(current), "selection": copy.deepcopy(selected),
+    receipt = {"schema": SCHEMA, "program_identity": copy.deepcopy(current), "selection": copy.deepcopy(selected),
             "selection_sha256": hashlib.sha256(json.dumps(selected, sort_keys=True).encode()).hexdigest(),
             "fixed_repetitions": selected["fixed_repetitions"], "model": model, "postprocess_proof": proof,
             "calibrations": refs, "baseline": baseline, "python_transition": transition,
@@ -223,12 +268,20 @@ def make_receipt(current: dict, *, selected: dict | None = None, proof: dict | N
             "bounded_evidence": bounded_evidence.references(), "native_device_unchanged": True,
             "allowed_plan_identities": [s.identity for s in plan.RUNS[4:]], "frames": 500000, "cap_seconds": 600,
             "watcher": False, "device_node": "/dev/tenstorrent/0", "owner_adopted": False, "execution_authorized": False}
+    if adoption is not None:
+        _adoption_record(adoption, selected)
+        receipt.update(schema=ADOPTED_SCHEMA, owner_adopted=True, execution_authorized=True,
+                       owner_decision=copy.deepcopy(adoption))
+    return receipt
 
 
 def validate_receipt(receipt: dict, current: dict, *, live: bool = True) -> None:
     selected = selection() if live else receipt["selection"]
     proof = postprocess_proof() if live else receipt["postprocess_proof"]
-    if receipt != make_receipt(current, selected=selected, proof=proof, live=live):
+    adoption = None
+    if receipt.get("schema") == ADOPTED_SCHEMA:
+        adoption = owner_adoption() if live else receipt["owner_decision"]
+    if receipt != make_receipt(current, selected=selected, proof=proof, live=live, adoption=adoption):
         raise ValueError("compatible production receipt/provenance/selection differs")
 
 
@@ -264,6 +317,8 @@ def _session_bindings(manifest: dict, record: dict, receipt: dict, receipt_sha: 
                 "harness_commit": record["environment"]["commit"], "program_identity": record["program_identity"],
                 "host_boot_id_sha256": record["host_boot_id_sha256"], "image": runtime.PINNED_IMAGE,
                 "production_contract": runtime.PRODUCTION_CONTRACT, "admission_hashes": {"production": receipt_sha}, "runs": configurations}
+    if receipt["schema"] == ADOPTED_SCHEMA:
+        expected["owner_adoption_sha256"] = receipt["owner_decision"]["sha256"]
     if (any(manifest.get(k) != v for k, v in expected.items())
             or bool(manifest.get("fixture_only")) != bool(record.get("fixture_only"))):
         raise ValueError("production captured session binding differs")

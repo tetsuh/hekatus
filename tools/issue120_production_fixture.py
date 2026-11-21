@@ -139,6 +139,9 @@ def publish(directory: Path, role: str):
     session, digest = sessions.read_session(settings["session_id"])
     spec = sessions.spec_for_session(plan.RUNS[4 if role == "control" else 5].identity, session)
     case = sessions.session_path(session["session_id"]) / "cases" / spec.identity
+    receipt = json.loads((runtime.SOURCE / "production_admission.json").read_bytes())
+    if receipt["schema"] == production.ADOPTED_SCHEMA and settings.get("profile_only"):
+        sessions.reserve_production_launch(spec, session, digest, receipt)
     case.mkdir(parents=True, exist_ok=True)
     # Only the external /out mount root changes; the real capture parser stays.
     runtime.issue120_probe.OUTPUT_ROOT = case
@@ -154,6 +157,8 @@ def publish(directory: Path, role: str):
     # _run validates P1 again inside the wrapper before native execution.
     # Keep that host cost charged; do not hide it in the outer launcher reread.
     began = time.perf_counter()
+    if receipt["schema"] == production.ADOPTED_SCHEMA:
+        sessions.enter_production_native(spec, session, digest, receipt, case)
     if role == "loaded":
         runner._control(session["session_id"], spec)
     in_container_control_seconds = time.perf_counter() - began
@@ -215,7 +220,7 @@ def readback(directory: Path, role: str):
     print(json.dumps(result))
 
 
-def bootstrap():
+def bootstrap(*, adopt_owner_decision: bool = False):
     directory = ROOT / uuid.uuid4().hex
     directory.mkdir(parents=True)
     target = production.POSTPROCESS
@@ -223,7 +228,8 @@ def bootstrap():
     provisional = {"schema": "issue120-production-host-postprocess-v1", "fixture_only": True, "measurement_pending": True,
                    "frames": 500000, "passed": True, "peak_rss_bytes": 0, "charged_host_seconds": 0.0, "launcher_reread_seconds": 0.0, "device_retrieval_measured": False}
     save(target, provisional)
-    receipt = production.make_receipt(production.fixture_identity())
+    adoption = production.owner_adoption() if adopt_owner_decision else None
+    receipt = production.make_receipt(production.fixture_identity(), adoption=adoption)
     save(runtime.SOURCE / "production_admission.json", receipt)
     sid = uuid.uuid4().hex
     now = time.monotonic_ns()
@@ -237,13 +243,15 @@ def bootstrap():
                 "host_cpu_model": sessions.cpu_model(),
                 "admission_hashes": {"production": runtime.sha(runtime.SOURCE / "production_admission.json")},
                 "runs": {s.identity: {"configuration": plan.program_configuration(s), "configuration_sha256": plan.configuration_digest(plan.program_configuration(s))} for s in specs}}
+    if adoption is not None:
+        manifest["owner_adoption_sha256"] = adoption["sha256"]
     session_dir = directory / "sessions" / sid
     session_dir.mkdir(parents=True)
     save(session_dir / "manifest.json", manifest)
     import tarfile
     with tarfile.open(runtime.ROOT / sessions.C1_DIRECTORY / "C1-evidence.tar.gz") as bundle:
         raw = json.loads(bundle.extractfile(f"env-{sessions.C1_ATTEMPT}.json").read())
-    save(directory / "fixture-settings.json", {"session_id": sid, "monotonic_origin_ns": now + 10**8, "UTC_origin_ns": time.time_ns(), "environment_template": raw})
+    save(directory / "fixture-settings.json", {"session_id": sid, "monotonic_origin_ns": now + 10**8, "UTC_origin_ns": time.time_ns(), "environment_template": raw, "profile_only": True})
     for role in ("control", "loaded"):
         for mode in ("publish", "readback"):
             subprocess.run([sys.executable, str(Path(__file__).resolve()), "--mode", mode, "--role", role, "--directory", str(directory)], check=True, cwd=runtime.ROOT)
@@ -259,7 +267,7 @@ def bootstrap():
               "excluded": ["synthetic companion generation", "real native execution and 2048000000-byte device retrieval", "real hardware telemetry"],
               "artifact_root": directory.relative_to(runtime.ROOT).as_posix()}
     save(target, report)
-    save(runtime.SOURCE / "production_admission.json", production.make_receipt(production.fixture_identity()))
+    save(runtime.SOURCE / "production_admission.json", production.make_receipt(production.fixture_identity(), adoption=adoption))
     print(json.dumps({"report": target.relative_to(runtime.ROOT).as_posix(), "charged_host_seconds": report["charged_host_seconds"], "peak_rss_bytes": report["peak_rss_bytes"]}))
 
 
@@ -268,9 +276,10 @@ def main():
     parser.add_argument("--mode", choices=("bootstrap", "publish", "readback"), required=True)
     parser.add_argument("--role", choices=("control", "loaded"))
     parser.add_argument("--directory", type=Path)
+    parser.add_argument("--adopt-owner-decision", action="store_true")
     args = parser.parse_args()
     if args.mode == "bootstrap":
-        bootstrap()
+        bootstrap(adopt_owner_decision=args.adopt_owner_decision)
     else:
         directory = runtime.issue120_probe._bounded_path(args.directory, ROOT, "fixture directory", "directory")
         (publish if args.mode == "publish" else readback)(directory, args.role)

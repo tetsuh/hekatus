@@ -51,6 +51,28 @@ to bypass a failed gate. No hardware execution has consumed this authority.
     bound; no advance latency acceptance threshold. Unknown long-run rate,
     AICLK/thermal/frame/memory/IO behavior and native2GB cost remain risks.
 
+## Source-matched adopted-v2 host-cost measurement
+
+The first adopted-v2 CPU measurement completed without native/device access:
+control construction6.005598s/publication0.002785s;loaded construction7.303426s/
+publication0.011691s plus5.951577s in-wrapper P1 reread/entry,total13.266694s.
+Outer reader7.245716s is separate. Peak115773440bytes(110.41MiB);real native2GB
+retrieval remains unmeasured. The new receipt is generated through
+`uv run python tools/prepare_issue120_production_admission.py --adopt-owner-decision --write`.
+It records the dated decision but does not substitute for fresh runtime gates.
+
+| Target | Count | Frame margin | Optimistic cap margin | Pessimistic cap margin |
+|---|---:|---:|---:|---:|
+|550s scenario,not selected |23433350 |49.291s |−12.246s |−22.246s |
+|530s scenario,not selected |22581228 |29.291s |8.871s |−1.129s |
+|520s adopted |22155167 |19.291s |19.430s |9.430s |
+
+Reserve31.510054s/41.510054s includes measured host13.266694s,setup2.134215s,
+snapshot1.109144s,unmeasured-native budget10s and guard5s,plus10s pessimistic
+stress. These are conditional assumptions,not bounds. The selected premise
+remains feasible under this model;no count/target/cap change is made. If later
+source repairs require remeasurement,these figures must be replaced before entry.
+
 ## Hardware gates and stop rules
 
 Exactly the owner brief-120-prod-p: device0 serial411c PCI0000:06:00.0 only,

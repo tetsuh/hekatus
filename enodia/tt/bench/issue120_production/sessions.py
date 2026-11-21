@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import subprocess
 import tarfile
 import tempfile
@@ -76,6 +77,11 @@ def create_session(specs: list[plan.RunSpec], *, fixture_only: bool = False) -> 
         raise ValueError("production session must match the entire admitted pair")
     if fixture_only and not SESSIONS.is_relative_to(runtime.ROOT / "out/issue120-production-p-prep"):
         raise ValueError("fixture sessions require their isolated program-owned root")
+    production_receipt = compatible_production_receipt() if specs[0].phase == "production" else None
+    if production_receipt is not None and not fixture_only:
+        from . import production_admission
+        if production_receipt["schema"] != production_admission.ADOPTED_SCHEMA:
+            raise ValueError("operational production session requires dated owner adoption")
     identity = uuid.uuid4().hex
     directory = session_path(identity)
     directory.mkdir(parents=True, exist_ok=False)
@@ -91,12 +97,74 @@ def create_session(specs: list[plan.RunSpec], *, fixture_only: bool = False) -> 
     if specs[0].phase == "production" and set(data["admission_hashes"]) == {"production"}:
         data["production_contract"] = runtime.PRODUCTION_CONTRACT
         data["host_cpu_model"] = cpu_model()
+        if production_receipt.get("owner_adopted") is True:
+            data["owner_adoption_sha256"] = production_receipt["owner_decision"]["sha256"]
     if fixture_only:
         data["fixture_only"] = True
     with (directory / "manifest.json").open("x") as output:
         json.dump(data, output, sort_keys=True, indent=2)
         output.write("\n")
     return data
+
+
+def _persist_claim(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x") as output:
+        os.fchmod(output.fileno(), 0o644)
+        json.dump(value, output, sort_keys=True)
+        output.write("\n")
+        output.flush()
+        os.fsync(output.fileno())
+    descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _production_claim(spec: plan.RunSpec, manifest: dict, digest: str, receipt: dict) -> dict | None:
+    from . import production_admission
+
+    if receipt.get("schema") != production_admission.ADOPTED_SCHEMA:
+        if manifest.get("fixture_only") is True:
+            return None
+        raise ValueError("operational production launch requires owner adoption")
+    adoption = receipt["owner_decision"]["sha256"]
+    if (receipt.get("owner_adopted") is not True or receipt.get("execution_authorized") is not True
+            or manifest.get("owner_adoption_sha256") != adoption):
+        raise ValueError("session owner adoption binding differs")
+    return {"schema": "issue120-production-launch-claim-v1", "session_id": manifest["session_id"],
+            "session_sha256": digest, "owner_adoption_sha256": adoption,
+            "receipt_sha256": manifest["admission_hashes"]["production"],
+            "harness_commit": manifest["harness_commit"], "host_boot_id_sha256": manifest["host_boot_id_sha256"],
+            "plan_identity": spec.identity}
+
+
+def reserve_production_launch(spec: plan.RunSpec, manifest: dict, digest: str, receipt: dict) -> None:
+    claim = _production_claim(spec, manifest, digest, receipt)
+    if claim is not None and not manifest.get("fixture_only"):
+        registration = SESSIONS / f"adoption-{claim['owner_adoption_sha256']}.json"
+        binding = {key: claim[key] for key in ("session_id", "session_sha256", "owner_adoption_sha256", "receipt_sha256")}
+        try:
+            _persist_claim(registration, binding)
+        except FileExistsError:
+            if json.loads(runtime.fixed_path(registration, SESSIONS).read_bytes()) != binding:
+                raise ValueError("owner adoption is already assigned to another session") from None
+    case = runtime.fixed_path(session_path(manifest["session_id"]) / "cases" / spec.identity, SESSIONS, exists=False)
+    case.mkdir(parents=True, exist_ok=False)
+    if claim is not None:
+        _persist_claim(case / "launch-claim.json", claim)
+
+
+def enter_production_native(spec: plan.RunSpec, manifest: dict, digest: str, receipt: dict, output: Path) -> None:
+    claim = _production_claim(spec, manifest, digest, receipt)
+    if claim is None:
+        return
+    path = runtime.fixed_path(output / "launch-claim.json", output)
+    if json.loads(path.read_bytes()) != claim:
+        raise ValueError("container launch claim differs from its session origin")
+    _persist_claim(output / "native-entry.json", {"schema": "issue120-production-native-entry-v1",
+                   "launch_claim_sha256": runtime.sha(path), "entered_monotonic_ns": time.monotonic_ns()})
 
 
 def admission_hashes(phase: str) -> dict:
@@ -133,7 +201,7 @@ def _validate_receipt_identity(kind: str, receipt: dict) -> None:
     current = runtime.program_identity()
     if kind == "production":
         from . import production_admission
-        if receipt.get("schema") == production_admission.SCHEMA:
+        if receipt.get("schema") in (production_admission.SCHEMA, production_admission.ADOPTED_SCHEMA):
             production_admission.validate_receipt(receipt, current)
             return
     if kind == "bounded" and receipt.get("schema") == C2_SCHEMA:
@@ -198,7 +266,7 @@ def compatible_production_receipt(bindings: dict | None = None) -> dict | None:
         if not (runtime.SOURCE / "production_admission.json").is_file():
             return None
         raise
-    return receipt if receipt.get("schema") == production_admission.SCHEMA else None
+    return receipt if receipt.get("schema") in (production_admission.SCHEMA, production_admission.ADOPTED_SCHEMA) else None
 
 
 def admitted_specs(unit: str, bindings: dict | None = None) -> list[plan.RunSpec]:

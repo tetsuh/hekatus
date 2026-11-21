@@ -79,6 +79,15 @@ def run() -> dict:
         _settings(directory, session)
         control, loaded = (_args(s.identity, session) for s in specs)
         rejected = {}
+        missing_adoption = directory / "missing-adoption.json"
+        with patch.object(production, "ADOPTION", missing_adoption):
+            rejected["missing_adoption"] = rejected_call(control, "missing owner adoption")
+        mismatched_adoption = directory / "mismatched-adoption.json"
+        data = json.loads(production.ADOPTION.read_bytes())
+        data["fixed_repetitions"] += 1
+        fixture.save(mismatched_adoption, data)
+        with patch.object(production, "ADOPTION", mismatched_adoption):
+            rejected["mismatched_adoption"] = rejected_call(control, "mismatched owner adoption")
         with patch.object(sessions, "boot_fingerprint", return_value="f" * 64):
             rejected["boot"] = rejected_call(control, "boot")
         with patch.object(sessions, "current_head", return_value="b" * 40):
@@ -105,6 +114,8 @@ def run() -> dict:
         comparison = records.compare_records(observed[specs[0].identity], observed[specs[1].identity])
         assert p1 == p2 == 0 and len(child_calls) == 2
         positive_launches = len(child_calls)
+        rejected["used_roles"] = (rejected_call(control, "P1 already consumed")
+                                  and rejected_call(loaded, "P2 already consumed"))
         # Primary-only environment edits must disagree with actual capture and
         # the session CPU identity before any new child is released.
         case = sessions.session_path(session["session_id"]) / "cases" / specs[0].identity
