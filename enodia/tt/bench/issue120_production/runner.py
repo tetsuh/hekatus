@@ -85,9 +85,11 @@ def _control(session_id: str, spec: plan.RunSpec) -> dict | None:
         raise ValueError("healthy same-session control required before loaded")
     if spec.phase == "production" and not control.get("timing_evidence"):
         raise ValueError("production control lacks timing/power eligibility")
-    if control.get("program_identity", {}).get("production_admission_contract") == runtime.PRODUCTION_CONTRACT:
-        from . import production_admission
-        production_admission.control_release(control, session_id)
+    if spec.phase == "production":
+        manifest, _ = sessions.read_session(session_id)
+        if manifest.get("production_contract") == runtime.PRODUCTION_CONTRACT:
+            from . import production_admission
+            production_admission.control_release(control, session_id)
     return control
 
 

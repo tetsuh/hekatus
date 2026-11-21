@@ -35,9 +35,14 @@ legacy exact-provenance,C1-only and C2-only launch admissions. It binds:
 New P sessions bind both roles to the same boot/head/source/receipt. Changed
 head/boot/receipt/selection or missing receipt rejects. Traced500000-frame native
 shape independently requires new provenance even if metadata discriminators
-are deleted. P2 also checks P1's exact session-manifest/program/harness origin
-and requires owner review of new paired-clock anomalies. Fixture-only sessions
-are fenced to a separate root; they cannot enter operational sessions.
+are deleted. Primary identity must equal the canonical raw capture plus session
+CPU identity. P2 checks the admitted session's contract,not the supplied record
+marker,and requires an authentic P1control role/configuration/500000frames plus
+exact session-manifest/program/harness/boot origin. New P container reads also
+check current boot at /work; deleting a session contract cannot evade the gate.
+New paired-clock anomalies require owner review. Captured native/session/raw-env
+fixture flags must agree; primary-only deletion cannot enter operational roots.
+These pre-hardware review repairs are tracked in Issue #187.
 
 ## Measured CPU host pipeline, not device retrieval
 
@@ -51,24 +56,24 @@ All clock,power,native-capture claims are explicitly synthetic fixture inputs.
 
 | Component | Control seconds | Loaded seconds |
 |---|---:|---:|
-| Companion generation,excluded from cap model |4.894264 |5.368469 |
-| In-wrapper P1 reread,charged before native |0 |5.966015 |
-| Actual record construction including analysis/hash/copy |5.999714 |7.275494 |
-| Of that,frame analysis |5.066843 |6.216782 |
-| Binary header/size/hash IO |0.068461 |0.072526 |
-| Runtime hash calls |0.007841 |0.008257 |
-| Copy and fsync |0.037751 |0.037850 |
-| Atomic record publication |0.002824 |0.011811 |
-| Total measured charged host work |6.002539 |13.253321 |
-| Separate fresh reader outside cap |5.940125 |7.240593 |
+| Companion generation,excluded from cap model |4.877857 |5.384707 |
+| In-wrapper P1 reread,charged before native |0 |5.950489 |
+| Actual record construction including analysis/hash/copy |6.010007 |7.268395 |
+| Of that,frame analysis |5.083466 |6.205263 |
+| Binary header/size/hash IO |0.067730 |0.072856 |
+| Runtime hash calls |0.007942 |0.008408 |
+| Copy and fsync |0.034000 |0.038361 |
+| Atomic record publication |0.002731 |0.012239 |
+| Total measured charged host work |6.012738 |13.231123 |
+| Separate fresh reader outside cap |5.952598 |7.282743 |
 
 Hash/copy timings are subsets of construction,not added twice. Calls execute
 real implementations with timing wrappers,not substitute results. The P1 reread
 inside P2's wrapper is distinct from the outer launcher's precheck/final reread;
 it remains charged,not moved outside the cap.
 
-Publisher peaks:control103604224bytes,loaded114294784bytes. Fresh reader peaks:
-103772160/115752960bytes. The maximum is110.39MiB. These are per-child lifetime
+Publisher peaks:control107593728bytes,loaded114204672bytes. Fresh reader peaks:
+107790336/115748864bytes. The maximum is110.39MiB. These are per-child lifetime
 Linux ru_maxrss values,not summed concurrent RSS or native/device memory.
 Loaded GC collections were23/2/0 for generations0/1/2 during construction and
 30/3/0 during reread. Primary JSON625454bytes,well below64MiB reader limit.
@@ -81,12 +86,12 @@ native readout or establish accelerator timing/coverage.
 
 ## Reserve update and conditional count table
 
-The measured loaded charged host work13.253321s includes5.966015s P1 validation.
+The measured loaded charged host work13.231123s includes5.950489s P1 validation.
 Add setup scenario2.134215s,snapshot-wait scenario1.109144s,**unmeasured native
 retrieval budget10s**,and CLI/residual/guard5s. Optimistic reserve becomes
-31.496680s; pessimistic reserve is max(historical36.873251s,optimistic+10s),
-thus41.496680s. These are explicit budget assumptions,not measured upper bounds.
-The outer reader7.240593s stays outside the existing measurement cap/watchdog
+31.474482s; pessimistic reserve is max(historical36.873251s,optimistic+10s),
+thus41.474482s. These are explicit budget assumptions,not measured upper bounds.
+The outer reader7.282743s stays outside the existing measurement cap/watchdog
 scope. Admission replay/CLI overhead and native retrieval retain uncertainty.
 
 Using the original40slab envelope r_fast42606.092791/r_slow40351.083518writes/s,
@@ -94,9 +99,9 @@ observed offset64.033..69.164us and conditional frame envelope500.708738s:
 
 | Target | Derived N | Fast frame margin | Slow worker |600s optimistic margin |600s pessimistic margin |
 |---|---:|---:|---:|---:|---:|
-|550s |23433350 |49.291s |580.737s |−12.233s |−22.233s |
-|530s |22581228 |29.291s |559.619s |8.884s |−1.116s |
-|520s |22155167 |19.291s |549.060s |19.443s |9.443s |
+|550s |23433350 |49.291s |580.737s |−12.211s |−22.211s |
+|530s |22581228 |29.291s |559.619s |8.907s |−1.093s |
+|520s |22155167 |19.291s |549.060s |19.465s |9.465s |
 
 Time-only feasibility does not prove causal full-frame coverage. ±2%,offsets,
 frame/reserve projections and native budget remain unbounded. Recommend owner
@@ -123,8 +128,8 @@ historical/native bytes are changed to make CI pass. All fixes remain Refs.
 ## Owner approval checklist (one screen; not approval)
 
 - [ ] Choose target/N in the single selection,or accept the recommendation only
-      after reviewing conditional19.291s frame/9.443s pessimistic cap headroom.
-- [ ] Review13.253s measured charged host/110.39MiB peak;2GB native readout is
+      after reviewing conditional19.291s frame/9.465s pessimistic cap headroom.
+- [ ] Review13.231s measured charged host/110.39MiB peak;2GB native readout is
       unmeasured,10s budget plus10s stress slack is not a bound.
 - [ ] Confirm exact final precommit,receipt/source/native/device/build/image/
       calibration/baseline hashes,green full tests/CI and Sonar0/0/OK.

@@ -234,6 +234,7 @@ def bootstrap():
                 "harness_commit": sessions.current_head(), "host_boot_id_sha256": sessions.boot_fingerprint(),
                 "program_identity": production.fixture_identity(), "image": runtime.PINNED_IMAGE,
                 "production_contract": runtime.PRODUCTION_CONTRACT, "fixture_only": True,
+                "host_cpu_model": sessions.cpu_model(),
                 "admission_hashes": {"production": runtime.sha(runtime.SOURCE / "production_admission.json")},
                 "runs": {s.identity: {"configuration": plan.program_configuration(s), "configuration_sha256": plan.configuration_digest(plan.program_configuration(s))} for s in specs}}
     session_dir = directory / "sessions" / sid
@@ -253,6 +254,7 @@ def bootstrap():
               "launcher_reread_seconds": max(r["launcher_reread_seconds"] for r in readers),
               "peak_rss_bytes": max(r["peak_rss_bytes"] for r in [*publishers, *readers]),
               "publishers": publishers, "readers": readers, "fixture_source_sha256": runtime.sha(Path(__file__)),
+              "measured_python_sources_sha256": manifest["program_identity"]["python_sources_sha256"],
               "memory_scope": "fresh child lifetime ru_maxrss; separate publisher and reader, not summed",
               "excluded": ["synthetic companion generation", "real native execution and 2048000000-byte device retrieval", "real hardware telemetry"],
               "artifact_root": directory.relative_to(runtime.ROOT).as_posix()}

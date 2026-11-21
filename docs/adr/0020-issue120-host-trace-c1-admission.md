@@ -149,7 +149,16 @@ Native2GB device retrieval remains unmeasured. Synthetic evidence is fixture-onl
 never calibration or production evidence. New production records capture their
 actual receipt/session/environment companions so later selection changes cannot
 rewrite historical interpretation. Boot/head/receipt drift and failed P1 block
-P2; a technical receipt/session grants no owner authority. The preparation plan
+P2; a technical receipt/session grants no owner authority. New P container entry
+checks current boot as well as the host. Canonical raw-environment identity and
+captured session CPU identity must equal the complete primary summary. Admitted
+session scope,not an optional supplied-record marker,selects strict P1 role/
+configuration/source authentication. Native shape and current P-program/session
+scope prevent metadata-discriminator deletion; captured native/session/raw-env
+fixture declarations must agree and remain outside operational roots. These
+pre-hardware review repairs are tracked in Issue #187. Host-cost proof binds the
+full measured Python inventory and fixture source; changed code requires a new
+measurement,not an ignored timing/provenance delta. The preparation plan
 is [precommitted here](../measurements/issue120-production-p-prep-plan.md).
 
 ## Consequences

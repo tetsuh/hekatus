@@ -105,6 +105,35 @@ def run() -> dict:
         comparison = records.compare_records(observed[specs[0].identity], observed[specs[1].identity])
         assert p1 == p2 == 0 and len(child_calls) == 2
         positive_launches = len(child_calls)
+        # Primary-only environment edits must disagree with actual capture and
+        # the session CPU identity before any new child is released.
+        case = sessions.session_path(session["session_id"]) / "cases" / specs[0].identity
+        primary = case / "results-synthetic-p1.json"
+        original = primary.read_bytes()
+        try:
+            for field in ("serial", "pci", "firmware", "kmd", "board_model", "image_digest", "cpu_model"):
+                changed = json.loads(original)
+                changed["environment"][field] = "tampered"
+                fixture.save(primary, changed)
+                try:
+                    real_loader(primary)
+                except ValueError:
+                    pass
+                else:
+                    raise AssertionError("primary environment edit accepted: " + field)
+        finally:
+            primary.write_bytes(original)
+        rejected["environment_summary"] = True
+        historical = sessions.create_session(specs, fixture_only=True)
+        old_case = sessions.session_path(historical["session_id"]) / "cases" / specs[0].identity
+        old_case.mkdir(parents=True)
+        with tarfile.open(runtime.ROOT / sessions.C1_DIRECTORY / "C1-evidence.tar.gz") as bundle:
+            bundle.extractall(old_case, filter="data")
+        old_primary = old_case / f"results-{sessions.C1_ATTEMPT}.json"
+        changed = json.loads(old_primary.read_bytes())
+        changed["session_id"] = historical["session_id"]
+        fixture.save(old_primary, changed)
+        rejected["historical_P1"] = rejected_call(_args(specs[1].identity, historical), "historical calibration is not P1")
         # Separate failed-P1 session: corrupt an actual published frame companion,
         # not an eligibility flag, and require real loader rejection before P2.
         failure_session = sessions.create_session(specs, fixture_only=True)
@@ -119,7 +148,7 @@ def run() -> dict:
             raise AssertionError("corrupt P1 was accepted")
         rejected["failed_P1"] = rejected_call(_args(specs[1].identity, failure_session), "failed P1")
     result = {"schema": "issue120-production-fixture-dry-run-v1", "fixture_only": True, "P_executed": False,
-              "native_invoked": False, "positive_launches": positive_launches, "P1_exit": p1, "P2_exit": p2,
+              "native_invoked": False, "positive_launches": positive_launches, "fixture_publisher_invocations": len(child_calls), "P1_exit": p1, "P2_exit": p2,
               "comparison_recomputed": True, "comparison": comparison, "rejected": rejected,
               "actual_launcher_rereads": rereads, "launcher_peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
               "external_state_simulated": ["clean/pushed Git state", "fixture native result/clock/telemetry claims"],

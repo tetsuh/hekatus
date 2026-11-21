@@ -70,6 +70,7 @@ def test_production_session_must_match_entire_admitted_pair(receipt, tmp_path, m
     monkeypatch.setattr(sessions, "SESSIONS", tmp_path)
     monkeypatch.setattr(sessions, "_committed_admission", lambda *a: receipt)
     monkeypatch.setattr(sessions, "admission_hashes", lambda phase: {"production": "a" * 64})
+    incomplete = production.specs(receipt)[:1]
     with pytest.raises(ValueError, match="production"):
-        sessions.create_session(production.specs(receipt)[:1])
+        sessions.create_session(incomplete)
     assert not list(tmp_path.iterdir())

@@ -14,7 +14,7 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-from . import artifacts, bounded_evidence, plan, runtime, sessions
+from . import artifacts, bounded_evidence, plan, records, runtime, sessions
 
 SCHEMA = "issue120-compatible-production-admission-v1"
 SELECTION = runtime.SOURCE / "production_selection.json"
@@ -48,17 +48,7 @@ def _names(case: str) -> tuple[str, ...]:
     return common if case == "C1" else (*common, f"session-{C2_SESSION}.json")
 
 
-def _extract(case: str, output: Path) -> tuple[dict, dict]:
-    from .recording import load_validated_record
-
-    directory = runtime.ROOT / sessions.C1_DIRECTORY if case == "C1" else C2_DIRECTORY
-    pins = ((sessions.C1_ARCHIVE_SHA, sessions.C1_MANIFEST_SHA, sessions.C1_SESSION_SHA, sessions.C1_RECORD_SHA)
-            if case == "C1" else (C2_ARCHIVE_SHA, C2_MANIFEST_SHA, C2_SESSION_SHA, C2_RECORD_SHA))
-    for name, digest in zip((f"{case}-evidence.tar.gz", f"{case}-manifest.json", "runtime-session-manifest.json"), pins[:3], strict=True):
-        if runtime.sha(runtime.fixed_path(directory / name, directory)) != digest:
-            raise ValueError("original calibration archive/session fingerprint differs")
-    manifest = json.loads((directory / f"{case}-manifest.json").read_bytes())
-    expected = {item["file"]: item for item in manifest["artifacts"]}
+def _extract_members(case: str, directory: Path, output: Path, expected: dict) -> None:
     names = _names(case)
     with tarfile.open(directory / f"{case}-evidence.tar.gz") as bundle:
         members = bundle.getmembers()
@@ -71,6 +61,20 @@ def _extract(case: str, output: Path) -> tuple[dict, dict]:
             path.write_bytes(raw)
             if len(raw) != expected[name]["byte_count"] or runtime.sha(path) != expected[name]["sha256"]:
                 raise ValueError("original calibration payload fingerprint differs")
+
+
+def _extract(case: str, output: Path) -> tuple[dict, dict]:
+    from .recording import load_validated_record
+
+    directory = runtime.ROOT / sessions.C1_DIRECTORY if case == "C1" else C2_DIRECTORY
+    pins = ((sessions.C1_ARCHIVE_SHA, sessions.C1_MANIFEST_SHA, sessions.C1_SESSION_SHA, sessions.C1_RECORD_SHA)
+            if case == "C1" else (C2_ARCHIVE_SHA, C2_MANIFEST_SHA, C2_SESSION_SHA, C2_RECORD_SHA))
+    for name, digest in zip((f"{case}-evidence.tar.gz", f"{case}-manifest.json", "runtime-session-manifest.json"), pins[:3], strict=True):
+        if runtime.sha(runtime.fixed_path(directory / name, directory)) != digest:
+            raise ValueError("original calibration archive/session fingerprint differs")
+    manifest = json.loads((directory / f"{case}-manifest.json").read_bytes())
+    expected = {item["file"]: item for item in manifest["artifacts"]}
+    _extract_members(case, directory, output, expected)
     attempt = sessions.C1_ATTEMPT if case == "C1" else C2_ATTEMPT
     path = output / f"results-{attempt}.json"
     if runtime.sha(path) != pins[3]:
@@ -85,7 +89,8 @@ def _extract(case: str, output: Path) -> tuple[dict, dict]:
                  "harness_commit": row["environment"]["commit"], "program_identity": row["program_identity"]}
 
 
-def _row_facts(row: dict, output: Path) -> dict:
+def _row_facts(row: dict, output: Path, case: str) -> dict:
+    attempt = sessions.C1_ATTEMPT if case == "C1" else C2_ATTEMPT
     native = row["native"]
     trace = native["host_phase_trace"]
     slabs = []
@@ -93,7 +98,7 @@ def _row_facts(row: dict, output: Path) -> dict:
         writes = after["committed_count"] - before["committed_count"]
         seconds = (after["monotonic_ns"] - before["monotonic_ns"]) / 1e9
         slabs.append({"writes": writes, "seconds": seconds, "writes_per_second": writes / seconds})
-    frames = artifacts.read_public_evidence(output, row["attempt_identity"], "frames", frames=native["frame_count"], emitted=native["repeat_count"])
+    frames = artifacts.read_public_evidence(output, attempt, "frames", frames=native["frame_count"], emitted=native["repeat_count"])
     first, last = None, None
     for frame in frames.rows():
         stamp = artifacts.ticks(frame, 0)
@@ -102,7 +107,7 @@ def _row_facts(row: dict, output: Path) -> dict:
         last = stamp
     span = (last - first) / (row["clock"]["observed_host_envelope_weighted_aiclk_mhz"] * 1e6)
     host = (native["program_host_interval"]["end_ns"] - native["program_host_interval"]["start_ns"]) / 1e9
-    raw = json.loads((output / f"env-{row['attempt_identity']}.json").read_bytes())
+    raw = json.loads((output / f"env-{attempt}.json").read_bytes())
     return {"baseline": sessions.stable_calibration_environment(raw), "slabs": slabs, "lead_seconds": (trace["samples"][0]["monotonic_ns"] - trace["worker_start_ns"]) / 1e9,
             "projected_frame_envelope_seconds": span / (native["frame_count"] - 1) * 499999 + host - span,
             "overhead": row["overhead"]}
@@ -116,7 +121,7 @@ def calibration_evidence() -> tuple[dict, dict, list[dict]]:
             output.mkdir()
             row, refs[case] = _extract(case, output)
             rows.append(row)
-            facts.append(_row_facts(row, output))
+            facts.append(_row_facts(row, output, case))
     before = copy.deepcopy(rows[0]["program_identity"])
     after = rows[1]["program_identity"]
     before.update(python_sources_sha256=after["python_sources_sha256"], calibration_compatibility_contract=runtime.CALIBRATION_CONTRACT)
@@ -166,9 +171,10 @@ def postprocess_proof() -> dict:
     if (report.get("schema") != "issue120-production-host-postprocess-v1" or report.get("fixture_only") is not True
             or report.get("frames") != 500000 or report.get("passed") is not True or report.get("device_retrieval_measured") is not False):
         raise ValueError("500000-frame device-free host postprocessing proof missing")
-    if (report.get("measurement_pending") is not True and report.get("fixture_source_sha256")
-            != runtime.sha(runtime.ROOT / "tools/issue120_production_fixture.py")):
-        raise ValueError("postprocessing fixture source differs from its measurement")
+    if (report.get("measurement_pending") is not True
+            and (report.get("fixture_source_sha256") != runtime.sha(runtime.ROOT / "tools/issue120_production_fixture.py")
+                 or report.get("measured_python_sources_sha256") != runtime.python_source_hashes())):
+        raise ValueError("postprocessing source differs from its measurement")
     return {"file": path.relative_to(runtime.ROOT).as_posix(), "sha256": runtime.sha(path), "report": report}
 
 
@@ -270,6 +276,18 @@ def _session_bindings(manifest: dict, record: dict, receipt: dict, receipt_sha: 
         raise ValueError("production plan/configuration declaration differs")
 
 
+def environment_identity(raw: dict, manifest: dict) -> dict:
+    board, firmware = raw["board"], raw["firmware"]
+    cpu = manifest.get("host_cpu_model")
+    if not isinstance(cpu, str) or not cpu.strip():
+        raise ValueError("production session CPU identity is missing")
+    return {"board_model": str(board.get("board_type")),
+            "serial": runtime.issue120_probe.normalize_board_id(board.get("serial") or board.get("board_id")),
+            "pci": runtime.issue120_probe.normalize_pci_bus_id(board.get("bus_id")),
+            "firmware": str(firmware.get("fw_bundle_version")), "kmd": str(raw.get("kmd_version")),
+            "image_digest": str(raw["image"]).rsplit("@", 1)[-1], "cpu_model": cpu, "commit": raw["harness_commit"]}
+
+
 def record_provenance(output: Path, record: dict, receipt_sha: str, *, publish: bool = False) -> dict:
     """Authenticate actual immutable session/receipt/host-proof/env companions."""
     identity = sessions.canonical_session_id(record["session_id"])
@@ -293,10 +311,15 @@ def record_provenance(output: Path, record: dict, receipt_sha: str, *, publish: 
     if env_path.stat().st_size > 1024 * 1024:
         raise ValueError("production environment exceeds its capture bound")
     raw = json.loads(env_path.read_bytes())
+    fixture_flags = (record.get("fixture_only"), record["native"].get("fixture_only"),
+                     manifest.get("fixture_only"), raw.get("fixture_only"))
+    if any(flag is True for flag in fixture_flags) and not all(flag is True for flag in fixture_flags):
+        raise ValueError("production fixture declarations disagree with the captured native/session/environment")
     if (raw.get("harness_commit") != record["environment"]["commit"] or raw.get("run_id") != record["attempt_identity"]
             or raw.get("harness_dirty") is not False or raw.get("harness_pushed") is not True
             or raw.get("board") != raw.get("board_info") or raw.get("firmware") != raw.get("firmwares")
-            or sessions.stable_calibration_environment(raw) != receipt["baseline"]):
+            or sessions.stable_calibration_environment(raw) != receipt["baseline"]
+            or record["environment"] != environment_identity(raw, manifest)):
         raise ValueError("production environment/harness/baseline differs")
     return {"schema": runtime.PRODUCTION_CONTRACT, "receipt": receipt_ref, "session": session_ref,
             "postprocess": host_ref, "environment": {"file": env_path.name, "sha256": runtime.sha(env_path), "byte_count": env_path.stat().st_size}}
@@ -304,11 +327,22 @@ def record_provenance(output: Path, record: dict, receipt_sha: str, *, publish: 
 
 def control_release(control: dict, identity: str) -> None:
     manifest, digest = sessions.read_session(identity)
-    if (control.get("session_id") != identity or control.get("session_manifest_sha256") != digest
+    expected = manifest.get("runs", {}).get(plan.RUNS[4].identity)
+    if expected is None:
+        raise ValueError("production control session has no admitted role")
+    expected = records.mapping(expected, "production control role")
+    roles = {"schema": "issue120-production-v2", "phase": "production", "condition": "control",
+             "plan_identity": plan.RUNS[4].identity, "configuration": expected["configuration"],
+             "configuration_sha256": expected["configuration_sha256"], "host_boot_id_sha256": manifest["host_boot_id_sha256"],
+             "resident_integrity_passed": True, "execution_eligible": True, "timing_evidence": True}
+    if (any(control.get(key) != value for key, value in roles.items())
+            or control.get("session_id") != identity or control.get("session_manifest_sha256") != digest
             or control.get("program_identity") != manifest["program_identity"]
             or control.get("environment", {}).get("commit") != manifest["harness_commit"]
-            or control.get("metrics", {}).get("paired_outlier_count") != 0):
-        raise ValueError("production control origin or paired-clock anomalies require owner review")
+            or control.get("metrics", {}).get("paired_outlier_count") != 0
+            or control.get("native", {}).get("frame_count") != 500000
+            or control.get("coverage_analysis", {}).get("coverage") != "not_applicable"):
+        raise ValueError("production control role/origin or paired-clock anomalies require owner review")
 
 
 def recheck_record_provenance(output: Path, record: dict) -> None:
@@ -316,7 +350,8 @@ def recheck_record_provenance(output: Path, record: dict) -> None:
     if (record.get("program_identity", {}).get("production_admission_contract") != runtime.PRODUCTION_CONTRACT
             or not isinstance(value, dict)):
         raise ValueError("production declared provenance is missing")
-    if (record.get("fixture_only") and output.is_relative_to(runtime.ROOT / "out/issue120-production/sessions")):
+    if ((record.get("fixture_only") or record.get("native", {}).get("fixture_only"))
+            and output.is_relative_to(runtime.ROOT / "out/issue120-production/sessions")):
         raise ValueError("production fixture evidence cannot enter operational sessions")
     if record_provenance(output, record, value.get("receipt", {}).get("sha256")) != value:
         raise ValueError("production persisted provenance differs")

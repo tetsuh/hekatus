@@ -42,6 +42,13 @@ def read_session(identity: str) -> tuple[dict, str]:
     if (data.get("schema") != "issue120-production-session-v1" or data.get("session_id") != identity
             or runtime.ROOT != Path("/work") and data.get("host_boot_id_sha256") != boot_fingerprint()):
         raise ValueError("session manifest identity/schema differs")
+    requires_contract = (data.get("program_identity", {}).get("production_admission_contract") == runtime.PRODUCTION_CONTRACT
+                         and any(s.identity in data.get("runs", {}) for s in plan.RUNS[4:]))
+    if requires_contract and data.get("production_contract") != runtime.PRODUCTION_CONTRACT:
+        raise ValueError("production session contract is missing")
+    if (data.get("production_contract") == runtime.PRODUCTION_CONTRACT
+            and data.get("host_boot_id_sha256") != boot_fingerprint()):
+        raise ValueError("production session current boot changed, including the container boundary")
     if data.get("fixture_only") and not SESSIONS.is_relative_to(runtime.ROOT / "out/issue120-production-p-prep"):
         raise ValueError("fixture session cannot enter the operational session root")
     if (data.get("production_contract") == runtime.PRODUCTION_CONTRACT and runtime.ROOT != Path("/work")
@@ -53,6 +60,13 @@ def read_session(identity: str) -> tuple[dict, str]:
 def current_head() -> str:
     return subprocess.run(["git", "rev-parse", "HEAD"], cwd=runtime.ROOT, check=True,
                           capture_output=True, text=True).stdout.strip()
+
+
+def cpu_model() -> str:
+    for line in Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.lower().startswith(("model name", "hardware")):
+            return line.split(":", 1)[-1].strip()
+    raise ValueError("CPU identity unavailable for the production session")
 
 
 def create_session(specs: list[plan.RunSpec], *, fixture_only: bool = False) -> dict:
@@ -76,6 +90,7 @@ def create_session(specs: list[plan.RunSpec], *, fixture_only: bool = False) -> 
                      for s in specs}}
     if specs[0].phase == "production" and set(data["admission_hashes"]) == {"production"}:
         data["production_contract"] = runtime.PRODUCTION_CONTRACT
+        data["host_cpu_model"] = cpu_model()
     if fixture_only:
         data["fixture_only"] = True
     with (directory / "manifest.json").open("x") as output:
