@@ -1,0 +1,143 @@
+# Issue #120 production preparation — no hardware approval
+
+This stage is board-free only. No board/device/tt-smi/native execution or real
+runtime P session occurs.520s/22155167writes is an **owner recommendation only**,
+not count adoption or execution authority. The
+[precommitted invariants](../issue120-production-p-prep-plan.md) govern this work.
+
+## One selection and a distinct receipt
+
+Only enodia/tt/bench/issue120_production/production_selection.json supplies the
+runtime target/count pair. To consider an owner alternative,edit that pair and
+run `uv run python tools/prepare_issue120_production_admission.py --write`.
+The generator reads current build/native proofs but never executes native.
+It recomputes rounding/model/margins and rejects inconsistent N rather than
+silently adjusting it. A changed selection invalidates the old receipt/session;
+regeneration and precommit/validation are required. Numerical fields repeated
+in generated receipts/reports are derived,not independent configuration knobs.
+
+The new compatible-production-admission-v1 path is separate from unchanged
+legacy exact-provenance,C1-only and C2-only launch admissions. It binds:
+
+- Original C1/C2 archive,manifest,primary,session and raw-environment hashes,
+  ordinary artifact validation,healthy covered calibration and B4 Watcher proof.
+- Unchanged native/device/kernel/CTA/library/compile/build/image/work proofs and
+  original Linux6.8.0-149/KMD2.12/device0 baseline. No history is relabeled.
+- Complete original-C2/current metadata Python inventories and explicit deltas,
+  including the new production-admission module. No native/device CLI change.
+-40slabs,max/min +/-2%,observed offsets,conditional frame projection,ceil rounding,
+  chosen count/reserve decomposition/both margins and rejected physical fits.
+- The hashed device-free500000-frame postprocessing report and its fixture source.
+  New records capture actual receipt/session/environment/host-proof companions.
+- Distinct owner_adopted=false/execution_authorized=false declarations. Technical
+  eligibility and synthetic fixtures do not grant owner permission.
+
+New P sessions bind both roles to the same boot/head/source/receipt. Changed
+head/boot/receipt/selection or missing receipt rejects. Traced500000-frame native
+shape independently requires new provenance even if metadata discriminators
+are deleted. P2 also checks P1's exact session-manifest/program/harness origin
+and requires owner review of new paired-clock anomalies. Fixture-only sessions
+are fenced to a separate root; they cannot enter operational sessions.
+
+## Measured CPU host pipeline, not device retrieval
+
+`postprocess.json` reports fresh Python publisher and reader processes,each
+with500000compact frame rows. Control is constant-period; loaded has bounded
+synthetic completion jitter to exercise thousands of histogram entries,not just
+one bin. Generation is streaming; loaded transition rows500002,trace samples339.
+Frames occupy64000024bytes; loaded transitions4000040bytes. Native's real
+2048000000-byte device-page retrieval is **unmeasured and not reproduced**.
+All clock,power,native-capture claims are explicitly synthetic fixture inputs.
+
+| Component | Control seconds | Loaded seconds |
+|---|---:|---:|
+| Companion generation,excluded from cap model |4.894264 |5.368469 |
+| In-wrapper P1 reread,charged before native |0 |5.966015 |
+| Actual record construction including analysis/hash/copy |5.999714 |7.275494 |
+| Of that,frame analysis |5.066843 |6.216782 |
+| Binary header/size/hash IO |0.068461 |0.072526 |
+| Runtime hash calls |0.007841 |0.008257 |
+| Copy and fsync |0.037751 |0.037850 |
+| Atomic record publication |0.002824 |0.011811 |
+| Total measured charged host work |6.002539 |13.253321 |
+| Separate fresh reader outside cap |5.940125 |7.240593 |
+
+Hash/copy timings are subsets of construction,not added twice. Calls execute
+real implementations with timing wrappers,not substitute results. The P1 reread
+inside P2's wrapper is distinct from the outer launcher's precheck/final reread;
+it remains charged,not moved outside the cap.
+
+Publisher peaks:control103604224bytes,loaded114294784bytes. Fresh reader peaks:
+103772160/115752960bytes. The maximum is110.39MiB. These are per-child lifetime
+Linux ru_maxrss values,not summed concurrent RSS or native/device memory.
+Loaded GC collections were23/2/0 for generations0/1/2 during construction and
+30/3/0 during reread. Primary JSON625454bytes,well below64MiB reader limit.
+Constant loaded exploratory measurement was approximately7.07s construction+
+publication; jittered approximately7.29s. No severe superlinear behavior was
+observed in these fixtures,but this is not a bound for arbitrary jitter,
+filesystem pressure,GC,memory contention or production inputs. No measurement-
+meaning-changing optimization was made. These results do not simulate the2GB
+native readout or establish accelerator timing/coverage.
+
+## Reserve update and conditional count table
+
+The measured loaded charged host work13.253321s includes5.966015s P1 validation.
+Add setup scenario2.134215s,snapshot-wait scenario1.109144s,**unmeasured native
+retrieval budget10s**,and CLI/residual/guard5s. Optimistic reserve becomes
+31.496680s; pessimistic reserve is max(historical36.873251s,optimistic+10s),
+thus41.496680s. These are explicit budget assumptions,not measured upper bounds.
+The outer reader7.240593s stays outside the existing measurement cap/watchdog
+scope. Admission replay/CLI overhead and native retrieval retain uncertainty.
+
+Using the original40slab envelope r_fast42606.092791/r_slow40351.083518writes/s,
+observed offset64.033..69.164us and conditional frame envelope500.708738s:
+
+| Target | Derived N | Fast frame margin | Slow worker |600s optimistic margin |600s pessimistic margin |
+|---|---:|---:|---:|---:|---:|
+|550s |23433350 |49.291s |580.737s |−12.233s |−22.233s |
+|530s |22581228 |29.291s |559.619s |8.884s |−1.116s |
+|520s |22155167 |19.291s |549.060s |19.443s |9.443s |
+
+Time-only feasibility does not prove causal full-frame coverage. ±2%,offsets,
+frame/reserve projections and native budget remain unbounded. Recommend owner
+consideration of520s/N22155167;530s no longer fits the pessimistic budget after
+including in-wrapper control validation. No target/count is adopted. Legacy550s
+floor remains unchanged; only the explicit versioned path uses the selection.
+
+## Dry-run and validation status
+
+The fixture dry-run retains committed receipt validation,real admission/session/
+launcher/control/publication/ordinary-loader/comparison paths. Only external
+clean/pushed Git state,CPU wrapper boundary and synthetic native/clock/telemetry
+inputs are substituted. No SDK/native executable is used. Negative cases cover
+boot/head/missing or modified receipt/missing approval/dirty source/missing P1
+and actual corrupt P1 binary evidence,with no P2 fixture child after rejection.
+Execution results and final full tests/CI/Sonar are recorded in the final report.
+
+Issue #186 records the old C2 publication CI portability defect:an archive test
+incorrectly required a local native build. Frozen-evidence/fixture identity is
+now explicit and SDK-independent; live C2 admission is not weakened. C1/C2 unit
+contracts characterize their frozen source inventories,not new P source. No
+historical/native bytes are changed to make CI pass. All fixes remain Refs.
+
+## Owner approval checklist (one screen; not approval)
+
+- [ ] Choose target/N in the single selection,or accept the recommendation only
+      after reviewing conditional19.291s frame/9.443s pessimistic cap headroom.
+- [ ] Review13.253s measured charged host/110.39MiB peak;2GB native readout is
+      unmeasured,10s budget plus10s stress slack is not a bound.
+- [ ] Confirm exact final precommit,receipt/source/native/device/build/image/
+      calibration/baseline hashes,green full tests/CI and Sonar0/0/OK.
+- [ ] Confirm device-free startup/publication and real fixture E2E/negative results.
+- [ ] Authorize once only P1 then conditional P2,500000frames,Watcher off,device0,
+      600s native/outer caps,in one new boot-bound operational session.
+- [ ] Fresh actual baseline/digests/zero containers/host quiet and immediate recheck
+      are still required after approval; this stage collected none.
+- [ ] Review threshold-free interval/difference predictions in the plan and PR;
+      no latency threshold or reliable maximum/500s rate/thermal bound exists.
+- [ ] P1 all exits0/full integrity/diagnostics/power/reread/healthy return releases
+      P2; source/boot/receipt mismatch or failed P1 blocks it.
+- [ ] Stop on unexpected warnings/errors,timeout/integrity/provenance failure or
+      loaded not_covered;no retries/count extension,at most one abnormal-only reset.
+- [ ] Budget approximately533..543s P1 and552..591s P2 plus gates/outer rereads;
+      accept remaining thermal/AICLK/rate/memory/GC/IO/native-extrapolation risks.

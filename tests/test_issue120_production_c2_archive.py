@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from enodia.tt.bench.issue120_production import recording, runtime
+from enodia.tt.bench.issue120_production import production_admission, recording, runtime
 
 ROOT = Path(__file__).resolve().parents[1] / "docs/measurements/issue120-production"
 
@@ -70,7 +70,10 @@ def test_actual_compatible_pair_preserves_distinct_origins_and_no_authority(tmp_
     paths = [unpack(case, tmp_path / case) for case in ("C1", "C2")]
     original = [path.read_bytes() for path in paths]
     monkeypatch.setattr(runtime, "CALIBRATION_RECORD_ROOT", tmp_path)
-    result = recording.calibration_pair_analysis(paths)
+    # Current P metadata must not be accepted by the original live C2 admission.
+    with pytest.raises(ValueError):
+        recording.calibration_pair_analysis(paths)
+    result = production_admission.calibration_summary()
     assert result["production_coverage_eligible"] is True
     assert result["execution_authorized"] is False
     assert result["current_550s_floor_unchanged"] is True

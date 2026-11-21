@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import tarfile
+from unittest.mock import patch
 
 import pytest
 
@@ -12,11 +13,21 @@ from enodia.tt.bench.issue120_production import plan, recording, runtime, sessio
 
 
 def target_identity():
-    root = runtime.ROOT / "docs/measurements/issue120-production/2026-11-21-c1/runtime-session-manifest.json"
-    current = copy.deepcopy(json.loads(root.read_bytes())["program_identity"])
-    current["calibration_compatibility_contract"] = "issue120-calibration-compatibility-v1"
-    current["python_sources_sha256"] = {p.name: runtime.sha(p) for p in runtime.SOURCE.glob("*.py")}
-    return current
+    # These tests characterize the frozen C2 contract, not new P admission.
+    return copy.deepcopy(json.loads((runtime.SOURCE / "bounded_admission.json").read_bytes())["program_identity"])
+
+
+@pytest.fixture(autouse=True)
+def historical_c2_source_context(monkeypatch):
+    original = sessions._python_transition
+
+    def transition(old, current):
+        # Emulate the original source inventory only during C2 version validation;
+        # direct inventory/shadowing tests still execute the real current guard.
+        with patch.object(runtime, "python_source_hashes", return_value=target_identity()["python_sources_sha256"]):
+            return original(old, current)
+
+    monkeypatch.setattr(sessions, "_python_transition", transition)
 
 
 def test_c2_receipt_binds_original_c1_and_changes_metadata_only(monkeypatch):

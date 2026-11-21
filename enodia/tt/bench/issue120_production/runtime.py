@@ -21,6 +21,7 @@ PROTOCOL_HEADER = "protocol.hpp"
 COMPILE_MANIFEST = "compile_args.json"
 NATIVE_SOURCE_NAME = "native_trace.cpp"
 CALIBRATION_CONTRACT = "issue120-calibration-compatibility-v1"
+PRODUCTION_CONTRACT = "issue120-compatible-production-v1"
 CALIBRATION_RECORD_ROOT = ROOT / "out/issue120-production"
 LIBRARY_SHA256 = "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
 PINNED_IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
@@ -164,6 +165,7 @@ def program_identity() -> dict:
         raise ValueError("actual derived kernels differ from offline proof")
     return {"native_sha256": receipt["native_sha256"], "host_trace_contract": host_trace.TRACE_SCHEMA,
             "calibration_compatibility_contract": CALIBRATION_CONTRACT,
+            "production_admission_contract": PRODUCTION_CONTRACT,
             "library_sha256": LIBRARY_SHA256,
             "kernel_sources_sha256": hashes, "device_compile_proof_sha256": sha(PROOF),
             "compile_manifest_sha256": sha(SOURCE / COMPILE_MANIFEST),

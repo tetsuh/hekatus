@@ -42,17 +42,30 @@ def read_session(identity: str) -> tuple[dict, str]:
     if (data.get("schema") != "issue120-production-session-v1" or data.get("session_id") != identity
             or runtime.ROOT != Path("/work") and data.get("host_boot_id_sha256") != boot_fingerprint()):
         raise ValueError("session manifest identity/schema differs")
+    if data.get("fixture_only") and not SESSIONS.is_relative_to(runtime.ROOT / "out/issue120-production-p-prep"):
+        raise ValueError("fixture session cannot enter the operational session root")
+    if (data.get("production_contract") == runtime.PRODUCTION_CONTRACT and runtime.ROOT != Path("/work")
+            and data.get("harness_commit") != current_head()):
+        raise ValueError("production session source head/revision changed")
     return data, hashlib.sha256(raw).hexdigest()
 
 
-def create_session(specs: list[plan.RunSpec]) -> dict:
+def current_head() -> str:
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=runtime.ROOT, check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
+def create_session(specs: list[plan.RunSpec], *, fixture_only: bool = False) -> dict:
     if specs[0].phase == "calibration" and specs != admitted_specs("C"):
         raise ValueError("calibration session must match the admitted C1/current scope")
+    if specs[0].phase == "production" and specs != admitted_specs("P"):
+        raise ValueError("production session must match the entire admitted pair")
+    if fixture_only and not SESSIONS.is_relative_to(runtime.ROOT / "out/issue120-production-p-prep"):
+        raise ValueError("fixture sessions require their isolated program-owned root")
     identity = uuid.uuid4().hex
     directory = session_path(identity)
     directory.mkdir(parents=True, exist_ok=False)
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=runtime.ROOT, check=True,
-                            capture_output=True, text=True).stdout.strip()
+    commit = current_head()
     data = {"schema": "issue120-production-session-v1", "session_id": identity,
             "created_monotonic_ns": time.monotonic_ns(), "harness_commit": commit,
             "host_boot_id_sha256": boot_fingerprint(),
@@ -61,6 +74,10 @@ def create_session(specs: list[plan.RunSpec]) -> dict:
             "runs": {s.identity: {"configuration": plan.program_configuration(s),
                                    "configuration_sha256": plan.configuration_digest(plan.program_configuration(s))}
                      for s in specs}}
+    if specs[0].phase == "production" and set(data["admission_hashes"]) == {"production"}:
+        data["production_contract"] = runtime.PRODUCTION_CONTRACT
+    if fixture_only:
+        data["fixture_only"] = True
     with (directory / "manifest.json").open("x") as output:
         json.dump(data, output, sort_keys=True, indent=2)
         output.write("\n")
@@ -68,6 +85,8 @@ def create_session(specs: list[plan.RunSpec]) -> dict:
 
 
 def admission_hashes(phase: str) -> dict:
+    if phase == "production" and compatible_production_receipt() is not None:
+        return {"production": runtime.sha(runtime.SOURCE / "production_admission.json")}
     names = {"startup": (), "calibration": ("bounded",), "production": ("bounded", "production")}[phase]
     hashes = {}
     for kind in names:
@@ -97,6 +116,11 @@ def _committed_admission(kind: str, bindings: dict | None = None) -> dict:
 
 def _validate_receipt_identity(kind: str, receipt: dict) -> None:
     current = runtime.program_identity()
+    if kind == "production":
+        from . import production_admission
+        if receipt.get("schema") == production_admission.SCHEMA:
+            production_admission.validate_receipt(receipt, current)
+            return
     if kind == "bounded" and receipt.get("schema") == C2_SCHEMA:
         validate_c2_admission(receipt, current)
         return
@@ -150,7 +174,28 @@ def _healthy_bounded(record: dict, spec: plan.RunSpec) -> bool:
             and record.get("configuration") == plan.program_configuration(spec))
 
 
+def compatible_production_receipt(bindings: dict | None = None) -> dict | None:
+    from . import production_admission
+
+    try:
+        receipt = _committed_admission("production", bindings)
+    except ValueError:
+        if not (runtime.SOURCE / "production_admission.json").is_file():
+            return None
+        raise
+    return receipt if receipt.get("schema") == production_admission.SCHEMA else None
+
+
 def admitted_specs(unit: str, bindings: dict | None = None) -> list[plan.RunSpec]:
+    if unit == "P":
+        from . import production_admission
+        receipt = compatible_production_receipt(bindings)
+        if receipt is not None:
+            return production_admission.specs(receipt)
+    return _legacy_admitted_specs(unit, bindings)
+
+
+def _legacy_admitted_specs(unit: str, bindings: dict | None = None) -> list[plan.RunSpec]:
     if unit == "B":
         return list(plan.RUNS[:2])
     bounded = _committed_admission("bounded", bindings)

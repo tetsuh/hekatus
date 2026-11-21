@@ -13,6 +13,20 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "docs/measurements/issue120-production/2026-11-18-b4"
 
 
+@pytest.fixture(autouse=True)
+def frozen_c1_inventory(tmp_path_factory, monkeypatch):
+    """Characterize C1's original source universe, not the new P package."""
+    original = runtime.SOURCE
+    saved = json.loads((ROOT / sessions.C1_ADMISSION_PATH).read_bytes())["program_identity"]["python_sources_sha256"]
+    source = tmp_path_factory.mktemp("frozen-c1-source")
+    for name in saved:
+        (source / name).write_text("# Historical inventory fixture, not executed.\n")
+    (source / "native.cpp").write_bytes((original / "native.cpp").read_bytes())
+    real_sha = runtime.sha
+    monkeypatch.setattr(runtime, "SOURCE", source)
+    monkeypatch.setattr(runtime, "sha", lambda path: saved[path.name] if path.parent == source and path.name in saved else real_sha(path))
+
+
 def _receipt():
     from enodia.tt.bench.issue120_production import admission_bridge, bounded_evidence
 

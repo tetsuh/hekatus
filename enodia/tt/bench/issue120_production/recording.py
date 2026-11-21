@@ -170,6 +170,12 @@ def make_record(spec: plan.RunSpec, attempt, native: dict, program_identity: dic
               "host_boot_id_sha256": session["host_boot_id_sha256"],
               "execution_interval": {"start_ns": execute_start_ns, "end_ns": execute_end_ns,
                                      "start_utc_ns": start_utc_ns, "end_utc_ns": end_utc_ns}}
+    if session.get("fixture_only") is True:
+        record["fixture_only"] = True
+    if spec.phase == "production" and program_identity.get("production_admission_contract") == runtime.PRODUCTION_CONTRACT:
+        from . import production_admission
+        record["production_provenance"] = production_admission.record_provenance(
+            output, record, session["admission_hashes"]["production"], publish=True)
     if spec.phase == "calibration" and program_identity.get("calibration_compatibility_contract") == runtime.CALIBRATION_CONTRACT:
         record["calibration_provenance"] = calibration_provenance(output, record, session["admission_hashes"]["bounded"], publish_session=True)
     records.validate_record(record)
@@ -427,6 +433,11 @@ def _check_calibration_session(manifest: dict, record: dict, admission_sha: str)
 
 
 def recheck_calibration_provenance(output: Path, record: dict) -> None:
+    native = record.get("native", {})
+    if native.get("schema") == host_trace.NATIVE_SCHEMA and native.get("frame_count") == 500000:
+        from . import production_admission
+        production_admission.recheck_record_provenance(output, record)
+        return
     contract = record.get("program_identity", {}).get("calibration_compatibility_contract")
     native = record.get("native", {})
     # Native work is independently bound to captured result bytes on full reread.

@@ -1,0 +1,111 @@
+{
+  "artifact_root": "out/issue120-production-p-prep/c3ce84fe081746cb9dc670a90ec373c4",
+  "charged_host_seconds": 13.253320908002934,
+  "device_retrieval_measured": false,
+  "excluded": [
+    "synthetic companion generation",
+    "real native execution and 2048000000-byte device retrieval",
+    "real hardware telemetry"
+  ],
+  "fixture_only": true,
+  "fixture_source_sha256": "6242df7c447219d26332b67d9ac05ac7b9f22b77f105f1e0176750693766990d",
+  "frames": 500000,
+  "launcher_reread_seconds": 7.240592998998181,
+  "measurement_pending": false,
+  "memory_scope": "fresh child lifetime ru_maxrss; separate publisher and reader, not summed",
+  "passed": true,
+  "peak_rss_bytes": 115752960,
+  "publishers": [
+    {
+      "GC_collections": [
+        19,
+        2,
+        0
+      ],
+      "analysis_seconds": 5.066843483000412,
+      "charged_host_seconds": 6.002539004002756,
+      "device_retrieval_measured": false,
+      "fixture_only": true,
+      "frames": 500000,
+      "frames_bytes": 64000024,
+      "in_container_control_validation_seconds": 3.360000846441835e-07,
+      "io_costs": {
+        "binary_size_hash_seconds": 0.06846071699692402,
+        "copy_fsync_seconds": 0.03775108600166277,
+        "runtime_hash_seconds": 0.007841284008463845
+      },
+      "peak_rss_bytes": 103604224,
+      "primary_JSON_bytes": 160729,
+      "publication_seconds": 0.0028241870022611693,
+      "record_construction_seconds": 5.99971448100041,
+      "role": "control",
+      "synthesis_seconds": 4.89426412299872,
+      "synthetic_completion_jitter_ticks": 0,
+      "trace_samples": 0,
+      "transitions_bytes": 24
+    },
+    {
+      "GC_collections": [
+        23,
+        2,
+        0
+      ],
+      "analysis_seconds": 6.216781810999237,
+      "charged_host_seconds": 13.253320908002934,
+      "device_retrieval_measured": false,
+      "fixture_only": true,
+      "frames": 500000,
+      "frames_bytes": 64000024,
+      "in_container_control_validation_seconds": 5.966015480997157,
+      "io_costs": {
+        "binary_size_hash_seconds": 0.07252595099998871,
+        "copy_fsync_seconds": 0.03785020900613745,
+        "runtime_hash_seconds": 0.008257380995928543
+      },
+      "peak_rss_bytes": 114294784,
+      "primary_JSON_bytes": 625454,
+      "publication_seconds": 0.011811006002972135,
+      "record_construction_seconds": 7.275494421002804,
+      "role": "loaded",
+      "synthesis_seconds": 5.36846873399918,
+      "synthetic_completion_jitter_ticks": 2000,
+      "trace_samples": 339,
+      "transitions_bytes": 4000040
+    }
+  ],
+  "readers": [
+    {
+      "GC_collections": [
+        20,
+        2,
+        0
+      ],
+      "fixture_only": true,
+      "io_costs": {
+        "binary_size_hash_seconds": 0.03784997999900952,
+        "copy_fsync_seconds": 0.0,
+        "runtime_hash_seconds": 0.007913821002148325
+      },
+      "launcher_reread_seconds": 5.940124918000947,
+      "peak_rss_bytes": 103772160,
+      "role": "control"
+    },
+    {
+      "GC_collections": [
+        30,
+        3,
+        0
+      ],
+      "fixture_only": true,
+      "io_costs": {
+        "binary_size_hash_seconds": 0.0400504310055112,
+        "copy_fsync_seconds": 0.0,
+        "runtime_hash_seconds": 0.007885938983235974
+      },
+      "launcher_reread_seconds": 7.240592998998181,
+      "peak_rss_bytes": 115752960,
+      "role": "loaded"
+    }
+  ],
+  "schema": "issue120-production-host-postprocess-v1"
+}
