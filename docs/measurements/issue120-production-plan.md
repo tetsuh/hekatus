@@ -372,7 +372,24 @@ requires a separate board-free successor production receipt/policy/test precommi
 and matching native/device proofs,then owner approval for same-session500000-frame
 control/load600s Watcher-off runs. The C2 report details predictions,stop/progression
 rules,expected duration and unbounded thermal/AICLK/rate/postprocessing risks.
-Current admission still rejects P; no production count was adopted.
+At that C2 stage admission rejected P; no production count was adopted.
+
+## P preparation — board-free, not execution authority
+
+The owner subsequently requested [separate production preparation](issue120-production-p-prep/README.md).
+The explicit compatible-production receipt is version-dispatched,with a single
+recommended target/count selection and unchanged legacy admissions. Actual
+CPU-only500000-frame construction/hash/copy/analysis/publication/reread measured
+13.231s loaded charged host cost,including the in-wrapper P1 validation. Native2GB
+device retrieval remains unmeasured. Current conditional520s recommendation has
+19.291s frame/9.465s pessimistic cap margin after measured-host reserve updates,
+not a long-run bound or adopted count. Native/device content is unchanged.
+
+Real CPU fixture E2E/negative gates,source-matched measurement,device-free startup/
+publication and preservation evidence are indexed in that report. P1/P2 remain
+unexecuted and require separate exact-head owner approval plus actual fresh
+preflight;no real runtime P session was created here. The PR contains the
+threshold-free predictions before any future run.
 
 ## Operational admission (board-free implementation)
 

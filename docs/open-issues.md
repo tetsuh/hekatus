@@ -100,10 +100,14 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   identity and explicitly binds the changed metadata sources to original C1.
   Its37.738s worker/25samples still cannot bound500s variability. Slab scenarios
   favor owner consideration of520s/22155167writes over550s,but depend on unmeasured
-  long-run rates/frame duration/reserves. A successor board-free production
-  receipt/policy precommit and owner decisions on target/count/risk remain before
-  the matching control/load pair. Current550s floor and C2-only admission remain;
-  no target/count or clock-calibration policy changed and P is unexecuted.
+  long-run rates/frame duration/reserves. The subsequent
+  [board-free P preparation](measurements/issue120-production-p-prep/README.md)
+  adds a separate versioned receipt/selection and CPU-only500000-frame pipeline
+  proof without weakening legacy admission. Measured charged host cost13.231s
+  includes in-wrapper P1 reread; native2GB retrieval remains unmeasured. Updated
+  520s scenario margins are19.291s frame/9.465s pessimistic cap,not guarantees.
+  Owner target/count/risk choices and explicit P authority remain;legacy550s floor
+  and historical records are unchanged. No count is adopted and P is unexecuted.
 
 - Newton-Schulz: remaining precision-split questions (TF32/FP32), iteration
   count, and choice of the initial value X0

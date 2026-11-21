@@ -1,7 +1,8 @@
 # Issue #120 production preparation — no hardware approval
 
-This stage is board-free only. No board/device/tt-smi/native execution or real
-runtime P session occurs.520s/22155167writes is an **owner recommendation only**,
+This stage is board-free only. No board/device/tt-smi access or real runtime P
+session occurs. The separate startup sandbox invokes the unchanged native only
+with no device nodes/discovery,stopping at No chips detected before board access.520s/22155167writes is an **owner recommendation only**,
 not count adoption or execution authority. The
 [precommitted invariants](../issue120-production-p-prep-plan.md) govern this work.
 
@@ -117,7 +118,26 @@ clean/pushed Git state,CPU wrapper boundary and synthetic native/clock/telemetry
 inputs are substituted. No SDK/native executable is used. Negative cases cover
 boot/head/missing or modified receipt/missing approval/dirty source/missing P1
 and actual corrupt P1 binary evidence,with no P2 fixture child after rejection.
-Execution results and final full tests/CI/Sonar are recorded in the final report.
+The repaired242a83d dry-run passed both CPU fixture roles,ordinary reread and
+comparison. Ten negative categories rejected before a P2 child:boot,head,missing/
+modified receipt,missing/failed P1,missing approval,dirty source,all seven primary
+environment-summary edits and historical C1 with a rebound UUID. It used three
+CPU publishers:two positive roles and one deliberately corrupt P1;zero hardware
+P/native invocations. The synthetic jitter difference is test data,not prediction
+or production measurement. See dry-run.json.
+
+The device-free startup verified no devices/requests,/sys-/proc-discovery masks,
+readonly root/source,nonroot,ALL capabilities dropped,and network none. The
+unchanged native0a36ed60... exited2 at No chips detected,absent result refused;
+container Python exited0. No card was accessed. Separate root-publisher to
+UID1000 real launcher reread passed,snapshot0644. Proofs include their242a83d
+code head. Full slow-inclusive regression passed6330tests/1057skipped/8subtests
+in228.07s;ruff/diff/ADR guard also passed. Bounded repair follow-up review had
+no included findings;the review saw a pending experimental snapshot,subsequently
+replaced by the completed source-matched measurement above. Final publication-
+head CI/Sonar are checked separately in the final report,not inferred from an
+older head or local success. Source preservation verifies70historical files and
+112native/device/header/build-input sources plus unchanged command constructors.
 
 Issue #186 records the old C2 publication CI portability defect:an archive test
 incorrectly required a local native build. Frozen-evidence/fixture identity is

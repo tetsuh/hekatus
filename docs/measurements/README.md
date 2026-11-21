@@ -145,8 +145,16 @@ with the same native/device identity. Its25-point trace and artifact-validated
 C1/C2 metadata bridge preserve both original origins. Conditional slab-based
 550/530/520s tables recommend owner consideration of520s/22155167writes with
 explicit unbounded rate/frame/reserve assumptions. No count/floor was adopted;
-current admission remains C2-only. P is unexecuted and needs separate board-free
-receipt/policy precommit and owner approval.
+that measurement stage kept C2-only admission. P remains unexecuted.
+
+The later [board-free P preparation](issue120-production-p-prep/README.md)
+adds a separately versioned compatible-production receipt without changing
+legacy admissions. One selection holds the recommended target/count,not adoption.
+Real500000-row CPU fixtures measure record construction,analysis,hash/copy/fsync,
+publication and rereading,including P2's in-wrapper P1 validation; native2GB
+retrieval remains unmeasured. Updated conditional cap margins and a one-screen
+owner checklist accompany the isolated admission/session/launcher dry-run.
+Fresh actual preflight and separate exact-head owner approval remain required.
 
 ## Issue #137 duration-bounded runner (revision 2)
 

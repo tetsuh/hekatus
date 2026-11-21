@@ -1,0 +1,40 @@
+{
+  "schema": "issue120-p-prep-device-free-startup-v1",
+  "board_access": false,
+  "P_executed": false,
+  "native_sha256": "0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6",
+  "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+  "native_returncode": 2,
+  "native_started": true,
+  "no_chips_detected": true,
+  "absent_result_refused": true,
+  "timing_evidence": false,
+  "streams": {
+    "stdout": {
+      "byte_count": 768,
+      "sha256": "8c896fce9705e131369ad9af4fa40300acb8e50f8a149f6d898650574f91ca61"
+    },
+    "stderr": {
+      "byte_count": 2224,
+      "sha256": "018f4e9de24a4a8206483825517515228c07175b6fdcc371725560e529b0c8da"
+    }
+  },
+  "head": "242a83d8dc3cf67cda13f0613035e0d6d0f14487",
+  "isolation": {
+    "devices": 0,
+    "device_requests": 0,
+    "network": "none",
+    "readonly_root": true,
+    "readonly_source": true,
+    "cap_drop": [
+      "ALL"
+    ],
+    "nonroot": true,
+    "masked_paths": [
+      "/sys",
+      "/proc/bus",
+      "/proc/driver"
+    ]
+  },
+  "container_exit": 0
+}

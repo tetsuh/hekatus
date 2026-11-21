@@ -167,10 +167,13 @@ is [precommitted here](../measurements/issue120-production-p-prep-plan.md).
   Sonar proof are required; old B4 native/receipt remain reproducible/preserved.
 - Sparse rows permit qualified interval rates and startup analysis but cannot
   prove a500-second model, continuous traffic or a production count.
-- C2/P remain blocked. Do not create a runtime session or take new environment/
-  boot/device samples while the board is powered down.
-- Future execution begins with fresh Linux149/KMD2.12 and all other exact baseline
-  checks, then a new C1-only boot-bound session at a clean/pushed green head.
+- The earlier C1-only stage kept C2/P blocked and created no runtime session
+  while powered down. Later C1/C2 needed their separate owner approvals; their
+  evidence does not authorize P. This production-preparation follow-up remains
+  board-free,with isolated fixture sessions only and no actual device samples.
+- Any future owner-authorized P begins with fresh Linux149/KMD2.12 and all other
+  exact baseline/proof checks,a new same-pair boot-bound session,and a clean/pushed
+  tested green precommit. Preparation never substitutes for those gates.
 - The source proof is a bounded reviewed transformation and build-identity check,
   not a formal proof for arbitrary malicious compilers or source modifications.
 
