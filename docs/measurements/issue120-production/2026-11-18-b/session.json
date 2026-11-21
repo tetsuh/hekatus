@@ -1,0 +1,46 @@
+{
+  "schema": "issue120-production-b-session-outcome-v1",
+  "harness_commit": "b474216164c92bdda026fdf35e3a1d768635c7fa",
+  "session_id": "13ba906388a94f7ba744f367481ae818",
+  "runtime_manifest_sha256": "af81743c28acd8e20fc7275baf445c5aba0164b2a023c3034a3052e9ca6c1a4a",
+  "owner_new_baseline_approval_date": "2026-11-18",
+  "kernel": "Linux 6.8.0-149-generic",
+  "kmd": "2.12.0",
+  "run8_same_environment": false,
+  "outcome": "stopped_after_B1_host_reread_permission_failure",
+  "b1_native_exit": 0,
+  "b1_container_exit": 0,
+  "b1_wrapper_exit": 0,
+  "b1_host_launcher_exit": 2,
+  "original_frozen_snapshot_mode": "0600",
+  "original_frozen_snapshot_owner": "container root",
+  "b1_attempt_identity": "20261118T124104054310116761824398Z",
+  "b2_executed": false,
+  "calibration_executed": false,
+  "production_executed": false,
+  "reset_count": 0,
+  "automatic_retry_count": 0,
+  "record_flags_do_not_override_failed_launcher": true,
+  "issues": {
+    "snapshot_readability": 182,
+    "power_interval_scope": 183
+  },
+  "evidence_archive": "B1-evidence.tar.gz",
+  "normalized_files": {
+    "B1-wrapper-public.log": {
+      "original_sha256": "daceb21662e1c313a8ea960c988952c5321e50b3a8b8124172e564b387f200e6",
+      "public_sha256": "4cac80b47f141942bb466e969098843b2e2ac056070167d80a69ccdee0e170b3",
+      "normalization": "replace user-specific absolute case root with <case>"
+    },
+    "B1-launcher-public.log": {
+      "original_sha256": "4324ac158ba9e74218406a8d3e6a7b6d0050a1dd411748bb78e2c38667b00fdd",
+      "public_sha256": "4b9da811df9d96cd7d03bd4c082fc27261c28e1ee82b6b69d5b0e60b1606a358",
+      "normalization": "replace user-specific absolute case root with <case>"
+    }
+  },
+  "watcher_public_derivative": {
+    "original_sha256": "0376b9bd0a76b27a2b78962e1dd35e1d3241a713fad60d0398f66d5c45bcf1f5",
+    "public_sha256": "cbbeb10c89108e50957d02cbb2f035303e4284af1fab8f18f0abf602dd621a3a",
+    "normalization": "strip trailing horizontal whitespace; exact original inside evidence archive"
+  }
+}

@@ -1,0 +1,201 @@
+{
+  "attempt_identity": "20261118T14472425729255814391413846Z",
+  "case": "B2",
+  "clock": {
+    "aiclk_mhz": 1350.0,
+    "basis": "consumer_low32_wrap_tracked_cycle_domain",
+    "conversion_scope": "host_observed_program_upper_bound_not_exact_frame_window",
+    "observed_envelope_conversion_us": {
+      "max": 1000.9674074074072,
+      "p50": 1000.0037037037035,
+      "p99": 1000.7288888888887,
+      "p99_9": null,
+      "p99_99": null
+    },
+    "observed_host_envelope_weighted_aiclk_mhz": 1350.0000000000002,
+    "product_wall_time_guarantee": false
+  },
+  "container_exit": 0,
+  "container_name": "hekatus-bench-143914-22311",
+  "counts": {
+    "frames_aborted": 0,
+    "frames_attempted": 4096,
+    "frames_consumed": 4096,
+    "frames_dropped": 0,
+    "frames_produced": 4096,
+    "overflow_count": 0,
+    "paired_outlier_count": 0
+  },
+  "coverage_analysis": {
+    "byte_scope": "fresh_challenge_issue_to_scan_completion_not_scan_end_to_scan_end",
+    "challenge_interval_bytes_lower_bound": 16781312,
+    "challenge_interval_transfers_lower_bound": 4097,
+    "coverage": "covered",
+    "first_through_last_bytes_lower_bound": 16773120,
+    "first_through_last_cpu_operations_lower_bound": 134184960,
+    "first_through_last_transfers_lower_bound": 4095,
+    "frame_count": 4096,
+    "reason": null,
+    "schema": "issue120-production-coverage-v1",
+    "verified_frames": 4096
+  },
+  "diagnostics": {
+    "consumer_peer_runtime_xy": [
+      1,
+      2
+    ],
+    "consumer_reported_expectation": 4098,
+    "consumer_self_noc0": [
+      2,
+      2
+    ],
+    "expected_after_consumed_frames": 4098,
+    "expected_after_full_run": 4098,
+    "mailbox_post_finish": 4098,
+    "producer_peer_runtime_xy": [
+      2,
+      2
+    ]
+  },
+  "frame_intervals": {
+    "N": 4095,
+    "max_ticks": 1351306,
+    "min_ticks": 1348678,
+    "percentiles": {
+      "p50": {
+        "minimum_samples": 40,
+        "status": "ok",
+        "value_ticks": 1350005.0
+      },
+      "p99": {
+        "minimum_samples": 2000,
+        "status": "ok",
+        "value_ticks": 1350984.0
+      },
+      "p99_9": {
+        "minimum_samples": 20000,
+        "status": "insufficient"
+      },
+      "p99_99": {
+        "minimum_samples": 200000,
+        "status": "insufficient"
+      }
+    }
+  },
+  "host_cpu_work": {
+    "checksum": 0,
+    "end_ns": 9799545099464,
+    "operations": 8589934592,
+    "reads": 262144,
+    "start_ns": 9793175248645,
+    "transfers": 262144
+  },
+  "host_interval": {
+    "end_ns": 9799545099464,
+    "start_ns": 9793175248645
+  },
+  "host_scheduling": {
+    "completion_observer_joined_ns": 9799545116511,
+    "drain_end_ns": 9799545279082,
+    "enqueue_begin_ns": 9793175146631,
+    "enqueue_return_ns": 9793855134752,
+    "finish_begin_ns": 9799545116682,
+    "finish_end_ns": 9799545230999,
+    "load_join_completed_ns": 9799545115905
+  },
+  "launcher_exit": 0,
+  "manual_watcher_review": {
+    "completed": true,
+    "fresh_complete_dumps": 8,
+    "no_anomaly": true,
+    "routing_kernel_mapping_checked": true
+  },
+  "manual_watcher_review_required": false,
+  "native_exit": 0,
+  "overhead": {
+    "analysis_frame_count": 4096,
+    "native_retrieval_verify_close_publish_seconds": 0.173632572,
+    "per_frame_analysis_seconds": 5.4651953369212144e-05,
+    "per_frame_term_is_amortized_not_linear_slope": true,
+    "python_frame_analysis_seconds": 0.05022182900029293,
+    "sampler_wait_seconds": 2.1152722080005333,
+    "setup_seconds": 2.432002305
+  },
+  "plan_identity": "production-v2-load-watch-b4",
+  "post_health": [
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "000004033191411c",
+        "board_type": "p150a",
+        "bus_id": "0000:06:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0
+    },
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "0000040331914124",
+        "board_type": "p150a",
+        "bus_id": "0000:09:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0
+    }
+  ],
+  "program_host_interval": {
+    "end_ns": 9798053923780,
+    "end_utc_ns": 1795013252353549355,
+    "scope": "enqueue_to_l1_terminal_observed_upper_bound",
+    "start_ns": 9793175146631,
+    "start_utc_ns": 1795013247474772205
+  },
+  "record": "out/issue120-production/sessions/8caa5d94ed7443d9982606ea45072452/cases/production-v2-load-watch-b4/results-20261118T14472425729255814391413846Z.json",
+  "schema": "issue120-b4-post-run-review-v1",
+  "session_id": "8caa5d94ed7443d9982606ea45072452",
+  "timing_evidence": false,
+  "warning_check": {
+    "baseline_sha256": "6d246afc424a3fe5640dd0ae5c39cd7a3d40b5eda300cc542f6268d344ec877f",
+    "known_baseline_lines": 7,
+    "passed": true,
+    "sample_truncated": false,
+    "unexpected_count": 0,
+    "unexpected_sample": []
+  },
+  "watcher": {
+    "dump_count": 8,
+    "fresh": true,
+    "scan_passed": true,
+    "scope": "fresh suffix or rewritten file after execution start; owner inspection still required"
+  },
+  "wrapper_exit": 0
+}

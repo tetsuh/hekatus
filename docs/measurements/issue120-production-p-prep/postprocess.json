@@ -1,0 +1,133 @@
+{
+  "artifact_root": "out/issue120-production-p-prep/f1960e43c101475ea919d8065e13f700",
+  "charged_host_seconds": 13.282385730999522,
+  "device_retrieval_measured": false,
+  "excluded": [
+    "synthetic companion generation",
+    "real native execution and 2048000000-byte device retrieval",
+    "real hardware telemetry"
+  ],
+  "fixture_only": true,
+  "fixture_source_sha256": "28c4c21e211dd1c8b482ae53ab265e3ad1895e8fefdda0d7b674a98f60784e57",
+  "frames": 500000,
+  "launcher_reread_seconds": 7.223709921003319,
+  "measured_python_sources_sha256": {
+    "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
+    "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
+    "artifacts.py": "77bf193bf88b4ee03d86f2d7a2a806e86d8f653d85447cf4324e5c89d3942825",
+    "bounded_evidence.py": "00b94c6e34609dbb4d1776a75110db2e501fe87eace3579c6e2248829fc1c9ec",
+    "checks.py": "cd6140b706c28cc0f130ae8ffd434cc763e678bb2711290b930833c942ca415d",
+    "coverage.py": "ca1342299f2582a649e6cd15d2ae2fe003f000124846a74c0b799fa0d98b93a2",
+    "diagnostics.py": "f962505540536e8129e40014f1ac83fa41a50bfb3b15a78641a38c90a2dc7ced",
+    "host_build_inputs.py": "c2f232d78986b6362a64fb4b63e89bc064df1a559f38e75fcb9442e3d10b2614",
+    "host_trace.py": "773b37185e7967baa87385175a4190974b7d93c536a7874d89526a50955b0149",
+    "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
+    "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
+    "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
+    "production_admission.py": "cdadaeb9cda7d4cfca5938c0186b8647f38b20927dcc562239940e0d04165d50",
+    "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
+    "recording.py": "a0ffba0771e5e7f477cf4b88b178fc8e42f36183af712d9d5014efc305cc03c9",
+    "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
+    "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
+    "runner.py": "6b4c3edcf6b94407ccf794b37c6c294666033619867500c3c6ce650a62d91fea",
+    "runtime.py": "693672834b89c21d0668f7451bc1a7403567106c8334bc7536dff3ef1b2bcb5b",
+    "sessions.py": "241940304f6ec39ef82a4869374a760a9f472ba0fbddc8fd8e3dde7594aafc3b"
+  },
+  "measurement_pending": false,
+  "memory_scope": "fresh child lifetime ru_maxrss; separate publisher and reader, not summed",
+  "passed": true,
+  "peak_rss_bytes": 115974144,
+  "publishers": [
+    {
+      "GC_collections": [
+        19,
+        2,
+        0
+      ],
+      "analysis_seconds": 5.045127033998142,
+      "charged_host_seconds": 5.994048682994617,
+      "device_retrieval_measured": false,
+      "fixture_only": true,
+      "frames": 500000,
+      "frames_bytes": 64000024,
+      "in_container_control_validation_seconds": 0.0016491380010847934,
+      "io_costs": {
+        "binary_size_hash_seconds": 0.06869551000272622,
+        "copy_fsync_seconds": 0.035523405007552356,
+        "runtime_hash_seconds": 0.007908895022410434
+      },
+      "peak_rss_bytes": 107548672,
+      "primary_JSON_bytes": 160728,
+      "publication_seconds": 0.002730748994508758,
+      "record_construction_seconds": 5.989668795999023,
+      "role": "control",
+      "synthesis_seconds": 4.916342864999024,
+      "synthetic_completion_jitter_ticks": 0,
+      "trace_samples": 0,
+      "transitions_bytes": 24
+    },
+    {
+      "GC_collections": [
+        23,
+        2,
+        0
+      ],
+      "analysis_seconds": 6.212556221995328,
+      "charged_host_seconds": 13.282385730999522,
+      "device_retrieval_measured": false,
+      "fixture_only": true,
+      "frames": 500000,
+      "frames_bytes": 64000024,
+      "in_container_control_validation_seconds": 5.993493431000388,
+      "io_costs": {
+        "binary_size_hash_seconds": 0.07236813798954245,
+        "copy_fsync_seconds": 0.03720501800853526,
+        "runtime_hash_seconds": 0.008313795035064686
+      },
+      "peak_rss_bytes": 114884608,
+      "primary_JSON_bytes": 625454,
+      "publication_seconds": 0.011960871997871436,
+      "record_construction_seconds": 7.276931428001262,
+      "role": "loaded",
+      "synthesis_seconds": 5.408589103004488,
+      "synthetic_completion_jitter_ticks": 2000,
+      "trace_samples": 339,
+      "transitions_bytes": 4000040
+    }
+  ],
+  "readers": [
+    {
+      "GC_collections": [
+        20,
+        2,
+        0
+      ],
+      "fixture_only": true,
+      "io_costs": {
+        "binary_size_hash_seconds": 0.038037062011426315,
+        "copy_fsync_seconds": 0.0,
+        "runtime_hash_seconds": 0.00786931804032065
+      },
+      "launcher_reread_seconds": 6.044493052999314,
+      "peak_rss_bytes": 108154880,
+      "role": "control"
+    },
+    {
+      "GC_collections": [
+        30,
+        3,
+        0
+      ],
+      "fixture_only": true,
+      "io_costs": {
+        "binary_size_hash_seconds": 0.03988457600644324,
+        "copy_fsync_seconds": 0.0,
+        "runtime_hash_seconds": 0.0078585260125692
+      },
+      "launcher_reread_seconds": 7.223709921003319,
+      "peak_rss_bytes": 115974144,
+      "role": "loaded"
+    }
+  ],
+  "schema": "issue120-production-host-postprocess-v1"
+}

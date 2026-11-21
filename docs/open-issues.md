@@ -90,6 +90,32 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
 
 ## Parameters decided by measurement
 
+- Issue #120's adopted fixed count completed one healthy production pair;future
+  rate/cost bounds and portability remain open. The
+  [2026-11-21 C1](measurements/issue120-production/2026-11-21-c1/README.md)
+  supplies bounded Watcher-off causal coverage and host prefix observations,
+  not a500-second rate/cost bound. Main enqueue-return is not a full dead lead
+  in that run. The two-point native postprocessing slope is negative and cannot
+  be used physically; Python scaling is only descriptive. The separately approved
+  [C2](measurements/issue120-production/2026-11-21-c2/README.md) retains the native
+  identity and explicitly binds the changed metadata sources to original C1.
+  Its37.738s worker/25samples still cannot bound500s variability. Slab scenarios
+  favor owner consideration of520s/22155167writes over550s,but depend on unmeasured
+  long-run rates/frame duration/reserves. The subsequent
+  [board-free P preparation](measurements/issue120-production-p-prep/README.md)
+  adds a separate versioned receipt/selection and CPU-only500000-frame pipeline
+  proof without weakening legacy admission. The final adopted-v2 proof measured
+  13.282s charged host cost including P1 reread,with conditional19.291s frame/
+  9.414s pessimistic cap margins. Owner adopted520s/22155167writes on2026-11-21;
+  the [single actual pair](measurements/issue120-production/2026-11-21-p/README.md)
+  verified500000frames each and full loaded causal coverage at4fd4900,with zero
+  integrity/paired anomalies and descriptive quantile/max differences−22..+19ticks.
+  Actual worker531.795s and native2GB retrieval/verify/close/publication aggregate
+  0.574/0.469s replace unknown costs only for these runs,not with a standalone DMA
+  timer or a future bound. Weighted clock scope,single-pair ordering,other loads/
+  machines and generalization remain explicit limits. Legacy rules/records are
+  unchanged;this decision is carried by a separate versioned adopted receipt.
+
 - Newton-Schulz: remaining precision-split questions (TF32/FP32), iteration
   count, and choice of the initial value X0
 - Newton-Schulz state precision is **settled to BF16 state with FP32 DEST** for

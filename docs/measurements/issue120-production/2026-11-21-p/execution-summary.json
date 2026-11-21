@@ -1,0 +1,62 @@
+{
+  "schema": "issue120-production-p-execution-summary-v1",
+  "harness_commit": "4fd4900b8813e813263ed3d5148e3b5feb3a59b8",
+  "session_id": "a729ec3dec50456998fc668b2100648f",
+  "P1_invocations": 1,
+  "P2_invocations": 1,
+  "native_container_wrapper_launcher_exits": {
+    "P1": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "P2": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "full_integrity_both": true,
+  "loaded_coverage": "covered",
+  "frames_per_role": 500000,
+  "fixed_loaded_writes": 22155167,
+  "paired_abort_drop_overflow_all_zero": true,
+  "timing_evidence_both": true,
+  "watcher": false,
+  "native_outer_caps_s": 600,
+  "resets": 0,
+  "retries": 0,
+  "count_changes": 0,
+  "remaining_containers": 0,
+  "both_cards_800MHz_DRAM_healthy": true,
+  "native_device_bytes_changed": false,
+  "threshold": null,
+  "difference": {
+    "schema": "issue120-production-comparison-v1",
+    "loaded_minus_control_ticks": {
+      "p50": -10.0,
+      "p99": 18.0,
+      "p99_9": 5.0,
+      "p99_99": -22.0,
+      "max_ticks": 19
+    },
+    "loaded_minus_control_counts": {
+      "overflow_count": 0,
+      "paired_outlier_count": 0,
+      "frames_dropped": 0,
+      "frames_aborted": 0
+    },
+    "control_attempt": "20261121T16080360639616673963217100Z",
+    "loaded_attempt": "20261121T16190313060076874183029578Z",
+    "latency_threshold": null
+  },
+  "archive_exact_payloads_per_role": 16,
+  "archive_gzip_bytes": {
+    "P1": 20566491,
+    "P2": 27411975
+  },
+  "private_native_transport_mode_preserved": "0o600",
+  "uncompressed_large_blobs_in_git": false
+}

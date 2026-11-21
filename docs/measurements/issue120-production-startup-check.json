@@ -1,0 +1,15 @@
+{
+  "schema": "issue120-production-device-free-startup-v1",
+  "native_sha256": "8bf33ddfd999623a296acdcadc34e2c90d1ccf23cd700c02e407eacc71d47b9f",
+  "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+  "native_returncode": 2,
+  "native_started": true,
+  "no_chips_detected": true,
+  "failure_refused": true,
+  "result_absent": true,
+  "stdout": {"byte_count": 768, "file": "stdout.bin", "sha256": "5a02a5b7157e9cd57b02a457fd65546ce08a97bb78f187c6fc970b69d4acc0f4"},
+  "stderr": {"byte_count": 2224, "file": "stderr.bin", "sha256": "7ede10cc5f2080f9784acc46d64925c3e8373126ffbe6db478b304befbd27b5a"},
+  "isolation": {"image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621", "network": "none", "device_mappings": 0, "device_requests": 0, "masked_paths": ["/sys", "/proc/bus", "/proc/driver"], "read_only_root": true, "source_mount_read_only": true, "user": "1000:1000", "cap_drop": ["ALL"], "no_new_privileges": true},
+  "scope": "Native host startup isolation and failure retention only, not device kernels, routing, DMA, coverage or timing validation",
+  "timing_evidence": false
+}

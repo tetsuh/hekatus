@@ -1,0 +1,36 @@
+{
+  "events": [
+    {
+      "action": "create",
+      "exit_code": null,
+      "name": "hekatus-bench-555968-13809",
+      "time_ns": 1795241813370107851
+    },
+    {
+      "action": "attach",
+      "exit_code": null,
+      "name": "hekatus-bench-555968-13809",
+      "time_ns": 1795241813370869375
+    },
+    {
+      "action": "start",
+      "exit_code": null,
+      "name": "hekatus-bench-555968-13809",
+      "time_ns": 1795241813455336276
+    },
+    {
+      "action": "die",
+      "exit_code": 0,
+      "name": "hekatus-bench-555968-13809",
+      "time_ns": 1795241854372296453
+    },
+    {
+      "action": "destroy",
+      "exit_code": null,
+      "name": "hekatus-bench-555968-13809",
+      "time_ns": 1795241854380768020
+    }
+  ],
+  "raw_events_private_sha256": "1e0215c3eb1728fd21e8a78af93e99090a12e820f3033f12a723f298b9e04eb4",
+  "remaining_containers": 0
+}

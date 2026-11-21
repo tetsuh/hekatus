@@ -1,0 +1,5 @@
+environment -> <project>/out/issue120-production/sessions/8caa5d94ed7443d9982606ea45072452/cases/production-v2-load-watch-b4/env-20261118T14472425729255814391413846Z.json
+
+results     -> <project>/out/issue120-production/sessions/8caa5d94ed7443d9982606ea45072452/cases/production-v2-load-watch-b4/runner-result.json
+telemetry sampler -> default (2s)
+power trace -> <project>/out/issue120-production/sessions/8caa5d94ed7443d9982606ea45072452/cases/production-v2-load-watch-b4/power-20261118T14472425729255814391413846Z.csv

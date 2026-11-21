@@ -1,0 +1,7 @@
+{
+  "schema": "issue120-production-selection-v1",
+  "status": "owner recommendation only; not adopted",
+  "target_worker_seconds": 520,
+  "fixed_repetitions": 22155167,
+  "execution_authorized": false
+}

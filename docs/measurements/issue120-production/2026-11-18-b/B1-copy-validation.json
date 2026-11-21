@@ -1,0 +1,9 @@
+{
+  "method": "named never-started no-device network-none read-only evidence-copy container; tar bytes extracted into host-owned files",
+  "original_record_mutated": false,
+  "record_sha256": "f0e8a1c6aa0ddd6fc9d4b6e8eb5aae491a44cd5658c3ab17735a311e6583c6c1",
+  "frozen_snapshot_sha256": "cef0777edef68ab0222c4e2c913e8c84010de852baa009a7682f74e4051675ae",
+  "artifact_recomputation_passed": true,
+  "original_launcher_exit": 2,
+  "b2_authorized_after_failure": false
+}

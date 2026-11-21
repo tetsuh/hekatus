@@ -1,0 +1,226 @@
+{
+  "C1_executed": false,
+  "C2_P_executed": false,
+  "admission": {
+    "allowed_plan_identities": [
+      "production-v1-calibration-small"
+    ],
+    "execution_authorized": false,
+    "old_current_identity_kept_separate": true,
+    "records": [
+      {
+        "archive": "docs/measurements/issue120-production/2026-11-18-b4/B1-evidence.tar.gz",
+        "archive_sha256": "e4652097838ffd712f7b85a288706cfe56f16aecb59c7e430ea6f8e1f8a3370e",
+        "case": "B1",
+        "manifest": "docs/measurements/issue120-production/2026-11-18-b4/B1-manifest.json",
+        "manifest_sha256": "d513796b2679e99d83b323b3a0b8d00cecfa8f86583d296b4a5e68b2ff601f6f",
+        "record_file": "results-20261118T1445539271829941429764960Z.json",
+        "record_sha256": "871161088bd3260dd9f3d785c1c31dbdc882f28ac1088adf97bc187bbb07fc26"
+      },
+      {
+        "archive": "docs/measurements/issue120-production/2026-11-18-b4/B2-evidence.tar.gz",
+        "archive_sha256": "e3d1a23a016bc27b3ab7568deb542955c12065f861d3552c73be0f545962f9e9",
+        "case": "B2",
+        "manifest": "docs/measurements/issue120-production/2026-11-18-b4/B2-manifest.json",
+        "manifest_sha256": "16e26ee1704c20aebcb09c00882265358c110e855037a75a52a1bb9268accd03",
+        "record_file": "results-20261118T14472425729255814391413846Z.json",
+        "record_sha256": "e1ab9c9b84d4cefaeab958fc2c2bb2906a627776e7ea436db2dd6f43a35c8e04"
+      }
+    ],
+    "schema": "issue120-bounded-admission-v2",
+    "sha256": "9d18d931b03bc4371933cc24a2894002430a4b720aade24a05f4864f785dd9b7"
+  },
+  "board_access": false,
+  "build_receipt": {
+    "compiler_inputs": {
+      "cache_sha256": "f2afbddc7a3cf3718a622ba9159443fbac036ab9fbf3252a459c200585e051c5",
+      "compiler": "/usr/bin/c++",
+      "configuration": "empty-build-type/no-user-flags",
+      "dependency_sha256": "5ce313d144f47e874e2ef27f09911f3613e8654454987ff994e8a45a18229160",
+      "flags_sha256": "15d8ef417a15f2fe4221b51012371f0f11cd23bab4317ccf1f91c6caf1a76e5c",
+      "include_paths": [
+        "enodia/tt/bench/issue120_production",
+        "out/issue120-production-build/legacy/generated",
+        "out/issue120-deps/source",
+        "out/issue120-deps/source/tt_metal",
+        "out/issue120-deps/source/tt_metal/impl",
+        "out/issue120-deps/source/tt_metal/api/tt-metalium",
+        "out/issue120-deps/source/tt_metal/api",
+        "out/issue120-deps/source/tt_metal/hostdevcommon/api",
+        "out/issue120-deps/source/tt_metal/hostdevcommon",
+        "out/issue120-deps/source/tt_metal/hw/inc",
+        "out/issue120-deps/source/tt_stl",
+        "out/issue120-deps/source/tt_metal/third_party/umd/device/api",
+        "out/issue120-deps/include"
+      ],
+      "protected_headers_sha256": {
+        "enodia/tt/bench/issue120/native_result_io.hpp": "2b3c235adcea60590635d66ea0570cd209e18567dadea32f86e9ad94d730cea1",
+        "enodia/tt/bench/issue120/q4_host_sequence.hpp": "cd796ffbecb9f1fabab39efd159ab103b21d108a84ce59e012b310c71e60a344",
+        "enodia/tt/bench/issue120/q4_runtime_args.hpp": "017eb0ac1fce8154e34cd242923a89046073587f8994985b5cc3fcc89de96111",
+        "enodia/tt/bench/issue120_production/host_protocol.hpp": "679fce752a119d864965336f73b8e3008166813f34164d691b2d91724e7b1525",
+        "enodia/tt/bench/issue120_production/host_protocol_trace.hpp": "388b713e105e1dd0c24ed7e1ee251065da6dcec328a948cb0182891213000d63",
+        "enodia/tt/bench/issue120_production/host_sequence.hpp": "ed3a7d6c36de7c63f268a4abc075d732a985c370dae75ad1e63a94835ca79e8f",
+        "enodia/tt/bench/issue120_production/host_trace.hpp": "e806ffa7752172aaf65b5013b330086c10a1513ac3ad408ff83584942ab911f4",
+        "enodia/tt/bench/issue120_production/protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed"
+      },
+      "schema": "issue120-host-compiler-inputs-v1"
+    },
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "native_sha256": "0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6",
+    "schema": "issue120-production-build-v1",
+    "source_sha256": {
+      "enodia/tt/bench/issue120/CMakeLists.txt": "368b338ceacad300a19dbef4ba249d9f0d90a3e6682fe69de4837a1c67e7362d",
+      "enodia/tt/bench/issue120/native_result_io.hpp": "2b3c235adcea60590635d66ea0570cd209e18567dadea32f86e9ad94d730cea1",
+      "enodia/tt/bench/issue120/q4_host_sequence.hpp": "cd796ffbecb9f1fabab39efd159ab103b21d108a84ce59e012b310c71e60a344",
+      "enodia/tt/bench/issue120/q4_runtime_args.hpp": "017eb0ac1fce8154e34cd242923a89046073587f8994985b5cc3fcc89de96111",
+      "enodia/tt/bench/issue120_production/CMakeLists.txt": "9693c2f9a60d8787cacdacc3a0526e3c41a65347b5347bd8ed8461572fdb87d1",
+      "enodia/tt/bench/issue120_production/host_protocol.hpp": "679fce752a119d864965336f73b8e3008166813f34164d691b2d91724e7b1525",
+      "enodia/tt/bench/issue120_production/host_protocol_trace.hpp": "388b713e105e1dd0c24ed7e1ee251065da6dcec328a948cb0182891213000d63",
+      "enodia/tt/bench/issue120_production/host_sequence.hpp": "ed3a7d6c36de7c63f268a4abc075d732a985c370dae75ad1e63a94835ca79e8f",
+      "enodia/tt/bench/issue120_production/host_trace.hpp": "e806ffa7752172aaf65b5013b330086c10a1513ac3ad408ff83584942ab911f4",
+      "enodia/tt/bench/issue120_production/native.cpp": "f88288968958bdc7ba1cae385ae9b2de3ba2125f83e8356e2ca279828ff8d9e1",
+      "enodia/tt/bench/issue120_production/protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+      "out/issue120-production-build/host-trace-input/native_trace.cpp": "7bbdd0e57327669d849c60f1ca3e29d0999406eb68da96d435535f8bd45dd6fa"
+    }
+  },
+  "coverage_authority": "unchanged frame/map evaluator only",
+  "device_recompile_required": false,
+  "focused_tests": {
+    "ADR_guard": "pass",
+    "C901_max10": "pass",
+    "diff": "pass",
+    "passed": 126,
+    "ruff": "pass"
+  },
+  "host_only_source_proof": {
+    "base_cmake_sha256": "83a2e6b23752bc9d4ccbd3f9a0d34eb63befd0f6c7404ff675906d44eede657f",
+    "base_native_sha256": "bd0ac1384aeebcce715a9cb7527211453ef3378f28e868bbc85080fe7bc4c3c0",
+    "base_native_source_sha256": "f88288968958bdc7ba1cae385ae9b2de3ba2125f83e8356e2ca279828ff8d9e1",
+    "cmake_host_source_only_change": true,
+    "device_dispatch_unchanged": true,
+    "host_headers_sha256": {
+      "host_protocol_trace.hpp": "388b713e105e1dd0c24ed7e1ee251065da6dcec328a948cb0182891213000d63",
+      "host_trace.hpp": "e806ffa7752172aaf65b5013b330086c10a1513ac3ad408ff83584942ab911f4"
+    },
+    "insertions": 11,
+    "preserved_support_sha256": {
+      "../issue120/CMakeLists.txt": "368b338ceacad300a19dbef4ba249d9f0d90a3e6682fe69de4837a1c67e7362d",
+      "../issue120/native_result_io.hpp": "2b3c235adcea60590635d66ea0570cd209e18567dadea32f86e9ad94d730cea1",
+      "../issue120/q4_host_sequence.hpp": "cd796ffbecb9f1fabab39efd159ab103b21d108a84ce59e012b310c71e60a344",
+      "../issue120/q4_runtime_args.hpp": "017eb0ac1fce8154e34cd242923a89046073587f8994985b5cc3fcc89de96111",
+      "host_protocol.hpp": "679fce752a119d864965336f73b8e3008166813f34164d691b2d91724e7b1525",
+      "host_sequence.hpp": "ed3a7d6c36de7c63f268a4abc075d732a985c370dae75ad1e63a94835ca79e8f",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed"
+    },
+    "schema": "issue120-host-only-source-proof-v1",
+    "successor_source_sha256": "7bbdd0e57327669d849c60f1ca3e29d0999406eb68da96d435535f8bd45dd6fa"
+  },
+  "isolation": {
+    "cap_drop": [
+      "ALL"
+    ],
+    "containers_remaining": 0,
+    "device_mappings": 0,
+    "device_requests": 0,
+    "masked_paths": [
+      "/sys",
+      "/proc/bus",
+      "/proc/driver"
+    ],
+    "network": "none",
+    "readonly_root": true,
+    "readonly_source": true,
+    "unprivileged_user": "1000:1000"
+  },
+  "native_sha256": "0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6",
+  "native_startup": {
+    "absent_result_refused": true,
+    "board_access": false,
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "native_returncode": 2,
+    "native_sha256": "0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6",
+    "native_started": true,
+    "no_chips_detected": true,
+    "schema": "issue120-c1-prep-device-free-startup-v1",
+    "streams": {
+      "stderr": {
+        "byte_count": 2224,
+        "sha256": "5694f457c46de6046804e91ee40d27f5310836e5f1c54957b688867acba4d4af"
+      },
+      "stdout": {
+        "byte_count": 768,
+        "sha256": "f3cf7e94f3a88c87c99c7ea5bf0e1c8fbc3177664dfbaeaecdfcd22cd4ff9aeb"
+      }
+    },
+    "timing_evidence": false
+  },
+  "next_boot": "fresh baseline/boot preflight and new C1-only session; no automatic rebuild/retry",
+  "no_host_zero_overhead_claim": true,
+  "preserved_B4_native_sha256": "bd0ac1384aeebcce715a9cb7527211453ef3378f28e868bbc85080fe7bc4c3c0",
+  "program_identity": {
+    "compile_manifest_sha256": "eeaeb2cdcd0249dd7472e7687f43daab62960f87153996c33783405f1fa5785f",
+    "device_compile_proof_sha256": "0259164a64b5044e60accaca7a14389be1354d7ec5a5905d336cbbe51004b92c",
+    "host_trace_contract": "issue120-host-submission-trace-v1",
+    "kernel_sources_sha256": {
+      "device.hpp": "eead1032618e6ebaf4ddca36b5b089c5c49cce063ee028b78d7326a2803c64c2",
+      "production_consumer.cpp": "864680c4782a58e966e60570c4039cfdb3cbd9e689bf28073e2baa9684269c56",
+      "production_producer.cpp": "1ba9af269b3317c99dacc4a2486e2fd822e8c16ccaf6610cb411fbb366f8e149",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+      "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c"
+    },
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "native_sha256": "0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6",
+    "python_sources_sha256": {
+      "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
+      "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
+      "artifacts.py": "77bf193bf88b4ee03d86f2d7a2a806e86d8f653d85447cf4324e5c89d3942825",
+      "bounded_evidence.py": "00b94c6e34609dbb4d1776a75110db2e501fe87eace3579c6e2248829fc1c9ec",
+      "checks.py": "cd6140b706c28cc0f130ae8ffd434cc763e678bb2711290b930833c942ca415d",
+      "coverage.py": "ca1342299f2582a649e6cd15d2ae2fe003f000124846a74c0b799fa0d98b93a2",
+      "diagnostics.py": "f962505540536e8129e40014f1ac83fa41a50bfb3b15a78641a38c90a2dc7ced",
+      "host_build_inputs.py": "c2f232d78986b6362a64fb4b63e89bc064df1a559f38e75fcb9442e3d10b2614",
+      "host_trace.py": "773b37185e7967baa87385175a4190974b7d93c536a7874d89526a50955b0149",
+      "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
+      "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
+      "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
+      "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
+      "recording.py": "fa05c9c852392a6c02317aa07943d5fab7be91e0e44678b4212d0dcbb38c878f",
+      "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
+      "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
+      "runner.py": "8d8763e5489175095a124e8cc8b1509fccc6f6b996eb16d6d8c5e12f9ac53604",
+      "runtime.py": "b04b0d2fbb8332cd9ae641258ebaf24825b953bc4915b7ba315ac47f0e24ddfd",
+      "sessions.py": "e52937369ff39dc149a39655c5ac0df80ad29dbbca07492efb5b4029ae969e6c"
+    }
+  },
+  "publication": {
+    "fixture_only": true,
+    "launcher_exit": 0,
+    "publisher_euid": 0,
+    "reader_euid": 1000,
+    "snapshot_mode": "0o644"
+  },
+  "reason": "actual generated device/support/CTA/proof/library bytes unchanged",
+  "red": {
+    "C1_admission": "8failed",
+    "compiler_inputs": "1failed/5errors",
+    "generated_input": "3failed",
+    "host_trace": "1failed/3errors",
+    "trace_records": "7failed"
+  },
+  "runtime_session_created": false,
+  "schema": "issue120-c1-prep-board-free-checks-v1",
+  "timing_evidence": false,
+  "tt_smi_invoked": false,
+  "unchanged_device_identities": {
+    "compile_manifest_sha256": "eeaeb2cdcd0249dd7472e7687f43daab62960f87153996c33783405f1fa5785f",
+    "device_compile_proof_sha256": "0259164a64b5044e60accaca7a14389be1354d7ec5a5905d336cbbe51004b92c",
+    "kernel_sources_sha256": {
+      "device.hpp": "eead1032618e6ebaf4ddca36b5b089c5c49cce063ee028b78d7326a2803c64c2",
+      "production_consumer.cpp": "864680c4782a58e966e60570c4039cfdb3cbd9e689bf28073e2baa9684269c56",
+      "production_producer.cpp": "1ba9af269b3317c99dacc4a2486e2fd822e8c16ccaf6610cb411fbb366f8e149",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+      "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c"
+    },
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
+  }
+}

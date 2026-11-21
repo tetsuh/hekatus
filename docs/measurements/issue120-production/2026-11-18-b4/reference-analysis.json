@@ -1,0 +1,249 @@
+{
+  "B1": {
+    "attempt_identity": "20261118T1445539271829941429764960Z",
+    "counts": {
+      "frames_aborted": 0,
+      "frames_attempted": 4096,
+      "frames_consumed": 4096,
+      "frames_dropped": 0,
+      "frames_produced": 4096,
+      "overflow_count": 0,
+      "paired_outlier_count": 0
+    },
+    "coverage": {
+      "byte_scope": "fresh_challenge_issue_to_scan_completion_not_scan_end_to_scan_end",
+      "challenge_interval_bytes_lower_bound": 0,
+      "challenge_interval_transfers_lower_bound": 0,
+      "coverage": "not_applicable",
+      "first_through_last_bytes_lower_bound": 0,
+      "first_through_last_cpu_operations_lower_bound": 0,
+      "first_through_last_transfers_lower_bound": 0,
+      "frame_count": 4096,
+      "reason": null,
+      "schema": "issue120-production-coverage-v1",
+      "verified_frames": 0
+    },
+    "first_completion_ticks": 1586266516,
+    "first_to_last_ticks": 5528249998,
+    "frame_intervals": {
+      "N": 4095,
+      "max_ticks": 1351261,
+      "min_ticks": 1348709,
+      "percentiles": {
+        "p50": {
+          "minimum_samples": 40,
+          "status": "ok",
+          "value_ticks": 1350002.0
+        },
+        "p99": {
+          "minimum_samples": 2000,
+          "status": "ok",
+          "value_ticks": 1350798.18
+        },
+        "p99_9": {
+          "minimum_samples": 20000,
+          "status": "insufficient"
+        },
+        "p99_99": {
+          "minimum_samples": 200000,
+          "status": "insufficient"
+        }
+      }
+    },
+    "interpretation": "Watcher reference; ticks exact, weighted conversion not exact frame wall time",
+    "last_completion_ticks": 7114516514,
+    "native_process_seconds": 7.626972928,
+    "overhead": {
+      "analysis_frame_count": 4096,
+      "native_retrieval_verify_close_publish_seconds": 0.177773968,
+      "per_frame_analysis_seconds": 5.361719262705978e-05,
+      "per_frame_term_is_amortized_not_linear_slope": true,
+      "python_frame_analysis_seconds": 0.04184205300043686,
+      "sampler_wait_seconds": 1.308862402000159,
+      "setup_seconds": 2.555509237
+    },
+    "plan_identity": "production-v2-control-watch-b4",
+    "weighted_aiclk_mhz": 1350.0,
+    "weighted_first_to_last_estimate_seconds": 4.094999998518518
+  },
+  "B2": {
+    "attempt_identity": "20261118T14472425729255814391413846Z",
+    "counts": {
+      "frames_aborted": 0,
+      "frames_attempted": 4096,
+      "frames_consumed": 4096,
+      "frames_dropped": 0,
+      "frames_produced": 4096,
+      "overflow_count": 0,
+      "paired_outlier_count": 0
+    },
+    "coverage": {
+      "byte_scope": "fresh_challenge_issue_to_scan_completion_not_scan_end_to_scan_end",
+      "challenge_interval_bytes_lower_bound": 16781312,
+      "challenge_interval_transfers_lower_bound": 4097,
+      "coverage": "covered",
+      "first_through_last_bytes_lower_bound": 16773120,
+      "first_through_last_cpu_operations_lower_bound": 134184960,
+      "first_through_last_transfers_lower_bound": 4095,
+      "frame_count": 4096,
+      "reason": null,
+      "schema": "issue120-production-coverage-v1",
+      "verified_frames": 4096
+    },
+    "first_completion_ticks": 364580875,
+    "first_to_last_ticks": 5528250346,
+    "frame_intervals": {
+      "N": 4095,
+      "max_ticks": 1351306,
+      "min_ticks": 1348678,
+      "percentiles": {
+        "p50": {
+          "minimum_samples": 40,
+          "status": "ok",
+          "value_ticks": 1350005.0
+        },
+        "p99": {
+          "minimum_samples": 2000,
+          "status": "ok",
+          "value_ticks": 1350984.0
+        },
+        "p99_9": {
+          "minimum_samples": 20000,
+          "status": "insufficient"
+        },
+        "p99_99": {
+          "minimum_samples": 200000,
+          "status": "insufficient"
+        }
+      }
+    },
+    "interpretation": "Watcher reference; ticks exact, weighted conversion not exact frame wall time",
+    "last_completion_ticks": 5892831221,
+    "native_process_seconds": 8.975767328,
+    "overhead": {
+      "analysis_frame_count": 4096,
+      "native_retrieval_verify_close_publish_seconds": 0.173632572,
+      "per_frame_analysis_seconds": 5.4651953369212144e-05,
+      "per_frame_term_is_amortized_not_linear_slope": true,
+      "python_frame_analysis_seconds": 0.05022182900029293,
+      "sampler_wait_seconds": 2.1152722080005333,
+      "setup_seconds": 2.432002305
+    },
+    "plan_identity": "production-v2-load-watch-b4",
+    "weighted_aiclk_mhz": 1350.0000000000002,
+    "weighted_first_to_last_estimate_seconds": 4.095000256296296
+  },
+  "B2_measurement_and_models": {
+    "R_all_linear_with_same_existing_5s_reserve_seconds": 36.873251197606606,
+    "R_optimistic_seconds": 20,
+    "alternative_C2_1835008_writes": {
+      "inclusive_average_worker_seconds": 44.588955733,
+      "inclusive_slow_plus_R20_seconds": 65.49893442142857,
+      "inclusive_slow_worker_seconds": 45.49893442142857,
+      "not_adopted": true,
+      "phase_only_omits_unknown_costs": true,
+      "phase_only_plus_5s_reserve_seconds": 56.837044142431445
+    },
+    "calibration_predictions": [
+      {
+        "execution_authorized": false,
+        "fast_proxy_worker_minus_frame_upper_seconds": 5.8267973088057055,
+        "fixed_lead_plus_fast_proxy_worker_seconds": 22.993473212882357,
+        "fixed_lead_plus_proxy_worker_seconds": 23.439744955000002,
+        "frames": 16384,
+        "identity": "production-v1-calibration-small",
+        "inclusive_average_worker_seconds": 25.479403276,
+        "inclusive_slow_worker_seconds": 25.999391097959183,
+        "linear_post_native_python_seconds": 0.8954176040011718,
+        "projected_load_start_to_terminal_upper_seconds": 17.16667590407665,
+        "writes": 1048576
+      },
+      {
+        "execution_authorized": false,
+        "fast_proxy_worker_minus_frame_upper_seconds": 0.5995898363113454,
+        "fixed_lead_plus_fast_proxy_worker_seconds": 34.15026676582353,
+        "fixed_lead_plus_proxy_worker_seconds": 34.819674379000006,
+        "frames": 32768,
+        "identity": "production-v1-calibration-large",
+        "inclusive_average_worker_seconds": 38.219104914,
+        "inclusive_slow_worker_seconds": 38.99908664693878,
+        "linear_post_native_python_seconds": 1.7908352080023435,
+        "projected_load_start_to_terminal_upper_seconds": 33.550676929512186,
+        "writes": 1572864
+      }
+    ],
+    "cannot_treat_inclusive_average_as_long_run_proportional_slope": true,
+    "conditional_projected_500000_load_to_terminal_seconds": 500.78270617245016,
+    "enqueue_return_after_load_start_seconds": 0.679886107,
+    "fixed_writes": 262144,
+    "host_worker_inclusive_writes_per_second": 41153.86803378134,
+    "host_worker_seconds": 6.369850819,
+    "lead_removed_rate_proxy_not_measured_steady_rate": 46071.28748042049,
+    "load_start_to_terminal_observed_upper_bound_seconds": 4.878675135,
+    "mixed_clock_fixed_residual_estimate_seconds": 0.783674878703704,
+    "native_linear_500000_seconds_not_measured_slope": 21.195382324218752,
+    "no_count_target_cap_change": true,
+    "not_calibration": true,
+    "planning_fraction": 0.02,
+    "proxy_assumption": "entire pre-enqueue-return interval treated as fixed worker stall; no submission count at that host timestamp",
+    "proxy_target_definition": "T is total worker time; N=ceil(proxy*1.02*(T-fixed_lead)); slow time includes fixed_lead",
+    "python_linear_500000_seconds_not_measured_slope": 6.13059436038732,
+    "scenarios": [
+      {
+        "cross_proxy_fast_inclusive_slow_cap_margin_Rlinear": -76.93119623595922,
+        "fast_target_seconds": 550,
+        "inclusive_N_margin_if_fixed_lead_removed_at_fast_proxy": -8.807076255387926,
+        "inclusive_average_N": 23087320,
+        "lead_removed_proxy_N": 25814043,
+        "paired_inclusive_model_cap_margin_R20": 7.551019588723193,
+        "paired_inclusive_model_cap_margin_Rlinear": -9.322231608883413,
+        "paired_inclusive_model_slow_seconds": 572.4489804112768,
+        "paired_proxy_model_cap_margin_Rlinear": -9.294489557374646,
+        "planning_fast_side_margin_above_projected_frame_envelope_seconds": 49.21729382754984
+      },
+      {
+        "cross_proxy_fast_inclusive_slow_cap_margin_Rlinear": -53.627561858497444,
+        "fast_target_seconds": 530,
+        "inclusive_N_margin_if_fixed_lead_removed_at_fast_proxy": -26.67235668494027,
+        "inclusive_average_N": 22247782,
+        "lead_removed_proxy_N": 24874189,
+        "paired_inclusive_model_cap_margin_R20": 28.36732360826818,
+        "paired_inclusive_model_cap_margin_Rlinear": 11.494072410661573,
+        "paired_inclusive_model_slow_seconds": 551.6326763917318,
+        "paired_proxy_model_cap_margin_Rlinear": 11.52183111274175,
+        "planning_fast_side_margin_above_projected_frame_envelope_seconds": 29.217293827549838
+      },
+      {
+        "cross_proxy_fast_inclusive_slow_cap_margin_Rlinear": -41.975744669766556,
+        "fast_target_seconds": 520,
+        "inclusive_N_margin_if_fixed_lead_removed_at_fast_proxy": -35.60501817961136,
+        "inclusive_average_N": 21828012,
+        "lead_removed_proxy_N": 24404262,
+        "paired_inclusive_model_cap_margin_R20": 38.7755004129923,
+        "paired_inclusive_model_cap_margin_Rlinear": 21.902249215385694,
+        "paired_inclusive_model_slow_seconds": 541.2244995870077,
+        "paired_proxy_model_cap_margin_Rlinear": 21.929991447799893,
+        "planning_fast_side_margin_above_projected_frame_envelope_seconds": 19.217293827549838
+      }
+    ],
+    "terminal_observer_poll_sleep_ms": 5,
+    "weighted_projected_500000_frame_span_seconds": 499.99903129374644
+  },
+  "C_P_executed": false,
+  "loaded_minus_control_counts": {
+    "frames_aborted": 0,
+    "frames_attempted": 0,
+    "frames_consumed": 0,
+    "frames_dropped": 0,
+    "frames_produced": 0,
+    "overflow_count": 0,
+    "paired_outlier_count": 0
+  },
+  "loaded_minus_control_ticks": {
+    "max": 45,
+    "p50": 3.0,
+    "p99": 185.8200000000652
+  },
+  "schema": "issue120-production-b4-reference-analysis-v1",
+  "timing_evidence": false
+}

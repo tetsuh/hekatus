@@ -1,0 +1,5 @@
+environment -> <case>/env-20261118T124104054310116761824398Z.json
+
+results     -> <case>/runner-result.json
+telemetry sampler -> default (2s)
+power trace -> <case>/power-20261118T124104054310116761824398Z.csv

@@ -1,0 +1,76 @@
+{
+  "P1_exit": 0,
+  "P2_exit": 0,
+  "P_executed": false,
+  "actual_launcher_rereads": [
+    {
+      "identity": "production-v1-control-500000",
+      "seconds": 5.960750027999893
+    },
+    {
+      "identity": "production-v1-control-500000",
+      "seconds": 5.981577299997298
+    },
+    {
+      "identity": "production-v1-loaded-500000",
+      "seconds": 7.167010974000732
+    },
+    {
+      "identity": "production-v1-calibration-small",
+      "seconds": 0.21370396800193703
+    }
+  ],
+  "comparison": {
+    "control_attempt": "synthetic-p1",
+    "latency_threshold": null,
+    "loaded_attempt": "synthetic-p2",
+    "loaded_minus_control_counts": {
+      "frames_aborted": 0,
+      "frames_dropped": 0,
+      "overflow_count": 0,
+      "paired_outlier_count": 0
+    },
+    "loaded_minus_control_ticks": {
+      "max_ticks": 1996,
+      "p50": 183.0,
+      "p99": 1483.0,
+      "p99_9": 1783.0,
+      "p99_99": 1934.000800000038
+    },
+    "schema": "issue120-production-comparison-v1"
+  },
+  "comparison_recomputed": true,
+  "external_state_simulated": [
+    "clean/pushed Git state",
+    "fixture native result/clock/telemetry claims"
+  ],
+  "fixture_only": true,
+  "fixture_publisher_invocations": 3,
+  "fixture_root": "out/issue120-production-p-prep/57197c3bbeb449ccb6d90181983629ed",
+  "head": "242a83d8dc3cf67cda13f0613035e0d6d0f14487",
+  "launcher_peak_rss_bytes": 112353280,
+  "native_invoked": false,
+  "positive_launches": 2,
+  "real_paths": [
+    "committed receipt validation",
+    "session creation/read/head/boot checks",
+    "admission",
+    "launcher/control gate",
+    "record construction/publication",
+    "artifact-based launcher reread/comparison"
+  ],
+  "rejected": {
+    "boot": true,
+    "dirty_source": true,
+    "environment_summary": true,
+    "failed_P1": true,
+    "head": true,
+    "historical_P1": true,
+    "missing_P1": true,
+    "missing_approval": true,
+    "missing_receipt": true,
+    "modified_receipt": true
+  },
+  "schema": "issue120-production-fixture-dry-run-v1",
+  "source_sha256": "4b7825bc03ff547bd86912356631d506906e7af5d483d54cdd3eeece7cfdf0b8"
+}
