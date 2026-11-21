@@ -13,5 +13,5 @@ def test_p_pair_cpu_e2e_and_fail_closed_boundaries():
     assert result["positive_launches"] == 2
     assert result["P1_exit"] == result["P2_exit"] == 0
     assert result["comparison_recomputed"] is True
-    for key in ("boot", "head", "missing_receipt", "modified_receipt", "missing_P1", "failed_P1", "missing_approval", "dirty_source", "environment_summary", "historical_P1", "missing_adoption", "mismatched_adoption", "used_roles"):
+    for key in ("boot", "head", "missing_receipt", "modified_receipt", "missing_P1", "failed_P1", "missing_approval", "dirty_source", "environment_summary", "historical_P1", "missing_adoption", "mismatched_adoption", "used_roles", "unacknowledged_P1"):
         assert result["rejected"][key] is True

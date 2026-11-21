@@ -35,6 +35,13 @@ to bypass a failed gate. No hardware execution has consumed this authority.
    native-entry stamp before execute_native. Direct/repeated container entry
    cannot reuse authorization. No new native/wrapper arguments or work changes.
    Runtime use never rewrites committed selection/adoption/receipt inputs.
+   After actual launcher/wrapper/container exit0 and validated role publication,
+   an external supervisor records an exclusive completion acknowledgement bound
+   to launch/native-entry and primary hashes. V2 P2 requires it:publication alone
+   cannot prove launcher completion. No running publisher self-acknowledges.
+   Existing adoption registration reuse repeats file/directory fsync before role
+   creation,including directory ancestry;barrier failures fail closed. These
+   two pre-hardware review repairs have five additional behavioral RED cases.
 7. RED tests precede implementation, including missing/mismatched/malformed
    adoption and repeated host/native entry; preserve legacy fixture tests.
    Actual CPU launcher dry-run adds missing/mismatch/used-role negatives.
@@ -53,25 +60,30 @@ to bypass a failed gate. No hardware execution has consumed this authority.
 
 ## Source-matched adopted-v2 host-cost measurement
 
-The first adopted-v2 CPU measurement completed without native/device access:
-control construction6.005598s/publication0.002785s;loaded construction7.303426s/
-publication0.011691s plus5.951577s in-wrapper P1 reread/entry,total13.266694s.
-Outer reader7.245716s is separate. Peak115773440bytes(110.41MiB);real native2GB
+The final adopted-v2 CPU measurement completed without native/device access:
+control construction6.048511s/publication0.002787s;loaded construction7.282713s/
+publication0.011593s plus5.946373s in-wrapper P1 reread/entry/ack check,total13.240680s.
+Outer reader7.448081s is separate. Peak115691520bytes(110.33MiB);real native2GB
 retrieval remains unmeasured. The new receipt is generated through
 `uv run python tools/prepare_issue120_production_admission.py --adopt-owner-decision --write`.
 It records the dated decision but does not substitute for fresh runtime gates.
 
 | Target | Count | Frame margin | Optimistic cap margin | Pessimistic cap margin |
 |---|---:|---:|---:|---:|
-|550s scenario,not selected |23433350 |49.291s |−12.246s |−22.246s |
-|530s scenario,not selected |22581228 |29.291s |8.871s |−1.129s |
-|520s adopted |22155167 |19.291s |19.430s |9.430s |
+|550s scenario,not selected |23433350 |49.291s |−12.221s |−22.221s |
+|530s scenario,not selected |22581228 |29.291s |8.897s |−1.103s |
+|520s adopted |22155167 |19.291s |19.456s |9.456s |
 
-Reserve31.510054s/41.510054s includes measured host13.266694s,setup2.134215s,
+Reserve31.484039s/41.484039s includes measured host13.240680s,setup2.134215s,
 snapshot1.109144s,unmeasured-native budget10s and guard5s,plus10s pessimistic
 stress. These are conditional assumptions,not bounds. The selected premise
 remains feasible under this model;no count/target/cap change is made. If later
 source repairs require remeasurement,these figures must be replaced before entry.
+The two completion/durability review findings were reproduced with5RED cases;
+all57focused cases pass and bounded read-only follow-up had no included findings.
+Sonar complexity/permission findings were fixed by extraction and reuse of the
+existing exclusive/public-output boundary,not acceptance. Optional CodeRabbit
+review failed reauthentication and is not counted as completed.
 
 ## Hardware gates and stop rules
 
@@ -88,6 +100,12 @@ cards800MHz/DRAM healthy. Stop new warnings/errors,identity/boot/open changes,
 timeout,execution/publication/validation/integrity failure or P2 not_covered.
 No count changes,extension,retry,automatic acceptance; at most one reset only
 for timeout/abnormal exit,then stop. Preserve originals and failed claims.
+Before P2 also inspect P1's actual host program envelope and inclusive native
+retrieval/verify/close/publication cost. Do not reduce the precommitted native
+budget:if replacing it with max(10s,observed P1 aggregate) destroys the conditional
+pessimistic cap margin,or the observed frame envelope destroys the fast-worker
+coverage margin,stop rather than automatically change N,target or caps. This is
+model feasibility checking,not an advance latency percentile acceptance limit.
 
 ## Publication
 

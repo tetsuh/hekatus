@@ -110,7 +110,17 @@ def run() -> dict:
         with patch.object(runner, "_clean_pushed", side_effect=ValueError("simulated dirty/unpushed Git state")):
             rejected["dirty_source"] = rejected_call(control, "dirty source")
         assert not child_calls
-        p1, p2 = runner._launch(control), runner._launch(loaded)
+        p1 = runner._launch(control)
+        rejected["unacknowledged_P1"] = rejected_call(loaded, "P1 launcher completion not acknowledged")
+        receipt = sessions.compatible_production_receipt(session["admission_hashes"])
+        _, digest = sessions.read_session(session["session_id"])
+        primary = runner._single_result(sessions.session_path(session["session_id"]) / "cases" / specs[0].identity)
+        sessions.finish_production_launch(specs[0], session, digest, receipt, primary,
+                                         launcher_exit=p1, wrapper_exit=p1, container_exit=p1)
+        p2 = runner._launch(loaded)
+        primary = runner._single_result(sessions.session_path(session["session_id"]) / "cases" / specs[1].identity)
+        sessions.finish_production_launch(specs[1], session, digest, receipt, primary,
+                                         launcher_exit=p2, wrapper_exit=p2, container_exit=p2)
         comparison = records.compare_records(observed[specs[0].identity], observed[specs[1].identity])
         assert p1 == p2 == 0 and len(child_calls) == 2
         positive_launches = len(child_calls)

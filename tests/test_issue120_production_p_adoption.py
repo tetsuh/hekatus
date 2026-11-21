@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from enodia.tt.bench.issue120_production import plan, runtime, sessions
+from enodia.tt.bench.issue120_production import plan, recording, runner, runtime, sessions
 from enodia.tt.bench.issue120_production import production_admission as production
 
 
@@ -113,6 +113,43 @@ def test_container_rejects_claim_from_another_manifest(ledger):
     sessions.reserve_production_launch(plan.RUNS[4], manifest, 'f' * 64, receipt)
     with pytest.raises(ValueError, match='claim'):
         sessions.enter_production_native(plan.RUNS[4], manifest, '0' * 64, receipt, case)
+
+
+def test_published_p1_without_completed_launcher_cannot_release_p2(ledger, monkeypatch):
+    manifest, receipt, case = ledger
+    manifest['production_contract'] = runtime.PRODUCTION_CONTRACT
+    case.mkdir(parents=True)
+    captured = case / 'receipt.json'
+    captured.write_text(json.dumps(receipt))
+    manifest['admission_hashes']['production'] = runtime.sha(captured)
+    row = {'execution_eligible': True, 'timing_evidence': True, 'session_id': manifest['session_id'],
+           'production_provenance': {'receipt': {'file': captured.name}}}
+    monkeypatch.setattr(sessions, 'read_session', lambda _: (manifest, 'f' * 64))
+    monkeypatch.setattr(sessions, 'compatible_production_receipt', lambda *a: receipt)
+    monkeypatch.setattr(sessions, 'spec_for_session', lambda *a: plan.RUNS[4])
+    monkeypatch.setattr(production, 'control_release', lambda *a: None)
+    monkeypatch.setattr(runner, '_single_result', lambda _: case / 'published.json')
+    monkeypatch.setattr(recording, 'load_validated_record', lambda _: row)
+    with pytest.raises((ValueError, OSError)):
+        runner._control(manifest['session_id'], plan.RUNS[5])
+
+
+def test_registration_fsync_failure_rejects_before_second_role_creation(ledger, monkeypatch):
+    manifest, receipt, _ = ledger
+    sessions.reserve_production_launch(plan.RUNS[4], manifest, 'f' * 64, receipt)
+    monkeypatch.setattr(sessions.os, 'fsync', lambda _: (_ for _ in ()).throw(OSError('injected registration barrier failure')))
+    with pytest.raises(OSError):
+        sessions.reserve_production_launch(plan.RUNS[5], manifest, 'f' * 64, receipt)
+    assert not (sessions.session_path(manifest['session_id']) / 'cases' / plan.RUNS[5].identity).exists()
+
+
+@pytest.mark.parametrize('field', ['launcher_exit', 'wrapper_exit', 'container_exit'])
+def test_failed_external_outcome_cannot_acknowledge_completion(ledger, field):
+    manifest, receipt, case = ledger
+    exits = {'launcher_exit': 0, 'wrapper_exit': 0, 'container_exit': 0}
+    exits[field] = 2
+    with pytest.raises(ValueError):
+        sessions.finish_production_launch(plan.RUNS[4], manifest, 'f' * 64, receipt, case / 'record.json', **exits)
 
 
 def test_unadopted_operational_launch_is_not_readiness(ledger):

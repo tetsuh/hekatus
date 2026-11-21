@@ -255,6 +255,16 @@ def bootstrap(*, adopt_owner_decision: bool = False):
     for role in ("control", "loaded"):
         for mode in ("publish", "readback"):
             subprocess.run([sys.executable, str(Path(__file__).resolve()), "--mode", mode, "--role", role, "--directory", str(directory)], check=True, cwd=runtime.ROOT)
+        if receipt["schema"] == production.ADOPTED_SCHEMA:
+            # External CPU supervisor has observed successful child and reader
+            # completion; the running publisher never self-acknowledges exits.
+            with patch.object(sessions, "SESSIONS", directory / "sessions"):
+                current_session, digest = sessions.read_session(sid)
+                spec = sessions.spec_for_session(plan.RUNS[4 if role == "control" else 5].identity, current_session)
+                attempt = "synthetic-p1" if role == "control" else "synthetic-p2"
+                primary = session_dir / "cases" / spec.identity / f"results-{attempt}.json"
+                sessions.finish_production_launch(spec, current_session, digest, receipt, primary,
+                                                 launcher_exit=0, wrapper_exit=0, container_exit=0)
     publishers = [json.loads((directory / f"{r}-publisher.json").read_bytes()) for r in ("control", "loaded")]
     readers = [json.loads((directory / f"{r}-reader.json").read_bytes()) for r in ("control", "loaded")]
     report = {**provisional, "measurement_pending": False, "passed": True,

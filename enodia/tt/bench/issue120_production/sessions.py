@@ -70,6 +70,15 @@ def cpu_model() -> str:
     raise ValueError("CPU identity unavailable for the production session")
 
 
+def _session_production_receipt(phase: str, fixture_only: bool) -> dict | None:
+    receipt = compatible_production_receipt() if phase == "production" else None
+    if receipt is not None and not fixture_only:
+        from . import production_admission
+        if receipt["schema"] != production_admission.ADOPTED_SCHEMA:
+            raise ValueError("operational production session requires dated owner adoption")
+    return receipt
+
+
 def create_session(specs: list[plan.RunSpec], *, fixture_only: bool = False) -> dict:
     if specs[0].phase == "calibration" and specs != admitted_specs("C"):
         raise ValueError("calibration session must match the admitted C1/current scope")
@@ -77,11 +86,7 @@ def create_session(specs: list[plan.RunSpec], *, fixture_only: bool = False) -> 
         raise ValueError("production session must match the entire admitted pair")
     if fixture_only and not SESSIONS.is_relative_to(runtime.ROOT / "out/issue120-production-p-prep"):
         raise ValueError("fixture sessions require their isolated program-owned root")
-    production_receipt = compatible_production_receipt() if specs[0].phase == "production" else None
-    if production_receipt is not None and not fixture_only:
-        from . import production_admission
-        if production_receipt["schema"] != production_admission.ADOPTED_SCHEMA:
-            raise ValueError("operational production session requires dated owner adoption")
+    production_receipt = _session_production_receipt(specs[0].phase, fixture_only)
     identity = uuid.uuid4().hex
     directory = session_path(identity)
     directory.mkdir(parents=True, exist_ok=False)
@@ -108,18 +113,33 @@ def create_session(specs: list[plan.RunSpec], *, fixture_only: bool = False) -> 
 
 
 def _persist_claim(path: Path, value: dict) -> None:
+    # These are public provenance facts, never credentials or private transport.
+    # Reuse the fixed0644/exclusive publication boundary for cross-UID readback.
+    from .recording import _public_output
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x") as output:
-        os.fchmod(output.fileno(), 0o644)
+    with _public_output(path) as output:
         json.dump(value, output, sort_keys=True)
         output.write("\n")
         output.flush()
         os.fsync(output.fileno())
-    descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    _sync_claim(path)
+
+
+def _sync_claim(path: Path) -> None:
+    with path.open("rb") as existing:
+        os.fsync(existing.fileno())
+    parent = path.parent
+    boundary = SESSIONS.parent if path.is_relative_to(SESSIONS) else parent
+    while True:
+        descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        if parent == boundary:
+            break
+        parent = parent.parent
 
 
 def _production_claim(spec: plan.RunSpec, manifest: dict, digest: str, receipt: dict) -> dict | None:
@@ -150,6 +170,7 @@ def reserve_production_launch(spec: plan.RunSpec, manifest: dict, digest: str, r
         except FileExistsError:
             if json.loads(runtime.fixed_path(registration, SESSIONS).read_bytes()) != binding:
                 raise ValueError("owner adoption is already assigned to another session") from None
+            _sync_claim(registration)
     case = runtime.fixed_path(session_path(manifest["session_id"]) / "cases" / spec.identity, SESSIONS, exists=False)
     case.mkdir(parents=True, exist_ok=False)
     if claim is not None:
@@ -165,6 +186,53 @@ def enter_production_native(spec: plan.RunSpec, manifest: dict, digest: str, rec
         raise ValueError("container launch claim differs from its session origin")
     _persist_claim(output / "native-entry.json", {"schema": "issue120-production-native-entry-v1",
                    "launch_claim_sha256": runtime.sha(path), "entered_monotonic_ns": time.monotonic_ns()})
+
+
+def _completion_facts(spec: plan.RunSpec, manifest: dict, digest: str, receipt: dict, primary: Path) -> dict | None:
+    claim = _production_claim(spec, manifest, digest, receipt)
+    if claim is None:
+        return None
+    case = session_path(manifest["session_id"]) / "cases" / spec.identity
+    primary = runtime.fixed_path(primary, case)
+    launch = runtime.fixed_path(case / "launch-claim.json", case)
+    entry = runtime.fixed_path(case / "native-entry.json", case)
+    stamp = json.loads(entry.read_bytes())
+    if (json.loads(launch.read_bytes()) != claim or stamp.get("schema") != "issue120-production-native-entry-v1"
+            or stamp.get("launch_claim_sha256") != runtime.sha(launch)
+            or type(stamp.get("entered_monotonic_ns")) is not int or stamp["entered_monotonic_ns"] <= 0):
+        raise ValueError("production completion native/launch claim differs")
+    return {"schema": "issue120-production-external-completion-v1", "launch_claim_sha256": runtime.sha(launch),
+            "native_entry_sha256": runtime.sha(entry), "record_file": primary.name, "record_sha256": runtime.sha(primary),
+            "launcher_exit": 0, "wrapper_exit": 0, "container_exit": 0}
+
+
+def finish_production_launch(spec: plan.RunSpec, manifest: dict, digest: str, receipt: dict, primary: Path,
+                             *, launcher_exit: int, wrapper_exit: int, container_exit: int) -> None:
+    """External supervisor acknowledges observed exits, never the running launcher."""
+    from .recording import load_validated_record
+
+    if any(type(code) is not int or code != 0 for code in (launcher_exit, wrapper_exit, container_exit)):
+        raise ValueError("production completion needs all observed exits zero")
+    row = load_validated_record(primary)
+    expected = {"session_id": manifest["session_id"], "session_manifest_sha256": digest,
+                "program_identity": manifest["program_identity"], "plan_identity": spec.identity,
+                "configuration": plan.program_configuration(spec), "resident_integrity_passed": True,
+                "execution_eligible": True, "timing_evidence": True}
+    if (any(row.get(key) != value for key, value in expected.items())
+            or row["coverage_analysis"]["coverage"] != ("not_applicable" if spec.condition == "control" else "covered")):
+        raise ValueError("production completion requires healthy exact-session role evidence")
+    facts = _completion_facts(spec, manifest, digest, receipt, primary)
+    if facts is not None:
+        _persist_claim(primary.parent / "external-completion.json", facts)
+
+
+def verify_production_completion(spec: plan.RunSpec, manifest: dict, digest: str, receipt: dict, primary: Path) -> None:
+    facts = _completion_facts(spec, manifest, digest, receipt, primary)
+    if facts is not None:
+        path = runtime.fixed_path(primary.parent / "external-completion.json", primary.parent)
+        if json.loads(path.read_bytes()) != facts:
+            raise ValueError("P1 external launcher completion acknowledgement differs")
+        _sync_claim(path)
 
 
 def admission_hashes(phase: str) -> dict:

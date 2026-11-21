@@ -174,8 +174,14 @@ preflight/session/head/boot/receipt/healthy-control gates still apply.
 Exclusive durable session-role launch claims consume each attempt before wrapper
 entry,including failed/partial launches. A non-fixture adoption binds to one
 session across launches. Container entry validates the host claim and exclusively
-records native entry before execute_native;direct/repeated entry rejects. Runtime
-never mutates committed authority inputs. Isolated v1 fixtures retain their old
+records native entry before execute_native;direct/repeated entry rejects. An
+external supervisor must observe launcher/wrapper/container exits0 and validate
+the actual published role before recording a hash-bound completion acknowledgement;
+a running publisher/launcher cannot self-acknowledge. V2 P2 verifies that P1
+acknowledgement as well as ordinary record health,so a published record followed
+by wrapper failure or interrupted launcher cannot release P2. Existing matching
+adoption registrations repeat file/directory fsync before any role creation;
+new claims also sync directory ancestry. Runtime never mutates committed authority inputs. Isolated v1 fixtures retain their old
 meaning;v2 CPU tests exercise consumption. Native/device constructors stay exact.
 See the [pre-implementation invariants](../measurements/issue120-production-p-adoption-plan.md).
 

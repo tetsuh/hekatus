@@ -80,16 +80,24 @@ def _control(session_id: str, spec: plan.RunSpec) -> dict | None:
         return None
     control_id = plan.RUNS[0].identity if spec.phase == "startup" else plan.RUNS[4].identity
     path = sessions.session_path(session_id) / "cases" / control_id
-    control = recording.load_validated_record(_single_result(path))
+    primary = _single_result(path)
+    control = recording.load_validated_record(primary)
     if not control.get("execution_eligible") or control["session_id"] != session_id:
         raise ValueError("healthy same-session control required before loaded")
     if spec.phase == "production" and not control.get("timing_evidence"):
         raise ValueError("production control lacks timing/power eligibility")
     if spec.phase == "production":
-        manifest, _ = sessions.read_session(session_id)
+        manifest, digest = sessions.read_session(session_id)
         if manifest.get("production_contract") == runtime.PRODUCTION_CONTRACT:
             from . import production_admission
             production_admission.control_release(control, session_id)
+            reference = control["production_provenance"]["receipt"]
+            captured = runtime.fixed_path(primary.parent / reference["file"], primary.parent)
+            if runtime.sha(captured) != manifest["admission_hashes"]["production"]:
+                raise ValueError("P1 captured receipt differs from the admitted session")
+            receipt = json.loads(captured.read_bytes())
+            control_spec = sessions.spec_for_session(control_id, manifest)
+            sessions.verify_production_completion(control_spec, manifest, digest, receipt, primary)
     return control
 
 
@@ -118,6 +126,12 @@ def _launch(args) -> int:
     return 0 if result["execution_eligible"] else 2
 
 
+def _enter_native_claim(spec: plan.RunSpec, session: dict, digest: str) -> None:
+    if spec.phase == "production" and session.get("production_contract") == runtime.PRODUCTION_CONTRACT:
+        receipt = sessions.compatible_production_receipt(session["admission_hashes"])
+        sessions.enter_production_native(spec, session, digest, receipt, Path("/out"))
+
+
 def _run(args) -> int:
     if not args.owner_approved or not args.session_id:
         raise ValueError("no native execution without explicit approval/session")
@@ -136,9 +150,7 @@ def _run(args) -> int:
     attempt = issue120_results.create_attempt(identity)
     watcher_path = runtime.ROOT / "generated/watcher/watcher.log"
     watcher_before = recording.read_watcher_bytes(watcher_path) if spec.watcher and watcher_path.is_file() else None
-    if spec.phase == "production" and session.get("production_contract") == runtime.PRODUCTION_CONTRACT:
-        receipt = sessions.compatible_production_receipt(session["admission_hashes"])
-        sessions.enter_production_native(spec, session, digest, receipt, Path("/out"))
+    _enter_native_claim(spec, session, digest)
     started, utc_start = time.monotonic_ns(), time.time_ns()
     native, program_identity = runtime.execute_native(spec, attempt)
     ended, utc_end = time.monotonic_ns(), time.time_ns()
