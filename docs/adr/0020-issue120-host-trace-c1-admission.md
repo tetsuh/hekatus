@@ -116,8 +116,13 @@ without altering native/device content or rewriting C1/B4 evidence.
   observations are not claimed equal. Each run retains its fresh session binding.
 - New metadata declares its own provenance contract and binds raw environment
   size/hash and session-verified receipt. Historical native/C1/B4 interpretation
-  is not retrofitted. Removing mandatory provenance from a declared new record
-  must reject on reread.
+  is not retrofitted. A separately published C2 session-manifest companion is
+  size/hash-verified and its actual harness/program/admission/image/boot/run
+  bindings and creation time are checked,not merely duplicate record claims.
+  Removing mandatory provenance or changing declared phase/plan/configuration
+  must reject on reread. Nested packages and unexpected importable extension/
+  sourceless modules are rejected beyond the top-level source ledger. These
+  pre-hardware review repairs are tracked in Issue #185.
 - Compatible-pair offline analysis is a new explicit path,not a relaxation of
   legacy exact-program/environment calibration or production comparison. Both
   original records are artifact-validated and displayed with their distinct

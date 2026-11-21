@@ -20,6 +20,7 @@ PROOF = ROOT / "docs/measurements/issue120-production-device-compile-check.json"
 PROTOCOL_HEADER = "protocol.hpp"
 COMPILE_MANIFEST = "compile_args.json"
 NATIVE_SOURCE_NAME = "native_trace.cpp"
+CALIBRATION_CONTRACT = "issue120-calibration-compatibility-v1"
 LIBRARY_SHA256 = "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
 PINNED_IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
 
@@ -161,10 +162,11 @@ def program_identity() -> dict:
     if proof.get("derived_sources") != hashes:
         raise ValueError("actual derived kernels differ from offline proof")
     return {"native_sha256": receipt["native_sha256"], "host_trace_contract": host_trace.TRACE_SCHEMA,
+            "calibration_compatibility_contract": CALIBRATION_CONTRACT,
             "library_sha256": LIBRARY_SHA256,
             "kernel_sources_sha256": hashes, "device_compile_proof_sha256": sha(PROOF),
             "compile_manifest_sha256": sha(SOURCE / COMPILE_MANIFEST),
-            "python_sources_sha256": {p.name: sha(p) for p in sorted(SOURCE.glob("*.py"))}}
+            "python_sources_sha256": python_source_hashes()}
 
 
 def execute_native(spec: plan.RunSpec, attempt: issue120_results.NativeAttempt):
@@ -182,3 +184,20 @@ def execute_native(spec: plan.RunSpec, attempt: issue120_results.NativeAttempt):
     native = issue120_results.read_result(attempt)
     host_trace.validate_native(native, require_new=True)
     return native, identity
+
+
+def python_source_hashes() -> dict:
+    """Reject importable additions that could hide outside a top-level ledger."""
+    paths = []
+    for path in SOURCE.rglob("*"):
+        if path.is_symlink():
+            raise ValueError("redirected package source is not admitted")
+        if path.suffix == ".py":
+            if path.parent != SOURCE:
+                raise ValueError("nested Python package/module is not admitted")
+            paths.append(path)
+        elif path.suffix in (".pyw", ".so", ".pyd", ".pyc", ".pyo"):
+            if path.suffix == ".pyc" and path.parent.name == "__pycache__":
+                continue  # Interpreter-generated cache, not a source addition.
+            raise ValueError("uninventoried executable module is not admitted")
+    return {p.relative_to(SOURCE).as_posix(): sha(p) for p in sorted(paths)}

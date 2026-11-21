@@ -170,6 +170,8 @@ def make_record(spec: plan.RunSpec, attempt, native: dict, program_identity: dic
               "host_boot_id_sha256": session["host_boot_id_sha256"],
               "execution_interval": {"start_ns": execute_start_ns, "end_ns": execute_end_ns,
                                      "start_utc_ns": start_utc_ns, "end_utc_ns": end_utc_ns}}
+    if spec.phase == "calibration" and program_identity.get("calibration_compatibility_contract") == runtime.CALIBRATION_CONTRACT:
+        record["calibration_provenance"] = calibration_provenance(output, record, session["admission_hashes"]["bounded"], publish_session=True)
     records.validate_record(record)
     host_trace.validate_native(native, require_new=program_identity.get("host_trace_contract") == host_trace.TRACE_SCHEMA)
     _diagnostic_check(native)
@@ -214,6 +216,7 @@ def load_validated_record(path: Path) -> dict:
     program = records.mapping(record.get("program_identity"), "program identity")
     host_trace.validate_native(record["native"], require_new=program.get("host_trace_contract") == host_trace.TRACE_SCHEMA)
     output = path.parent.resolve()
+    recheck_calibration_provenance(output, record)
     identity = record["attempt_identity"]
     if path.name != f"results-{identity}.json":
         raise ValueError("record filename is not attempt-bound")
@@ -365,3 +368,159 @@ def clock_metadata(power: dict, metrics: dict, *, schema: str = records.SCHEMA) 
             "observed_envelope_conversion_us": estimates,
             "conversion_scope": "host_observed_program_upper_bound_not_exact_frame_window",
             "product_wall_time_guarantee": False}
+
+
+def calibration_provenance(output: Path, record: dict, admission_sha256: str, *, publish_session: bool = False) -> dict:
+    from . import sessions
+
+    identity = validate_run_id(record["attempt_identity"])
+    path = runtime.fixed_path(output / f"env-{identity}.json", output)
+    if path.stat().st_size > 1024 * 1024:
+        raise ValueError("calibration environment exceeds its bound")
+    raw = json.loads(path.read_bytes())
+    if (raw.get("harness_commit") != record["environment"]["commit"] or raw.get("run_id") != identity
+            or raw.get("harness_dirty") is not False or raw.get("harness_pushed") is not True):
+        raise ValueError("calibration raw environment/harness binding differs")
+    if raw.get("board") != raw.get("board_info") or raw.get("firmware") != raw.get("firmwares"):
+        raise ValueError("calibration environment aliases disagree")
+    if not isinstance(admission_sha256, str) or len(admission_sha256) != 64 or any(c not in "0123456789abcdef" for c in admission_sha256):
+        raise ValueError("calibration admission digest differs")
+    return {"schema": runtime.CALIBRATION_CONTRACT, "bounded_admission_sha256": admission_sha256,
+            "environment_capture": {"file": path.name, "byte_count": path.stat().st_size, "sha256": runtime.sha(path)},
+            "stable_environment": sessions.stable_calibration_environment(raw),
+            "harness_commit": record["environment"]["commit"], "session_id": record["session_id"],
+            "session_manifest_sha256": record["session_manifest_sha256"],
+            "session_manifest": _calibration_session_artifact(output, record, admission_sha256, publish_session)}
+
+
+def _calibration_session_artifact(output: Path, record: dict, admission_sha: str, publish: bool) -> dict:
+    from . import sessions
+
+    identity = sessions.canonical_session_id(record["session_id"])
+    digest = record.get("session_manifest_sha256")
+    if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+        raise ValueError("calibration session manifest digest is missing/malformed")
+    path = output / f"session-{identity}.json"
+    if publish:
+        source = runtime.fixed_path(sessions.session_path(identity) / "manifest.json", sessions.SESSIONS)
+        copy_exclusive(source, path)
+    path = runtime.fixed_path(path, output)
+    if path.stat().st_size > 1024 * 1024 or runtime.sha(path) != digest:
+        raise ValueError("calibration session manifest fingerprint differs")
+    manifest = json.loads(path.read_bytes())
+    _check_calibration_session(manifest, record, admission_sha)
+    return {"file": path.name, "byte_count": path.stat().st_size, "sha256": digest}
+
+
+def _check_calibration_session(manifest: dict, record: dict, admission_sha: str) -> None:
+    expected = {"schema": "issue120-production-session-v1", "session_id": record["session_id"],
+                "harness_commit": record["environment"]["commit"], "program_identity": record["program_identity"],
+                "host_boot_id_sha256": record["host_boot_id_sha256"], "image": runtime.PINNED_IMAGE,
+                "admission_hashes": {"bounded": admission_sha},
+                "runs": {record["plan_identity"]: {"configuration": record["configuration"],
+                                                    "configuration_sha256": record["configuration_sha256"]}}}
+    if any(manifest.get(key) != value for key, value in expected.items()):
+        raise ValueError("calibration session source/admission/configuration binding differs")
+    created = manifest.get("created_monotonic_ns")
+    if type(created) is not int or not 0 < created <= record["execution_interval"]["start_ns"]:
+        raise ValueError("calibration session creation is outside its run origin")
+
+
+def recheck_calibration_provenance(output: Path, record: dict) -> None:
+    contract = record.get("program_identity", {}).get("calibration_compatibility_contract")
+    if contract is None and record.get("plan_identity") != plan.RUNS[3].identity:
+        return  # Historical C1 has no new declaration and keeps its interpretation.
+    if contract != runtime.CALIBRATION_CONTRACT:
+        raise ValueError("declared calibration metadata contract is missing or unknown")
+    spec = plan.run_spec(record.get("plan_identity"))
+    if (record.get("phase") != spec.phase or record.get("condition") != spec.condition
+            or record.get("configuration") != plan.program_configuration(spec)):
+        raise ValueError("declared calibration phase/plan/configuration differs")
+    if spec.phase != "calibration":
+        return
+    value = record.get("calibration_provenance")
+    if value is None:
+        raise ValueError("declared calibration provenance is missing")
+    value = records.mapping(value, "calibration provenance")
+    expected = calibration_provenance(output, record, value.get("bounded_admission_sha256"))
+    if value != expected:
+        raise ValueError("calibration provenance/capture fingerprint differs")
+
+
+def _calibration_pair_bindings(rows: list[dict], paths: list[Path], receipt: dict) -> None:
+    from . import sessions
+
+    c1, c2 = rows
+    if runtime.sha(paths[0]) != sessions.C1_RECORD_SHA or c1["program_identity"] != receipt["c1_program_identity"]:
+        raise ValueError("C1 calibration must retain its original primary/identity")
+    if c2["program_identity"] != receipt["program_identity"]:
+        raise ValueError("C2 calibration does not match its admitted target")
+    origins = (c1["attempt_identity"] != c2["attempt_identity"], c1["session_id"] != c2["session_id"],
+               c1["session_manifest_sha256"] != c2["session_manifest_sha256"],
+               c1["environment"].get("commit") == sessions.C1_HARNESS,
+               c2["environment"].get("commit") != sessions.C1_HARNESS)
+    if not all(origins):
+        raise ValueError("calibration attempt/session/harness origins differ")
+    before = {k: v for k, v in c1["environment"].items() if k != "commit"}
+    after = {k: v for k, v in c2["environment"].items() if k != "commit"}
+    if before != after:
+        raise ValueError("calibration outer environment differs beyond retained commit")
+    recheck_calibration_provenance(paths[1].parent, c2)
+    provenance = c2.get("calibration_provenance", {})
+    if (provenance.get("stable_environment") != receipt["stable_environment"] or
+            provenance.get("bounded_admission_sha256") != runtime.sha(runtime.SOURCE / "bounded_admission.json")):
+        raise ValueError("C2 capture/baseline/admission differs")
+
+
+def _calibration_facts(row: dict, path: Path) -> dict:
+    native = row["native"]
+    elapsed = (native["host_interval"]["end_ns"] - native["host_interval"]["start_ns"]) / 1e9
+    if elapsed <= 0:
+        raise ValueError("calibration worker duration is invalid")
+    overhead = row.get("overhead", {})
+    keys = ("setup_seconds", "native_retrieval_verify_close_publish_seconds", "python_frame_analysis_seconds", "sampler_wait_seconds")
+    if any(type(overhead.get(k)) not in (int, float) or not math.isfinite(overhead[k]) or overhead[k] < 0 for k in keys):
+        raise ValueError("calibration phase costs missing")
+    program = native["program_host_interval"]
+    return {"attempt_identity": row["attempt_identity"], "record_sha256": runtime.sha(path),
+            "harness_commit": row["environment"]["commit"], "program_identity": row["program_identity"],
+            "environment": row["environment"], "session_manifest_sha256": row["session_manifest_sha256"],
+            "frames": native["frame_count"], "writes": native["repeat_count"],
+            "coverage": row["coverage_analysis"]["coverage"], "worker_seconds": elapsed,
+            "worker_writes_per_second": native["repeat_count"] / elapsed,
+            "program_host_upper_bound_seconds": (program["end_ns"] - program["start_ns"]) / 1e9,
+            "host_phase_trace": native["host_phase_trace"], "overhead": {k: overhead[k] for k in keys}}
+
+
+def calibration_pair_analysis(paths: list[Path]) -> dict:
+    """Artifact-validated compatible facts/scenarios; never a production receipt."""
+    from . import sessions
+
+    if len(paths) != 2:
+        raise ValueError("C1 small and C2 large record paths are required")
+    receipt = sessions._committed_admission("bounded")
+    if receipt.get("schema") != sessions.C2_SCHEMA:
+        raise ValueError("explicit C2 compatible-pair admission is required")
+    rows = [load_validated_record(path) for path in paths]
+    for row, spec in zip(rows, plan.RUNS[2:4], strict=True):
+        records.validate_record(row)
+        sessions._healthy_calibration(row, spec, allow_not_covered=spec == plan.RUNS[3])
+    _calibration_pair_bindings(rows, paths, receipt)
+    facts = [_calibration_facts(row, path) for row, path in zip(rows, paths, strict=True)]
+    fast = max(f["worker_writes_per_second"] for f in facts) * 1.02
+    slow = min(f["worker_writes_per_second"] for f in facts) * .98
+    reserves = [f["overhead"]["setup_seconds"] + f["overhead"]["sampler_wait_seconds"] + 5 +
+                (f["overhead"]["native_retrieval_verify_close_publish_seconds"] + f["overhead"]["python_frame_analysis_seconds"]) * 500000 / f["frames"] for f in facts]
+    reserve = max(20, *reserves)
+    scenarios = []
+    for target in (550, 530, 520):
+        count = math.ceil(target * fast)
+        scenarios.append({"target_seconds": target, "N": count, "slow_worker_seconds": count / slow,
+                          "reserve_seconds": reserve, "600s_margin_seconds": 600 - count / slow - reserve})
+    return {"schema": runtime.CALIBRATION_CONTRACT, "records": facts,
+            "diagnostic_calibration_usable": True,
+            "production_coverage_eligible": all(row["coverage_analysis"]["coverage"] == "covered" and row["timing_evidence"] for row in rows),
+            "python_transition": receipt["python_transition"], "stable_environment": receipt["stable_environment"],
+            "planning_scenarios": scenarios, "current_550s_floor_unchanged": True,
+            "two_percent_is_not_a_bound": True, "execution_authorized": False,
+            "requires_separate_production_precommit_and_owner_approval": True}
