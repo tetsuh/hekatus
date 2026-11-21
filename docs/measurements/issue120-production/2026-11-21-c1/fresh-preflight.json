@@ -1,0 +1,138 @@
+{
+  "boards": [
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "000004033191411c",
+        "board_type": "p150a",
+        "bus_id": "0000:06:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0,
+      "limits": {
+        "asic_fmax": "1350",
+        "board_power_limit": "300",
+        "bus_peak_limit": 0,
+        "fan_rpm_limit": 0,
+        "tdc_limit": "200",
+        "tdp_limit": "150",
+        "therm_trip_l1_limit": "90",
+        "thm_limit": "110",
+        "vdd_max": "0.90",
+        "vdd_min": "0.70"
+      }
+    },
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "0000040331914124",
+        "board_type": "p150a",
+        "bus_id": "0000:09:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0,
+      "limits": {
+        "asic_fmax": "1350",
+        "board_power_limit": "300",
+        "bus_peak_limit": 0,
+        "fan_rpm_limit": 0,
+        "tdc_limit": "200",
+        "tdp_limit": "150",
+        "therm_trip_l1_limit": "90",
+        "thm_limit": "110",
+        "vdd_max": "0.90",
+        "vdd_min": "0.70"
+      }
+    }
+  ],
+  "cpu_model": "13th Gen Intel(R) Core(TM) i5-13600KF",
+  "device_node": "/dev/tenstorrent/0",
+  "hardware_attempts_so_far": 0,
+  "head": "b38095571dd62742a161662e5d166fafa75f5b41",
+  "host_boot_id_sha256": "e9cc1170d7871849ff6db2e2e2588fd67c1e7925b9f0d288b4abeac3f3fe6c0b",
+  "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+  "kernel": "Linux 6.8.0-149-generic",
+  "kmd_version": "2.12.0",
+  "monotonic_ns": 3228578874268,
+  "no_containers": true,
+  "no_heavy_host_processes": true,
+  "program_identity": {
+    "compile_manifest_sha256": "eeaeb2cdcd0249dd7472e7687f43daab62960f87153996c33783405f1fa5785f",
+    "device_compile_proof_sha256": "0259164a64b5044e60accaca7a14389be1354d7ec5a5905d336cbbe51004b92c",
+    "host_trace_contract": "issue120-host-submission-trace-v1",
+    "kernel_sources_sha256": {
+      "device.hpp": "eead1032618e6ebaf4ddca36b5b089c5c49cce063ee028b78d7326a2803c64c2",
+      "production_consumer.cpp": "864680c4782a58e966e60570c4039cfdb3cbd9e689bf28073e2baa9684269c56",
+      "production_producer.cpp": "1ba9af269b3317c99dacc4a2486e2fd822e8c16ccaf6610cb411fbb366f8e149",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+      "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c"
+    },
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "native_sha256": "0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6",
+    "python_sources_sha256": {
+      "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
+      "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
+      "artifacts.py": "77bf193bf88b4ee03d86f2d7a2a806e86d8f653d85447cf4324e5c89d3942825",
+      "bounded_evidence.py": "00b94c6e34609dbb4d1776a75110db2e501fe87eace3579c6e2248829fc1c9ec",
+      "checks.py": "cd6140b706c28cc0f130ae8ffd434cc763e678bb2711290b930833c942ca415d",
+      "coverage.py": "ca1342299f2582a649e6cd15d2ae2fe003f000124846a74c0b799fa0d98b93a2",
+      "diagnostics.py": "f962505540536e8129e40014f1ac83fa41a50bfb3b15a78641a38c90a2dc7ced",
+      "host_build_inputs.py": "c2f232d78986b6362a64fb4b63e89bc064df1a559f38e75fcb9442e3d10b2614",
+      "host_trace.py": "773b37185e7967baa87385175a4190974b7d93c536a7874d89526a50955b0149",
+      "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
+      "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
+      "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
+      "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
+      "recording.py": "fa05c9c852392a6c02317aa07943d5fab7be91e0e44678b4212d0dcbb38c878f",
+      "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
+      "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
+      "runner.py": "8d8763e5489175095a124e8cc8b1509fccc6f6b996eb16d6d8c5e12f9ac53604",
+      "runtime.py": "b04b0d2fbb8332cd9ae641258ebaf24825b953bc4915b7ba315ac47f0e24ddfd",
+      "sessions.py": "e52937369ff39dc149a39655c5ac0df80ad29dbbca07492efb5b4029ae969e6c"
+    }
+  },
+  "schema": "issue120-c1-fresh-preflight-v1",
+  "static_environment_keys_matched": [
+    "image",
+    "image_pinned",
+    "telemetry_sampler",
+    "kernel",
+    "kmd_version",
+    "tt_env_active_release",
+    "board_info",
+    "firmwares",
+    "limits",
+    "device_node",
+    "host_sw_vers",
+    "smbus_telem_limits",
+    "aiclk_mhz_observed"
+  ]
+}

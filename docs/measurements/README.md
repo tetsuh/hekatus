@@ -128,9 +128,16 @@ uncertainty rather than adopt an uncalibrated shorter target.
 
 The [C1 host-trace preparation](issue120-production-c1-prep-plan.md) preserves
 those B4 bytes and adds bounded host diagnostics plus a C1-only evidence bridge
-under ADR-0020. The owner powered down the board: this is board-free preparation
-only, with no C1/C2/P result or current session. Future C1 starts from fresh
-next-boot baseline/preflight; the catalog counts and60s/Watcher-off scope remain.
+under ADR-0020. That stage ended board-free while the owner powered down the
+board; the next-boot C1 retained the catalog60s/Watcher-off scope.
+
+The [single2026-11-21 C1](issue120-production/2026-11-21-c1/README.md) atb380955
+then completed16384frames/1048576writes with all direct exits0,covered causal
+frame/map evidence and zero overflow/drop/abort/paired outliers. Its17-point
+host trace shows24974committed writes already at main enqueue return,not a
+full dead worker lead. No same-session control difference is available. The
+archive contains unchanged originals and conditional cap/C2 planning,not a
+production count or approval. C2/P remain unexecuted; admission is still C1-only.
 
 ## Issue #137 duration-bounded runner (revision 2)
 

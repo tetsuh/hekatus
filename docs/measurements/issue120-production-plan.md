@@ -332,6 +332,27 @@ content/dispatch stay unchanged. Next power-on requires fresh baseline/boot
 preflight and a new C1-only session at a clean/pushed green head; do not reuse
 B4's session or treat the admission receipt as present execution permission.
 
+## C1 bounded outcome — 2026-11-21
+
+After the owner powered on the target and reauthorized fresh preflight,the
+[single C1 archive](issue120-production/2026-11-21-c1/README.md) atb380955 records
+all direct exits0,16384healthy frames,covered causal evidence and the17sample
+trace. Main enqueue-return already had24974committed writes; its full API lead
+cannot be subtracted as dead worker time. The postprocessing two-point/native
+negative slope is not a physical scaling model. These learnings and conditional
+550/530/520s cap tables select no production count and change no catalog/policy.
+
+Earlier host-preflight stops were not hardware attempts. The successful run used
+fresh baseline/boot/session and an immediate no-heavy-process check; no retry,
+reset,C2 or P followed. Only the actual C1 consumed the one-run authorization.
+No source/native/measurement-validator changes were made for execution.
+
+C2 would need separate approval and compatible precommitted admission. The
+current bridge still rejects C2/P. Existing count proposals require both
+calibration sizes and exact provenance; do not relabel C1/B4 or bypass those
+checks when later commits change harness/environment identity. The archive
+lists the owner decisions still required before P1control/P2loaded.
+
 ## Operational admission (board-free implementation)
 
 The new runner defaults to a JSON proposal and never imports an accelerator

@@ -90,6 +90,16 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
 
 ## Parameters decided by measurement
 
+- Issue #120 production fixed-count feasibility remains open. The
+  [2026-11-21 C1](measurements/issue120-production/2026-11-21-c1/README.md)
+  supplies bounded Watcher-off causal coverage and host prefix observations,
+  not a500-second rate/cost bound. Main enqueue-return is not a full dead lead
+  in that run. The two-point native postprocessing slope is negative and cannot
+  be used physically; Python scaling is only descriptive. C2 admission/provenance,
+  longer-run variability and the coverage-versus600s reserve trade still need
+  owner decisions before a matching production control/load pair. No target/count
+  or clock-calibration policy is changed by these observations.
+
 - Newton-Schulz: remaining precision-split questions (TF32/FP32), iteration
   count, and choice of the initial value X0
 - Newton-Schulz state precision is **settled to BF16 state with FP32 DEST** for
