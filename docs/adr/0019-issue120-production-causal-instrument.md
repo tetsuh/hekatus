@@ -108,6 +108,16 @@ interval bindings (#180), without rewriting accepted evidence or measured code.
 
 ## Consequences
 
+- Measured-version implementation limit (2026-11-22): Decision 3 is unchanged,
+  but the measured implementation does not satisfy its cleanup/error-retention
+  requirements across the error paths as a whole. Production-plan Invariant 3
+  is verified only for the cases covered by the host-sequence tests. The class,
+  not just the currently listed drain, observer-cause and cleanup-clock examples,
+  is deferred to [Issue #193](https://github.com/tetsuh/hekatus/issues/193) under
+  the owner's 2026-11-22 measured-source preservation decision. Further cases
+  belong there; the corrected instrument must precede another board measurement
+  with new provenance. Healthy B4/C1/C2/P1/P2 records are unaffected, and their
+  measured source, digest and records are not changed or relabeled.
 - At500000 frames the original timestamp pages occupy2048000000 device bytes;
   compact retrieval and the(F+3)x8-byte association table are bounded by frame
   capacity, not transfer repetitions. Runtime queue occupancy is not measured.
@@ -125,6 +135,9 @@ interval bindings (#180), without rewriting accepted evidence or measured code.
 
 ## Status history
 
+- 2026-11-22: Recorded the measured implementation's error-path class limitation
+  and #193 follow-up under the existing owner decision. This corrects the scope
+  of implementation claims, not Decision 3 or this ADR's acceptance convention.
 - 2026-11-14: Recorded the production instrument/schema/protocol transition in
   the carrying PR. The owner accepts it by merging that PR; no separate pre-merge
   acceptance or later header transition is implied. No board execution occurred

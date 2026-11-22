@@ -65,6 +65,9 @@ exception that ignores arbitrary native or Python mismatches.
    timestamps are reused. A trace clock failure rejects successor execution;
    retain raw failure status and normal existing cancellation/join semantics.
    Existing unrelated queue-drain exception behavior is not changed here.
+   These implementation statements are limited to the covered test cases;
+   they do not establish error-path-wide cancellation, joins, drains, or retention
+   of the initiating failure. The measured-native class deferral below applies.
 5. Host observation has nonzero cost: one scalar publication/store plus cadence
    predicate per committed write and sparse clocks. It is not a claim of zero
    host wall-time effect or identical B4/C1 rates. Runtime challenges remain
@@ -188,21 +191,37 @@ new claims also sync directory ancestry. Runtime never mutates committed authori
 meaning;v2 CPU tests exercise consumption. Native/device constructors stay exact.
 See the [pre-implementation invariants](../measurements/issue120-production-p-adoption-plan.md).
 
-## Measured-native exceptional-drain deferral — 2026-11-22
+## Measured-native error-path class deferral — 2026-11-22
 
-The preserved host_sequence.hpp places both queue drains in one try block; an
-exception from the first skips the second. Healthy B4 control/loaded, C1, C2,
-P1 and P2 records completed both drains and did not take this exceptional path.
-The source comment's drain-before-resource-release intent is therefore broader
-than the implemented exceptional behavior and remains unchanged with that source.
+The measured production native's error paths were not hardened as a whole.
+Production-plan Invariant 3 and ADR-0019 Decision 3 describe the intended cleanup
+and initiating-failure retention, but the implementation is verified only for
+cases covered by the host-sequence tests, not for the entire error-path class.
+Three known examples are:
 
-The owner decided on 2026-11-22 to defer CONV-181-CQ1-DRAIN-ERROR to
-[Issue #193](https://github.com/tetsuh/hekatus/issues/193), preserving this PR's
-measured native source and digest instead of repairing them in place. The fix
-must precede the next board measurement and be a new instrument version with
-its own digest, build receipt and device-free startup proof. Existing records
-retain their original source/provenance. This bounded deferral is not a claim
-that the error path is correct, a general waiver, or further execution authority.
+- host_sequence.hpp groups both drains in one try block; a failing first
+  callback skips the second.
+- An observer failure can set cancellation that produces a secondary loader
+  failure; the join callback reports that loader failure before the original
+  observer cause.
+- Fallible cleanup timestamps can interrupt a join or drain, replace a stored
+  worker failure, or leave a joinable thread that causes abnormal termination.
+
+The owner's 2026-11-22 decision preserves the measured native source and digest
+and defers defects confined to this error-path class to
+[Issue #193](https://github.com/tetsuh/hekatus/issues/193). The operator recorded
+these examples and the class under that principle. Further cases are expected
+and belong to #193; the list is not exhaustive. The corrected version must
+precede the next board measurement with its own digest, build receipt and
+device-free startup proof. Existing records retain their original provenance.
+Healthy B4 control/loaded, C1, C2, P1 and P2 runs did not take these paths, so
+those records are unaffected.
+
+Source comments, including the promise to drain before resource release, remain
+broader than the measured implementation's exceptional behavior. They are not
+edited because the source is preserved. This records implementation limits,
+not error-path safety, absence of other defects, a changed decision, a general
+waiver, or further execution authority.
 
 ## Consequences
 
@@ -222,9 +241,11 @@ that the error path is correct, a general waiver, or further execution authority
 
 ## Status history
 
-- 2026-11-22: Owner deferred the known first-drain-exception cleanup gap to #193
-  before the next board measurement, preserving the measured source/digest in
-  this still-unmerged PR and explicitly retaining the source-comment mismatch.
+- 2026-11-22: Recorded the error-path class deferral to #193 under the owner's
+  measured-source preservation decision, including drain, observer-cause and
+  cleanup-clock examples recorded by the operator. Correction precedes another
+  board measurement; measured bytes and broader source comments remain unchanged
+  in this still-unmerged PR. The class is not limited to those examples.
 
 - Publication follow-up: the separately authorized single-use P1/P2 pair completed
   and is archived in [the production results](../measurements/issue120-production/2026-11-21-p/README.md).

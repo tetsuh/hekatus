@@ -206,18 +206,36 @@ resolution,unidentified native cost terms and the existing independent open
 issues. The PR was draft at result publication and is now open and non-draft;
 review and merge remain separate owner-controlled steps.
 
-### Known exceptional-drain limitation — follow-up #193
+### Known error-path class limits — follow-up #193
 
-In host_sequence.hpp, the two queue drains share one try block. If the first
-finish callback throws, the second is not executed. Healthy runs do not take
-that exceptional path: the accepted B4 control/loaded, C1, C2, P1 and P2 records
-completed both drains. This is not evidence of corruption of those observations.
+The measured production native's error paths were not hardened as a whole.
+The production plan's Invariant 3 (join before finish, drain before release,
+retain the initiating failure) is verified only for cases covered by the
+host-sequence tests, not across the entire error-path class. Three known
+counterexamples illustrate the class:
 
-On 2026-11-22, the owner deferred CONV-181-CQ1-DRAIN-ERROR to
-[Issue #193](https://github.com/tetsuh/hekatus/issues/193), rather than change
-PR #181's measured native source or digest. The source comment promising to
-drain queued work before releasing its buffers/program consequently remains
-broader than the exceptional-path behavior; it is intentionally not edited in
-the preserved measured source. Issue #193 must correct this before the next
-board measurement, with a new instrument version and its own provenance.
-Existing records are not relabeled, and no further board run is authorized here.
+1. In host_sequence.hpp, both drains share one try block. If the first finish
+   callback throws, the second is not executed.
+2. An observer failure can cause a secondary loader cancellation; the join
+   callback can report that cancellation instead of the original observer fault.
+3. Cleanup timestamp collection can throw between joins, after joins or around
+   drains. It can interrupt a join/drain, replace a saved worker failure, or
+   leave an unjoined thread that causes abnormal termination even when queue
+   calls would otherwise succeed.
+
+Healthy runs do not take these paths. B4 control/loaded, C1, C2, P1 and P2
+completed without these errors and completed both drains; their records are
+unaffected. This does not establish error-path safety or absence of other defects.
+
+The owner's 2026-11-22 decision keeps the measured native source and digest
+unchanged and defers defects confined to this class to
+[Issue #193](https://github.com/tetsuh/hekatus/issues/193). The operator recorded
+the examples and the class under that principle. Further cases are expected and
+belong to #193; this is not an exhaustive list. Correction requires a new
+instrument version with its own digest, build receipt and device-free startup
+proof before another board measurement. Existing records are not relabeled.
+
+Source comments, including "Drain queued work before releasing its
+buffers/program", remain broader than the exceptional-path behavior. They are
+intentionally not edited because they are part of the preserved measured source.
+No further board run is authorized here.

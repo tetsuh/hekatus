@@ -2330,6 +2330,12 @@ Complete histograms,assumptions,prediction comparisons,actual cap/retrieval cost
 and remaining limitations accompany the archive;the qualified interpretation of
 cycle-domain observations under ADR-0015 remains unchanged.
 
+The measured native's error paths are not hardened as a whole; production-plan
+Invariant 3 is verified only for cases covered by the host-sequence tests, and
+this class is deferred to [#193](https://github.com/tetsuh/hekatus/issues/193)
+before another board measurement. Healthy B4/C1/C2/P1/P2 records are unaffected;
+the measured source and digest remain unchanged.
+
 ### Issue #104 paired-outlier measurement (2026-10-06)
 
 The pinned resident harness was run for 400,000 frames at the Issue #12 final

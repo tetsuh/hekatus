@@ -71,6 +71,16 @@ only after timeout/abnormal exit. A healthy B2 still grants no C/P authority.
    shared-lock fakes and exception paths, not source grep. Cancel and join after
    partial start/enqueue/worker failures, then drain before releasing resources;
    preserve the original failure instead of publishing a successful result.
+
+   **Measured-version qualification (2026-11-22):** the preceding text remains
+   the original intended invariant. In the measured version it is verified only
+   for the cases covered by the host-sequence tests, not across the error paths
+   as a whole; counterexamples are known. This unhardened error-path class is
+   deferred to [Issue #193](https://github.com/tetsuh/hekatus/issues/193), not
+   limited to the currently enumerated examples. Healthy runs do not take these
+   paths, and the B4/C1/C2/P1/P2 records are unaffected. The measured source and
+   digest remain unchanged; correction requires a new instrument version before
+   another board measurement.
 4. L1 ring/control/anchor/mailbox allocations carry explicit
    BufferDistributionSpec. Validate core/pages/bank pack and complete compiled
    CTA vectors before dispatch. Every cross-core data/semaphore destination uses
@@ -134,8 +144,10 @@ The lock audit in `docs/design.md` section12 and the #178 diagnostic plan alread
 establishes shared per-MeshDevice API locking. The existing threaded #118 path
 starts the worker at `run_resident.py:999-1011`, synchronizes CQ0 at:1043, and
 joins afterward at:1071. The new native callable seam instead orders start,
-enqueue, join, CQ0 finish, CQ1 finish, retrieval. No claimed historical timing
-cause is inferred beyond the source-backed candidate recorded in PR #172.
+enqueue, join, CQ0 finish, CQ1 finish, retrieval for healthy runs and the tested
+cases. This is not an error-path-wide ordering guarantee for the measured
+implementation; Invariant 3's qualification and #193 apply. No claimed historical
+timing cause is inferred beyond the source-backed candidate recorded in PR #172.
 
 Use two queues and the same two-subdevice layout as successful Q4: resident pair
 logical(0,0)/(1,0), transfer partition(2,0), transfer-only stall group. Same image,
