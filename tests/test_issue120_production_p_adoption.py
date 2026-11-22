@@ -24,7 +24,8 @@ def adoption_input(tmp_path, monkeypatch):
 @pytest.mark.parametrize('change', ['missing', 'count', 'target', 'hash', 'date', 'future', 'scope', 'conditional', 'extra'])
 def test_adoption_input_rejects_missing_mismatch_or_malformed_scope(adoption_input, change):
     path, data = adoption_input
-    assert json.loads(production.owner_adoption()['text']) == data
+    accepted = copy.deepcopy(data)
+    assert json.loads(production.owner_adoption()['text']) == accepted
     if change == 'missing':
         path.unlink()
     else:
@@ -49,12 +50,17 @@ def test_adoption_input_rejects_missing_mismatch_or_malformed_scope(adoption_inp
         with pytest.raises(FileNotFoundError) as refused:
             production.owner_adoption()
         assert refused.value.filename == str(path)
+    elif change == 'date':
+        # Production propagates date parsing errors; their wording is not its contract.
+        assert json.loads(path.read_bytes()) == accepted | {'decision_date': '2026-02-30'}
+        with pytest.raises(ValueError) as refused:
+            production.owner_adoption()
+        assert type(refused.value) is ValueError
     else:
         messages = {
             'count': 'owner adoption selection/date/scope differs',
             'target': 'owner adoption selection/date/scope differs',
             'hash': 'owner adoption selection/date/scope differs',
-            'date': 'day is out of range for month',
             'future': 'owner adoption decision date is invalid or future',
             'scope': 'owner adoption selection/date/scope differs',
             'conditional': 'owner adoption selection/date/scope differs',
@@ -223,9 +229,11 @@ def test_published_p1_without_completed_launcher_cannot_release_p2(completed_con
 def test_registration_fsync_failure_rejects_before_second_role_creation(ledger, monkeypatch):
     manifest, receipt, _ = ledger
     sessions.reserve_production_launch(plan.RUNS[4], manifest, 'f' * 64, receipt)
-    monkeypatch.setattr(sessions.os, 'fsync', lambda _: (_ for _ in ()).throw(OSError('injected registration barrier failure')))
-    with pytest.raises(OSError, match='^injected registration barrier failure$'):
+    failure = OSError()
+    monkeypatch.setattr(sessions.os, 'fsync', lambda _: (_ for _ in ()).throw(failure))
+    with pytest.raises(OSError) as refused:
         sessions.reserve_production_launch(plan.RUNS[5], manifest, 'f' * 64, receipt)
+    assert refused.value is failure
     assert not (sessions.session_path(manifest['session_id']) / 'cases' / plan.RUNS[5].identity).exists()
 
 
