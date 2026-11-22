@@ -263,9 +263,13 @@ when a need appears — no staged plan):
   in them is not detected. Extension alone never marks a member as binary.
   Expansion stays in bounded memory without creating extracted paths: at most
   256 headers (including metadata), 128 MiB per member, 256 MiB total payload,
-  and 272 MiB including tar metadata/padding. Links, special files, unsafe
-  paths, nested archives, unsupported archive extensions/magic, corruption,
-  and limit violations fail closed. Non-archive tracked binary files retain
+  and 272 MiB including tar metadata/padding. Physical tar framing and bounds
+  are checked independently of tarfile's member parsing, and disagreement
+  between them fails closed. Links, special files, unsafe paths, nested
+  archives, unsupported archive extensions/strong signatures, corruption,
+  and limit violations fail closed. Unknown formats without a known suffix or
+  strong signature retain the original byte scan, possibly of compressed bytes.
+  Non-archive tracked binary files retain
   the existing contents scan, and all diagnostics retain masking/sanitization.
 
   The guard covers tracked file contents and paths on same-repository pull
