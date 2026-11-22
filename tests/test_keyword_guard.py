@@ -1,5 +1,6 @@
 """Behavioral coverage for the shell run by the keyword-guard workflow."""
 
+import ast
 import bz2
 import gzip
 import io
@@ -493,6 +494,17 @@ def test_fork_pull_request_rejection_stays_fail_closed_with_existing_message(tmp
 ARCHIVE_WORD = "Zqxv.Dummy"
 
 
+def _archive_constant(name):
+    _, script = _workflow_step("Scan tracked files for prohibited words")
+    code = script.split("cat >\"$scan_dir/archive.py\" <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+    for node in ast.parse(code).body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == name for target in node.targets
+        ):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"Missing workflow archive constant: {name}")
+
+
 def _tar_bytes(members, *, compressed=True, archive_format=tarfile.USTAR_FORMAT):
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w", format=archive_format) as archive:
@@ -662,11 +674,61 @@ def test_nested_archive_is_rejected_before_binary_skip(tmp_path, name):
     assert "skipped binary member" not in output
 
 
-@pytest.mark.parametrize("suffix", ["zip", "tar.xz", "gz", "bz2", "7z", "rar", "zst", "whl", "jar"])
-def test_unhandled_archive_extensions_fail_closed(tmp_path, suffix):
-    status, output = _run_archive_scan(tmp_path, b"safe", name=f"evidence.{suffix}")
+@pytest.mark.parametrize("extension", _archive_constant("UNSUPPORTED"))
+@pytest.mark.parametrize("context", ["outer", "compound", "nested"])
+@pytest.mark.parametrize("uppercase", [False, True])
+def test_unhandled_archive_extensions_fail_closed(tmp_path, extension, context, uppercase):
+    extension = extension.upper() if uppercase else extension.lower()
+    name = "evidence" + (".tar" if context == "compound" else "") + extension
+    if context == "nested":
+        data = _tar_bytes([(name, b"safe", tarfile.REGTYPE)])
+        name = "evidence.tar.gz"
+        expected = "nested archive is not supported"
+    elif name.lower().endswith(_archive_constant("SUPPORTED")):
+        # .tar.gz wins over the standalone .gz refusal, also in mixed case.
+        data = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)])
+        status, output = _run_archive_scan(tmp_path, data, name=name)
+        assert status == 0
+        assert "scanned 1 text member(s)" in output
+        return
+    else:
+        data = b"safe"
+        expected = "unsupported archive format"
+    status, output = _run_archive_scan(tmp_path, data, name=name)
+    assert status == 1
+    assert expected in output
+
+
+@pytest.mark.parametrize(
+    "extension",
+    # Independent source-inventory sentinels: GNU tar / libarchive aliases and
+    # common archive families newly reviewed in this correction. The full
+    # behavior matrix above always follows the production definition itself.
+    [".taz", ".tz2", ".tlz", ".tzo", ".tz", ".grz", ".lrz", ".mtree", ".shar",
+     ".uu", ".warc", ".xar", ".arj", ".lha", ".lzh", ".wim", ".dmg"],
+)
+def test_reviewed_archive_suffix_inventory_is_not_ordinary_data(tmp_path, extension):
+    status, output = _run_archive_scan(tmp_path, b"safe", name="evidence" + extension)
     assert status == 1
     assert "unsupported archive format" in output
+
+
+@pytest.mark.parametrize("has_word", [False, True])
+@pytest.mark.parametrize("prefix", [b"\x1f\x9d", b"ordinary"])
+def test_unknown_suffix_and_weak_compress_magic_keep_byte_scanning(tmp_path, has_word, prefix):
+    data = prefix + (f" {ARCHIVE_WORD} ".encode() if has_word else b" safe")
+    status, output = _run_archive_scan(tmp_path, data, name="evidence.unlisted-format")
+    assert status == int(has_word)
+    assert "unsupported archive format" not in output
+    if has_word:
+        assert "prohibited word in contents" in output
+
+
+def test_weak_compress_magic_in_nul_member_keeps_named_skip(tmp_path):
+    data = _tar_bytes([("frames.bin", b"\x1f\x9d\0safe", tarfile.REGTYPE)])
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 0
+    assert "frames.bin: skipped binary member" in output
 
 
 @pytest.mark.parametrize(
@@ -889,6 +951,80 @@ def test_non_posix_layout_is_refused(tmp_path, layout):
 def test_base256_numeric_fields_are_refused(tmp_path, offset, width):
     raw = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)], compressed=False)
     raw = _rewrite_tar_header(raw, offset, b"\x80" + b"\0" * (width - 2) + b"\x04")
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0))
+    assert status == 1
+    assert "invalid archive header field" in output
+
+
+def _numeric_header_variant(raw, offset, width, encoding):
+    field = raw[offset:offset + width]
+    number = int(field.split(b"\0", 1)[0].strip(b" ") or b"0", 8)
+    digits = f"{number:o}".encode()
+    if encoding == "all-NUL":
+        value = b"\0" * width
+    elif encoding == "all-space":
+        value = b" " * width
+    elif encoding == "unterminated":
+        value = digits.zfill(width)
+    elif encoding == "leading-space":
+        value = b" " + digits.zfill(width - 2) + b"\0"
+    else:
+        terminator = b"\0" if encoding == "NUL" else b" "
+        value = digits + terminator + b"\0" * (width - len(digits) - 1)
+    assert len(value) == width
+    if offset != 148:
+        return _rewrite_tar_header(raw, offset, value)
+    # Only nonempty checksum encodings with the correct value reach framing.
+    changed = raw[:148] + value + raw[156:]
+    assert int(digits, 8) == sum(changed[:148]) + 256 + sum(changed[156:512])
+    tarfile.TarInfo.frombuf(changed[:512], "utf-8", "surrogateescape")
+    return changed
+
+
+@pytest.mark.parametrize("offset,width", [(100, 8), (108, 8), (116, 8), (124, 12), (136, 12)])
+@pytest.mark.parametrize("encoding", ["all-NUL", "all-space", "unterminated", "leading-space"])
+def test_mandatory_numeric_fields_require_digits_and_terminator(tmp_path, offset, width, encoding):
+    raw = _tar_bytes([("notes.txt", b"", tarfile.REGTYPE)], compressed=False)
+    raw = _numeric_header_variant(raw, offset, width, encoding)
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0))
+    assert status == 1
+    assert "invalid archive header field" in output
+
+
+@pytest.mark.parametrize("encoding", ["unterminated", "leading-space"])
+def test_checksum_framing_is_checked_even_when_value_is_correct(tmp_path, encoding):
+    raw = _tar_bytes([("notes.txt", b"", tarfile.REGTYPE)], compressed=False)
+    raw = _numeric_header_variant(raw, 148, 8, encoding)
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0))
+    assert status == 1
+    assert "invalid archive header field" in output
+
+
+@pytest.mark.parametrize("offset,width", [(100, 8), (108, 8), (116, 8), (124, 12), (136, 12), (148, 8)])
+@pytest.mark.parametrize("encoding", ["NUL", "space"])
+def test_mandatory_numeric_fields_accept_chosen_terminated_shape(tmp_path, offset, width, encoding):
+    raw = _tar_bytes([("notes.txt", b"", tarfile.REGTYPE)], compressed=False)
+    raw = _numeric_header_variant(raw, offset, width, encoding)
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0))
+    assert status == 0
+    assert "scanned 1 text member(s)" in output
+
+
+@pytest.mark.parametrize("offset", [329, 337])
+@pytest.mark.parametrize("field", [b"\0" * 8, b"0000000\0", b"0 " + b"\0" * 6])
+def test_unused_device_fields_accept_only_null_or_formatted_zero(tmp_path, offset, field):
+    raw = _tar_bytes([("notes.txt", b"", tarfile.REGTYPE)], compressed=False)
+    raw = _rewrite_tar_header(raw, offset, field)
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0))
+    assert status == 0
+    assert "scanned 1 text member(s)" in output
+
+
+@pytest.mark.parametrize("offset", [329, 337])
+@pytest.mark.parametrize("field", [b" " * 8, b"00000000", b"0000001\0", b" 000000\0"])
+def test_unused_device_fields_refuse_loose_or_nonzero_values(tmp_path, offset, field):
+    raw = _tar_bytes([("notes.txt", b"", tarfile.REGTYPE)], compressed=False)
+    raw = _rewrite_tar_header(raw, offset, field)
     status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0))
     assert status == 1
     assert "invalid archive header field" in output

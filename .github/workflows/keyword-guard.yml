@@ -240,8 +240,9 @@ jobs:
           # layouts and base-256 numbers fail. Hierarchy needs no directory entry.
           # Typical suffixes: .tar.gz/.tgz; gzip magic handles renamed files.
           # Raw .tar and known unsupported formats fail, as do recognized nested
-          # archives. Unknown suffix/signature formats retain the ordinary byte
-          # scan, possibly of compressed bytes. Never silently add an exclusion.
+          # archives. Extensions are an open set: this inventory is not exhaustive.
+          # Unlisted suffixes without a strong signature get the original byte scan,
+          # possibly of compressed bytes, so encoded member text may be missed.
           # Python/zlib bounds and checks gzip integrity (FHCRC when present and
           # CRC32/ISIZE), with no extra stream/tail. A fixed 512-byte header walk
           # needs no tarfile parser. Spare bytes/padding/end records must be zero.
@@ -268,12 +269,26 @@ jobs:
           MAX_MEMBER = int(os.environ["MAX_ARCHIVE_MEMBER_BYTES"])
           MAX_TOTAL = int(os.environ["MAX_ARCHIVE_TOTAL_BYTES"])
           MAX_STREAM = int(os.environ["MAX_ARCHIVE_STREAM_BYTES"])
+          # Reviewed sources, not an exhaustive extension registry:
+          # https://www.gnu.org/software/tar/manual/html_node/gzip.html (auto-compress)
+          # https://github.com/libarchive/libarchive/blob/master/tar/creation_set.c
+          # https://7-zip.org/ (common archive families, not every decoder suffix)
+          # https://github.com/google/brotli/blob/master/c/tools/brotli.c (.br)
+          # Only these three tar candidates escape suffix refusal; raw .tar still
+          # fails the gzip profile. Priority handles .tar.gz before standalone .gz.
+          # Terminal suffixes cover compounds (.tar.Z/.tar.lz4); aliases are explicit.
+          # Case-folding intentionally merges GNU .taZ and .taz; both are refused.
           SUPPORTED = (".tar.gz", ".tgz", ".tar")
           UNSUPPORTED = (
-              ".zip", ".gz", ".xz", ".bz2", ".zst", ".zstd", ".7z", ".rar",
-              ".tbz", ".tbz2", ".txz", ".tzst", ".jar", ".war", ".whl",
-              ".egg", ".lz", ".lzma", ".lzo", ".lz4", ".br", ".cab", ".iso",
-              ".ar", ".a", ".deb", ".rpm", ".cpio", ".Z",
+              # GNU tar auto-compress, excluding the supported .tgz candidate:
+              ".gz", ".taz", ".z", ".bz2", ".tz2", ".tbz2", ".tbz", ".lz",
+              ".lzma", ".tlz", ".lzo", ".xz", ".zst", ".tzst",
+              # Remaining libarchive resolver formats/filters and short aliases:
+              ".7z", ".ar", ".cpio", ".grz", ".iso", ".lrz", ".lz4", ".mtree",
+              ".shar", ".txz", ".tzo", ".tz", ".uu", ".warc", ".xar", ".zip",
+              # Common archives and retained ZIP-package/compressor aliases:
+              ".rar", ".arj", ".lzh", ".lha", ".wim", ".dmg", ".cab", ".a",
+              ".deb", ".rpm", ".jar", ".war", ".whl", ".egg", ".zstd", ".br",
           )
 
           class Rejected(Exception):
@@ -291,11 +306,13 @@ jobs:
               name = name.lower()
               if name.endswith(SUPPORTED):
                   return "tar"
-              if name.endswith(tuple(ext.lower() for ext in UNSUPPORTED)):
+              if name.endswith(UNSUPPORTED):
                   return "unsupported"
               return ""
 
           def magic(data):
+              # Do not add Unix-compress 1f 9d: a two-byte prefix can collide with
+              # ordinary binary data. Known suffixes fail; unknowns keep byte scans.
               if (len(data) >= 10 and data.startswith(b"\x1f\x8b\x08") and
                       not data[3] & 0xe0):
                   return "gzip"
@@ -312,13 +329,13 @@ jobs:
               if len(data) >= 512:
                   block = data[:512]
                   try:
-                      checksum = octal(block[148:156])
+                      checksum = probe_octal(block[148:156])
                       if checksum == sum(block[:148]) + 256 + sum(block[156:]):
                           if block[257:265] in (b"ustar\x0000", b"ustar  \x00"):
                               return "tar"
                           if block[257:265] == b"\0" * 8:
                               for start, end in ((100, 108), (108, 116), (116, 124), (124, 136), (136, 148)):
-                                  octal(block[start:end])
+                                  probe_octal(block[start:end])
                               return "tar"
                   except ValueError:
                       pass
@@ -347,12 +364,29 @@ jobs:
                   if not supplied and not chunk:
                       reject("", "unreadable or invalid archive gzip envelope")
 
-          def octal(value):
+          def probe_octal(value):
+              # Legacy signature classification only, never accepted-header parsing.
               head, _, tail = value.partition(b"\0")
               digits = head.strip(b" ")
               if any(c not in b"\0 " for c in tail) or any(c not in b"01234567" for c in digits):
                   raise ValueError("non-octal field")  # Includes all base-256 encodings.
               return int(digits or b"0", 8)
+
+          def ustar_octal(value, *, unused=False):
+              # Mandatory: mode, uid, gid, size, mtime, checksum. All must start
+              # with digits, terminate, and have only NUL/space fill thereafter.
+              # Size/checksum affect framing; others are shape-checked metadata.
+              # Unused regular-file devmajor/devminor permit Python's all-NUL
+              # encoding or the same grammar encoding zero, never a nonzero value.
+              if unused and value == b"\0" * len(value):
+                  return 0
+              match = re.fullmatch(rb"([0-7]+)[\0 ][\0 ]*", value)
+              if not match:
+                  raise ValueError("invalid octal framing")
+              number = int(match[1], 8)
+              if unused and number:
+                  raise ValueError("nonzero unused device field")
+              return number
 
           def text_field(value):
               head, _, tail = value.partition(b"\0")
@@ -376,9 +410,11 @@ jobs:
                   if block[257:265] != b"ustar\x0000":
                       reject("", "unreadable or invalid archive: POSIX ustar required")
                   try:
-                      values = [octal(block[a:b]) for a, b in
+                      values = [ustar_octal(block[a:b]) for a, b in
                                 ((100, 108), (108, 116), (116, 124), (124, 136),
-                                 (136, 148), (148, 156), (329, 337), (337, 345))]
+                                 (136, 148), (148, 156))]
+                      for a, b in ((329, 337), (337, 345)):
+                          ustar_octal(block[a:b], unused=True)
                       if values[5] != sum(block[:148]) + 256 + sum(block[156:]):
                           raise ValueError("checksum mismatch")
                       if any(block[157:257]) or any(block[500:]):
