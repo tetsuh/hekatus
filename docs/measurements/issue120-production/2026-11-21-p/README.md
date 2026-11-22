@@ -205,3 +205,19 @@ and runtime versions,different CPU/PCIe loading,instrumentation costs,clock-samp
 resolution,unidentified native cost terms and the existing independent open
 issues. The PR was draft at result publication and is now open and non-draft;
 review and merge remain separate owner-controlled steps.
+
+### Known exceptional-drain limitation — follow-up #193
+
+In host_sequence.hpp, the two queue drains share one try block. If the first
+finish callback throws, the second is not executed. Healthy runs do not take
+that exceptional path: the accepted B4 control/loaded, C1, C2, P1 and P2 records
+completed both drains. This is not evidence of corruption of those observations.
+
+On 2026-11-22, the owner deferred CONV-181-CQ1-DRAIN-ERROR to
+[Issue #193](https://github.com/tetsuh/hekatus/issues/193), rather than change
+PR #181's measured native source or digest. The source comment promising to
+drain queued work before releasing its buffers/program consequently remains
+broader than the exceptional-path behavior; it is intentionally not edited in
+the preserved measured source. Issue #193 must correct this before the next
+board measurement, with a new instrument version and its own provenance.
+Existing records are not relabeled, and no further board run is authorized here.

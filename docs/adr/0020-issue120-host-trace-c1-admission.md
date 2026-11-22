@@ -188,6 +188,22 @@ new claims also sync directory ancestry. Runtime never mutates committed authori
 meaning;v2 CPU tests exercise consumption. Native/device constructors stay exact.
 See the [pre-implementation invariants](../measurements/issue120-production-p-adoption-plan.md).
 
+## Measured-native exceptional-drain deferral — 2026-11-22
+
+The preserved host_sequence.hpp places both queue drains in one try block; an
+exception from the first skips the second. Healthy B4 control/loaded, C1, C2,
+P1 and P2 records completed both drains and did not take this exceptional path.
+The source comment's drain-before-resource-release intent is therefore broader
+than the implemented exceptional behavior and remains unchanged with that source.
+
+The owner decided on 2026-11-22 to defer CONV-181-CQ1-DRAIN-ERROR to
+[Issue #193](https://github.com/tetsuh/hekatus/issues/193), preserving this PR's
+measured native source and digest instead of repairing them in place. The fix
+must precede the next board measurement and be a new instrument version with
+its own digest, build receipt and device-free startup proof. Existing records
+retain their original source/provenance. This bounded deferral is not a claim
+that the error path is correct, a general waiver, or further execution authority.
+
 ## Consequences
 
 - New native digest/build receipt and full offline startup/publication/tests/CI/
@@ -205,6 +221,10 @@ See the [pre-implementation invariants](../measurements/issue120-production-p-ad
   not a formal proof for arbitrary malicious compilers or source modifications.
 
 ## Status history
+
+- 2026-11-22: Owner deferred the known first-drain-exception cleanup gap to #193
+  before the next board measurement, preserving the measured source/digest in
+  this still-unmerged PR and explicitly retaining the source-comment mismatch.
 
 - Publication follow-up: the separately authorized single-use P1/P2 pair completed
   and is archived in [the production results](../measurements/issue120-production/2026-11-21-p/README.md).
