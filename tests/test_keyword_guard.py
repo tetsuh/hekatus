@@ -6,8 +6,10 @@ import io
 import os
 import re
 import shutil
+import struct
 import subprocess
 import tarfile
+import zlib
 from pathlib import Path
 
 import pytest
@@ -730,7 +732,9 @@ def test_archive_limits_allow_exact_boundary(tmp_path):
     assert "scanned 1 text member(s)" in output
 
 
-@pytest.mark.parametrize("corruption", ["later-header", "crc", "missing-end", "trailer", "concatenated"])
+@pytest.mark.parametrize(
+    "corruption", ["later-header", "crc", "isize", "missing-end", "trailer", "concatenated"]
+)
 def test_archive_corruption_cannot_masquerade_as_end_of_archive(tmp_path, corruption):
     raw = _tar_bytes(
         [("first", b"safe", tarfile.REGTYPE), ("second", b"safe", tarfile.REGTYPE)],
@@ -743,8 +747,9 @@ def test_archive_corruption_cannot_masquerade_as_end_of_archive(tmp_path, corrup
     elif corruption == "trailer":
         raw += b"hidden payload"
     data = gzip.compress(raw, mtime=0)
-    if corruption == "crc":
-        data = data[:-8] + bytes([data[-8] ^ 1]) + data[-7:]
+    if corruption in {"crc", "isize"}:
+        offset = -8 if corruption == "crc" else -4
+        data = data[:offset] + bytes([data[offset] ^ 1]) + data[offset + 1:]
     elif corruption == "concatenated":
         data += gzip.compress(raw, mtime=0)
     status, output = _run_archive_scan(tmp_path, data)
@@ -854,13 +859,14 @@ def test_raw_header_size_cannot_hide_behind_pax_override(tmp_path):
         archive.addfile(member, io.BytesIO(b"safe"))
     raw = buffer.getvalue()
     replacement = tarfile.TarInfo("notes.txt")
-    replacement.size = 9
+    replacement.size = 64
     raw = raw[:1024] + replacement.tobuf(format=tarfile.USTAR_FORMAT) + raw[1536:]
     status, output = _run_archive_scan(
-        tmp_path, gzip.compress(raw, mtime=0), limits={"MAX_ARCHIVE_MEMBER_BYTES": 8}
+        tmp_path, gzip.compress(raw, mtime=0), limits={"MAX_ARCHIVE_MEMBER_BYTES": 16}
     )
     assert status == 1
     assert "member size limit" in output
+    assert "notes.txt: member size limit exceeded" in output
 
 
 @pytest.mark.parametrize("archive_format", [tarfile.PAX_FORMAT, tarfile.GNU_FORMAT])
@@ -869,6 +875,10 @@ def test_metadata_payload_size_is_bounded_before_parser_dispatch(tmp_path, archi
     status, output = _run_archive_scan(tmp_path, data, limits={"MAX_ARCHIVE_MEMBER_BYTES": 8})
     assert status == 1
     assert "member size limit" in output
+    metadata_name = tarfile.TarInfo.frombuf(
+        gzip.decompress(data)[:512], "utf-8", "surrogateescape"
+    ).name
+    assert f"{metadata_name}: member size limit exceeded" in output
 
 
 def test_pax_sparse_metadata_is_rejected_before_parser_dispatch(tmp_path):
@@ -880,6 +890,230 @@ def test_pax_sparse_metadata_is_rejected_before_parser_dispatch(tmp_path):
     status, output = _run_archive_scan(tmp_path, gzip.compress(buffer.getvalue(), mtime=0))
     assert status == 1
     assert "unsupported member type" in output
+
+
+@pytest.mark.parametrize(
+    ("archive_format", "padding_kind"),
+    [
+        (tarfile.USTAR_FORMAT, "member"),
+        (tarfile.PAX_FORMAT, "member"),
+        (tarfile.GNU_FORMAT, "member"),
+        (tarfile.PAX_FORMAT, "metadata"),
+        (tarfile.GNU_FORMAT, "metadata"),
+    ],
+)
+@pytest.mark.parametrize("binary", [False, True])
+@pytest.mark.parametrize("compressed", [False, True])
+def test_nonzero_physical_padding_fails_before_member_classification(
+    tmp_path, archive_format, padding_kind, binary, compressed
+):
+    name = "notes.txt" if archive_format == tarfile.USTAR_FORMAT else "x" * 120 + ".txt"
+    payload = b"safe\0" if binary else b"safe"
+    raw = _tar_bytes(
+        [(name, payload, tarfile.REGTYPE)], compressed=False, archive_format=archive_format
+    )
+    if padding_kind == "metadata":
+        header = tarfile.TarInfo.frombuf(raw[:512], "utf-8", "surrogateescape")
+        padding_start = 512 + header.size
+    else:
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as archive:
+            member = next(iter(archive))
+            padding_start = member.offset_data + member.size
+    marker = f" {ARCHIVE_WORD} ".encode()
+    assert padding_start % 512 + len(marker) < 512
+    raw = raw[:padding_start] + marker + raw[padding_start + len(marker):]
+    status, output = _run_archive_scan(
+        tmp_path, gzip.compress(raw, mtime=0) if compressed else raw,
+        name="evidence.tar.gz" if compressed else "evidence.tar",
+    )
+    assert status == 1
+    assert "nonzero padding" in output
+    assert "skipped binary member" not in output
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+def test_incomplete_final_zero_record_fails_closed(tmp_path, compressed):
+    raw = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)], compressed=False) + b"\0"
+    status, output = _run_archive_scan(
+        tmp_path, gzip.compress(raw, mtime=0) if compressed else raw,
+        name="evidence.tar.gz" if compressed else "evidence.tar",
+    )
+    assert status == 1
+    assert "invalid archive end records" in output
+
+
+def _rewrite_tar_header(raw, field_offset, value):
+    header = bytearray(raw[:512])
+    header[field_offset:field_offset + len(value)] = value
+    header[148:156] = b" " * 8
+    header[148:156] = f"{sum(header):06o}\0 ".encode()
+    # Ensure a checksum failure cannot satisfy a reserved-field regression.
+    tarfile.TarInfo.frombuf(bytes(header), "utf-8", "surrogateescape")
+    return bytes(header) + raw[512:]
+
+
+@pytest.mark.parametrize(
+    ("archive_format", "offset"),
+    [
+        (tarfile.USTAR_FORMAT, 20),  # Name bytes after its NUL terminator.
+        (tarfile.USTAR_FORMAT, 157),  # Unused link target on a regular file.
+        (tarfile.USTAR_FORMAT, 275),  # Owner bytes after its NUL terminator.
+        (tarfile.USTAR_FORMAT, 305),  # Group bytes after its NUL terminator.
+        (tarfile.USTAR_FORMAT, 360),  # Prefix bytes after its NUL terminator.
+        (tarfile.USTAR_FORMAT, 500),  # POSIX reserved tail.
+        (tarfile.GNU_FORMAT, 400),  # GNU sparse/continuation area on a regular file.
+        (tarfile.GNU_FORMAT, 500),
+    ],
+)
+def test_unused_tar_header_bytes_cannot_hide_terms(tmp_path, archive_format, offset):
+    raw = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)], compressed=False, archive_format=archive_format)
+    raw = _rewrite_tar_header(raw, offset, b" Qzx ")
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0), words="Qzx")
+    assert status == 1
+    assert "invalid archive header field" in output
+
+
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_v7_reserved_header_tail_is_zero(tmp_path, corrupt):
+    raw = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)], compressed=False)
+    raw = _rewrite_tar_header(raw, 257, b"\0" * 255)
+    if corrupt:
+        raw = _rewrite_tar_header(raw, 300, b" Qzx ")
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0), words="Qzx")
+    assert status == int(corrupt)
+    if corrupt:
+        assert "invalid archive header field" in output
+
+
+def test_numeric_header_nul_tail_cannot_hide_terms(tmp_path):
+    raw = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)], compressed=False)
+    raw = _rewrite_tar_header(raw, 136, b"1\0 Qzx\0     ")
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0), words="Qzx")
+    assert status == 1
+    assert "invalid archive header field" in output
+
+
+def _metadata_tar(kind, value, *, outer=None):
+    def record(payload):
+        header = tarfile.TarInfo("././@LongLink")
+        header.type = kind
+        header.size = len(payload)
+        return header.tobuf(format=tarfile.USTAR_FORMAT) + payload + b"\0" * (-len(payload) % 512)
+
+    prefix = record(outer) if outer is not None else b""
+    member = tarfile.TarInfo("notes.txt")
+    member.size = 4
+    return prefix + record(value) + member.tobuf(format=tarfile.USTAR_FORMAT) + b"safe" + b"\0" * 508 + b"\0" * 1024
+
+
+@pytest.mark.parametrize("kind", [tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK])
+@pytest.mark.parametrize("value", [b"notes.txt", b"notes.txt\0 Qzx "])
+def test_gnu_metadata_terminator_and_tail_are_validated(tmp_path, kind, value):
+    status, output = _run_archive_scan(tmp_path, gzip.compress(_metadata_tar(kind, value), mtime=0), words="Qzx")
+    assert status == 1
+    assert "invalid GNU path metadata" in output
+
+
+@pytest.mark.parametrize("kind", [tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK])
+def test_overwritten_gnu_path_values_are_still_scanned(tmp_path, kind):
+    raw = _metadata_tar(kind, f"records/{ARCHIVE_WORD}.txt\0".encode(), outer=b"notes.txt\0")
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as archive:
+        member = next(iter(archive))
+        assert member.name == "notes.txt"
+        assert ARCHIVE_WORD not in member.linkname
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0))
+    assert status == 1
+    assert "prohibited word in archive member path" in output
+
+
+@pytest.mark.parametrize("key", ["path", "linkpath"])
+def test_overwritten_pax_path_values_are_still_scanned(tmp_path, key):
+    def metadata(value):
+        member = tarfile.TarInfo("notes.txt")
+        member.pax_headers = {key: value}
+        return member.tobuf(format=tarfile.PAX_FORMAT)[:-512]
+
+    member = tarfile.TarInfo("notes.txt")
+    member.size = 4
+    raw = metadata("notes.txt") + metadata(f"records/{ARCHIVE_WORD}.txt")
+    raw += member.tobuf(format=tarfile.USTAR_FORMAT) + b"safe" + b"\0" * 508 + b"\0" * 1024
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as archive:
+        resolved = next(iter(archive))
+        assert resolved.name == "notes.txt"
+        assert ARCHIVE_WORD not in resolved.linkname
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0))
+    assert status == 1
+    assert "prohibited word in archive member path" in output
+
+
+def _gzip_metadata(raw, field, *, checksum=False):
+    base = gzip.compress(raw, mtime=0)
+    term = ARCHIVE_WORD.encode()
+    if field == "extra":
+        value = b"QZ" + struct.pack("<H", len(term)) + term
+        optional = struct.pack("<H", len(value)) + value
+        flag = 4
+    else:
+        optional = term + b"\0"
+        flag = 8 if field == "filename" else 16
+    header = bytearray(base[:10])
+    header[3] = flag | (2 if checksum else 0)
+    header += optional
+    checksum_offset = len(header)
+    if checksum:
+        header += struct.pack("<H", zlib.crc32(header) & 0xffff)
+    return bytes(header) + base[10:], checksum_offset
+
+
+@pytest.mark.parametrize("field", ["extra", "filename", "comment"])
+@pytest.mark.parametrize("checksum", [False, True])
+def test_gzip_optional_fields_are_intentional_container_metadata(tmp_path, field, checksum):
+    raw = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)], compressed=False)
+    data, _ = _gzip_metadata(raw, field, checksum=checksum)
+    assert ARCHIVE_WORD.encode() in data and ARCHIVE_WORD.encode() not in raw
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 0
+    assert "scanned 1 text member(s)" in output
+
+
+@pytest.mark.parametrize("field", ["extra", "filename", "comment"])
+def test_gzip_header_checksum_cannot_be_ignored(tmp_path, field):
+    raw = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)], compressed=False)
+    data, offset = _gzip_metadata(raw, field, checksum=True)
+    data = data[:offset] + bytes([data[offset] ^ 1]) + data[offset + 1:]
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 1
+    assert "invalid archive gzip envelope" in output
+
+
+@pytest.mark.parametrize("tail", [gzip.compress(b"", mtime=0), b"\0"])
+def test_extra_gzip_stream_or_zero_tail_is_rejected(tmp_path, tail):
+    data = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)]) + tail
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 1
+    assert "trailing gzip data" in output
+
+
+@pytest.mark.parametrize("field", ["comment", "uname", "gname", "vendor.auxiliary"])
+def test_non_path_pax_values_are_intentional_format_metadata(tmp_path, field):
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        member = tarfile.TarInfo("notes.txt")
+        member.pax_headers = {field: ARCHIVE_WORD}
+        member.size = 4
+        archive.addfile(member, io.BytesIO(b"safe"))
+    status, output = _run_archive_scan(tmp_path, gzip.compress(buffer.getvalue(), mtime=0))
+    assert status == 0
+    assert "scanned 1 text member(s)" in output
+
+
+@pytest.mark.parametrize("offset", [265, 297])
+def test_tar_owner_group_values_are_intentional_format_metadata(tmp_path, offset):
+    raw = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)], compressed=False)
+    raw = _rewrite_tar_header(raw, offset, ARCHIVE_WORD.encode())
+    status, output = _run_archive_scan(tmp_path, gzip.compress(raw, mtime=0))
+    assert status == 0
+    assert "scanned 1 text member(s)" in output
 
 
 def test_archive_gzip_magic_is_recognized_without_extension(tmp_path):

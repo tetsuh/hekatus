@@ -247,16 +247,27 @@ jobs:
           # Without a known suffix or strong signature, unknown formats retain
           # the original ordinary-byte scan (possibly scanning compressed bytes).
           # No member is written to disk and no archive-provided path is opened.
+          # Region policy: member/metadata padding, reserved header bytes and
+          # string tails must be zero; end records must be complete and zero.
+          # Physical names and every PAX/GNU path value are scanned, even when
+          # later overwritten. GNU path terminators/tails are validated.
+          # Container-only fields are intentionally NOT keyword-scanned: gzip
+          # filename/comment/extra (required by #190's container-only-hit AC),
+          # tar permissions/IDs/times/owner/group and non-path PAX auxiliary
+          # keys/values (format/filesystem metadata, not regular file contents).
+          # Fixed tar fields and PAX record framing are validated; PAX size is
+          # enforced and sparse metadata rejected. zlib validates gzip header CRC when
+          # present and trailer CRC/ISIZE; extra streams/trailing bytes fail.
           # Known limit (#190): text inside a NUL-containing member is NOT detected.
           printf '%s\0' "${words[@]}" >"$scan_dir/words"
           cat >"$scan_dir/archive.py" <<'PY'
-          import gzip
           import io
           import os
           import re
           import subprocess
           import sys
           import tarfile
+          import zlib
 
           MAX_HEADERS = int(os.environ["MAX_ARCHIVE_MEMBERS"])
           MAX_MEMBER = int(os.environ["MAX_ARCHIVE_MEMBER_BYTES"])
@@ -311,21 +322,89 @@ jobs:
                       pass
               return ""
 
-          class BoundedReader:
-              def __init__(self, source):
-                  self.source = source
-                  self.remaining = MAX_STREAM
-
-              def read(self, size):
-                  data = self.source.read(min(size, 65536, self.remaining + 1))
-                  self.remaining -= len(data)
-                  if self.remaining < 0:
+          def expand_tar(raw, compressed):
+              expanded = io.BytesIO()
+              remaining = MAX_STREAM
+              decoder = zlib.decompressobj(16 + zlib.MAX_WBITS) if compressed else None
+              pending = b""
+              while True:
+                  limit = min(65536, remaining + 1)
+                  if decoder is None:
+                      chunk = raw.read(limit)
+                      if not chunk:
+                          return expanded
+                  else:
+                      supplied = pending or raw.read(65536)
+                      try:
+                          chunk = decoder.decompress(supplied, limit)
+                      except zlib.error:
+                          reject("", "unreadable or invalid archive gzip envelope")
+                      pending = decoder.unconsumed_tail
+                  remaining -= len(chunk)
+                  if remaining < 0:
                       raise ValueError("expanded stream limit")
-                  return data
+                  expanded.write(chunk)
+                  if decoder is not None:
+                      if decoder.eof:
+                          if decoder.unused_data or pending or raw.read(1):
+                              reject("", "unreadable or invalid archive: trailing gzip data")
+                          return expanded
+                      if not supplied and not chunk:
+                          reject("", "unreadable or invalid archive gzip envelope")
 
-          def pax_size_fields(payload):
-              # Only size affects physical framing; tarfile handles names and
-              # other metadata later. Validate every length-delimited record.
+          def check_header_fields(block):
+              def invalid():
+                  reject("", "unreadable or invalid archive header field")
+
+              def text(start, end):
+                  value = block[start:end]
+                  nul = value.find(b"\0")
+                  if nul >= 0 and any(value[nul:]):
+                      invalid()
+
+              def number(start, end, binary=True):
+                  value = block[start:end]
+                  if binary and value[0] in (0x80, 0xff):
+                      return  # GNU base-256: every byte belongs to the number.
+                  head, _, tail = value.partition(b"\0")
+                  if any(c not in b"\0 " for c in tail):
+                      invalid()
+                  if any(c not in b"01234567" for c in head.strip(b" ")):
+                      invalid()
+
+              text(0, 100)
+              # All actual links are refused before this check. The link field
+              # on accepted physical records has no use and must be empty.
+              if any(block[157:257]):
+                  invalid()
+              for start, end in ((100, 108), (108, 116), (116, 124), (124, 136), (136, 148)):
+                  number(start, end)
+              number(148, 156, binary=False)
+              layout = block[257:265]
+              if layout == b"\0" * 8:  # V7: everything after linkname is spare.
+                  if any(block[257:]):
+                      invalid()
+                  return
+              if layout not in (tarfile.POSIX_MAGIC, tarfile.GNU_MAGIC):
+                  invalid()
+              text(265, 297)
+              text(297, 329)
+              number(329, 337)
+              number(337, 345)
+              if layout == tarfile.POSIX_MAGIC:
+                  text(345, 500)
+                  if any(block[500:]):
+                      invalid()
+              else:
+                  number(345, 357)  # GNU atime/ctime are format metadata.
+                  number(357, 369)
+                  if any(block[369:]):  # Sparse/multivolume types are refused.
+                      invalid()
+
+          def pax_size_fields(payload, words):
+              # Size affects framing. Scan every path value, not just the final
+              # value tarfile retains; other values are auxiliary format metadata.
+              # Validate every length-delimited record before interpretation.
               fields = {}
               pos = 0
               while pos < len(payload):
@@ -345,6 +424,8 @@ jobs:
                       raise ValueError("invalid PAX field")
                   if key.startswith(b"GNU.sparse."):
                       reject("", "unsupported member type")
+                  if key == b"path" or (key == b"linkpath" and value):
+                      scan_member_path(os.fsdecode(value), words)
                   if key == b"size":
                       if not value.isdigit():
                           raise ValueError("invalid PAX size")
@@ -352,7 +433,7 @@ jobs:
                   pos = end
               return fields
 
-          def check_tar(data):
+          def check_tar(data, words):
               # Walk physical 512-byte headers and padded payloads independently
               # of tarfile's internal parser dispatch (which changed in 3.14).
               # The public stateless header parser checks each checksum. Bounds
@@ -367,8 +448,9 @@ jobs:
               while pos + 512 <= len(data):
                   block = data[pos:pos + 512].tobytes()
                   if block == b"\0" * 512:
-                      if pending_metadata or len(data) - pos < 1024 or any(data[pos:]):
-                          raise ValueError("invalid tar end blocks or trailer")
+                      if (pending_metadata or len(data) - pos < 1024 or
+                              len(data) % 512 or any(data[pos:])):
+                          reject("", "unreadable or invalid archive end records")
                       return expected
                   headers += 1
                   if headers > MAX_HEADERS:
@@ -376,6 +458,8 @@ jobs:
                   header = tarfile.TarInfo.frombuf(block, "utf-8", "surrogateescape")
                   if header.type not in allowed + metadata:
                       reject(header.name, "unsupported member type")
+                  check_header_fields(block)
+                  scan_member_path(header.name, words)
                   if header.size < 0 or header.size > MAX_MEMBER:
                       reject(header.name, "member size limit exceeded")
                   start = pos + 512
@@ -385,13 +469,19 @@ jobs:
                       if len(payload) != size:
                           raise ValueError("truncated metadata")
                       if header.type in (tarfile.XHDTYPE, tarfile.XGLTYPE, tarfile.SOLARIS_XHDTYPE):
-                          fields = pax_size_fields(payload)
+                          fields = pax_size_fields(payload, words)
                           if header.type == tarfile.XGLTYPE:
                               global_fields.update(fields)
                           else:
                               # Outer (earlier) local PAX records take precedence
                               # when metadata headers chain through tarfile.
                               local_fields = {**fields, **local_fields}
+                      else:
+                          path, terminator, tail = payload.partition(b"\0")
+                          if not terminator or any(tail):
+                              reject("", "unreadable or invalid GNU path metadata")
+                          if path or header.type == tarfile.GNUTYPE_LONGNAME:
+                              scan_member_path(os.fsdecode(path), words)
                       pending_metadata = True
                   else:
                       size = local_fields.get(b"size", global_fields.get(b"size", header.size))
@@ -408,6 +498,8 @@ jobs:
                   pos = start + ((size + 511) // 512) * 512
                   if pos > len(data):
                       raise ValueError("truncated tar payload")
+                  if any(data[start + size:pos]):
+                      reject("", "unreadable or invalid archive: nonzero padding")
               raise ValueError("missing tar end blocks")
 
           def scan_terms(data, kind, name, words):
@@ -421,6 +513,15 @@ jobs:
                       reject(name, "unable to scan archive member")
                   if result.returncode == 0:
                       event(kind, name, result.stdout.count(b"\n"))
+
+          def scan_member_path(name, words):
+              if "\0" in name:
+                  reject("", "unsafe member path")
+              scan_terms(os.fsencode(name), "path", name, words)
+              parts = name.replace("\\", "/").split("/")
+              if (not name or name.startswith(("/", "\\")) or
+                      ".." in parts or re.match(r"^[A-Za-z]:", name)):
+                  reject(name, "unsafe member path")
 
           def scan(path, words):
               hint = suffix(path)
@@ -439,13 +540,9 @@ jobs:
                       return 3  # Ordinary tracked files keep the shell scanner.
                   if signature not in ("gzip", "tar") and hint != "tar":
                       reject("", "unsupported archive format")
-                  source = gzip.GzipFile(fileobj=raw) if signature == "gzip" else raw
-                  reader = BoundedReader(source)
-                  expanded = io.BytesIO()
-                  while chunk := reader.read(65536):
-                      expanded.write(chunk)
+                  expanded = expand_tar(raw, signature == "gzip")
                   with expanded.getbuffer() as data:
-                      expected = check_tar(data)
+                      expected = check_tar(data, words)
                   expanded.seek(0)
                   total = scanned = skipped = seen = 0
                   with tarfile.open(fileobj=expanded, mode="r:") as archive:
@@ -458,11 +555,7 @@ jobs:
                           if seen >= len(expected) or (member.size, member.offset_data) != expected[seen]:
                               reject(name, "archive parser/framing disagreement")
                           seen += 1
-                          scan_terms(os.fsencode(name), "path", name, words)
-                          parts = name.replace("\\", "/").split("/")
-                          if (not name or name.startswith(("/", "\\")) or
-                                  ".." in parts or re.match(r"^[A-Za-z]:", name)):
-                              reject(name, "unsafe member path")
+                          scan_member_path(name, words)
                           if (member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE,
                                                   tarfile.DIRTYPE) or member.sparse is not None):
                               reject(name, "unsupported member type")

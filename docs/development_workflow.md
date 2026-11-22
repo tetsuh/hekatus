@@ -267,7 +267,12 @@ when a need appears — no staged plan):
   are checked independently of tarfile's member parsing, and disagreement
   between them fails closed. Links, special files, unsafe paths, nested
   archives, unsupported archive extensions/strong signatures, corruption,
-  and limit violations fail closed. Unknown formats without a known suffix or
+  and limit violations fail closed. Padding/reserved bytes and string tails
+  must be zero; all physical and PAX/GNU path values are scanned. Gzip uses
+  one checked stream (header CRC when present and trailer checks), with no extra tail.
+  Container-only gzip fields, tar filesystem metadata and non-path PAX
+  auxiliary values are not file contents and are not keyword-scanned.
+  Unknown formats without a known suffix or
   strong signature retain the original byte scan, possibly of compressed bytes.
   Non-archive tracked binary files retain
   the existing contents scan, and all diagnostics retain masking/sanitization.
