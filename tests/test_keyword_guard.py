@@ -1,8 +1,12 @@
 """Behavioral coverage for the shell run by the keyword-guard workflow."""
 
+import gzip
+import io
 import os
+import re
 import shutil
 import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -480,3 +484,319 @@ def test_fork_pull_request_rejection_stays_fail_closed_with_existing_message(tmp
         "::error::Fork pull requests cannot be scanned by the keyword guard.",
         "Re-run the branch from a branch in this repository before merging.",
     ]
+
+
+# Archive cases use only meaningless dummy terms and run the actual workflow shell.
+ARCHIVE_WORD = "Zqxv.Dummy"
+
+
+def _tar_bytes(members, *, compressed=True, archive_format=tarfile.USTAR_FORMAT):
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w", format=archive_format) as archive:
+        for name, contents, kind in members:
+            member = tarfile.TarInfo(name)
+            member.type = kind
+            if kind == tarfile.REGTYPE:
+                member.size = len(contents)
+                archive.addfile(member, io.BytesIO(contents))
+            else:
+                if kind in {tarfile.SYMTYPE, tarfile.LNKTYPE}:
+                    member.linkname = "target.txt"
+                archive.addfile(member)
+    data = buffer.getvalue()
+    return gzip.compress(data, mtime=0) if compressed else data
+
+
+def _run_archive_scan(tmp_path, data, *, name="evidence.tar.gz", words=ARCHIVE_WORD, limits=None):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / name).write_bytes(data)
+    subprocess.run(["git", "-C", str(repo), "add", "--all"], check=True)
+    _, script = _workflow_step("Scan tracked files for prohibited words")
+    for key, value in (limits or {}).items():
+        # Keep boundary tests small while executing the exact production logic.
+        script, replacements = re.subn(rf"(?m)^{key}=\d+$", f"{key}={value}", script)
+        assert replacements == 1
+    completed = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-e"],
+        cwd=repo,
+        env={**os.environ, "LC_ALL": "C.UTF-8", "WORDS": words},
+        input=script,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    output = completed.stdout + completed.stderr
+    _assert_no_configured_terms(output, words.split(","))
+    return completed.returncode, output
+
+
+@pytest.mark.parametrize(
+    "name", ["evidence.tar.gz", "evidence.tgz", "evidence.tar", "evidence.data"]
+)
+@pytest.mark.parametrize("member_name", ["notes.txt", "frames.bin"])
+def test_archive_text_member_hit_names_archive_and_member(tmp_path, name, member_name):
+    data = _tar_bytes(
+        [(member_name, f"before {ARCHIVE_WORD.swapcase()} after\n".encode(), tarfile.REGTYPE)],
+        compressed=name.endswith((".gz", ".tgz")),
+    )
+    status, output = _run_archive_scan(tmp_path, data, name=name)
+    assert status == 1
+    assert name in output
+    assert member_name in output
+    assert "prohibited word in archive member contents (1 occurrence(s))" in output
+
+
+def test_archive_container_only_hit_is_not_scanned(tmp_path):
+    buffer = io.BytesIO()
+    # FNAME deterministically places the dummy term in gzip's container header.
+    with gzip.GzipFile(filename=ARCHIVE_WORD, fileobj=buffer, mode="wb", mtime=0) as stream:
+        stream.write(_tar_bytes([("notes.txt", b"safe\n", tarfile.REGTYPE)], compressed=False))
+    data = buffer.getvalue()
+    assert ARCHIVE_WORD.encode() in data
+    assert ARCHIVE_WORD.encode() not in gzip.decompress(data)
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 0
+    assert "scanned 1 text member(s)" in output
+
+
+@pytest.mark.parametrize("nul_at_end", [False, True])
+def test_archive_nul_member_is_skipped_and_listed(tmp_path, nul_at_end):
+    payload = f" {ARCHIVE_WORD} ".encode()
+    payload = payload + b"\0" if nul_at_end else b"\0" + payload
+    data = _tar_bytes([("frames.bin", payload, tarfile.REGTYPE)])
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 0
+    assert "evidence.tar.gz" in output
+    assert "frames.bin" in output
+    assert "skipped binary member" in output
+    assert "skipped 1 binary member(s)" in output
+
+
+@pytest.mark.parametrize(
+    "kind", [tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE, tarfile.FIFOTYPE]
+)
+def test_archive_links_and_special_members_fail_closed(tmp_path, kind):
+    data = _tar_bytes([("unsafe", b"", kind)])
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 1
+    assert "evidence.tar.gz" in output
+    assert "unsafe" in output
+    assert "unsupported member type" in output
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["../escape.txt", "a/../escape.txt", "/absolute.txt", "C:/escape.txt", "a\\..\\escape.txt"],
+)
+def test_archive_escaping_paths_fail_closed(tmp_path, path):
+    data = _tar_bytes([(path, b"safe\n", tarfile.REGTYPE)])
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 1
+    assert "unsafe member path" in output
+    assert "evidence.tar.gz" in output
+    assert not (tmp_path / "escape.txt").exists()
+
+
+@pytest.mark.parametrize(
+    ("limit", "value", "members", "message"),
+    [
+        (
+            "MAX_ARCHIVE_MEMBERS", 1,
+            [("a", b"a", tarfile.REGTYPE), ("b", b"b", tarfile.REGTYPE)],
+            "member count limit",
+        ),
+        ("MAX_ARCHIVE_MEMBER_BYTES", 3, [("large", b"safe", tarfile.REGTYPE)], "member size limit"),
+        (
+            "MAX_ARCHIVE_TOTAL_BYTES", 6,
+            [("a", b"safe", tarfile.REGTYPE), ("b", b"safe", tarfile.REGTYPE)],
+            "total size limit",
+        ),
+        (
+            "MAX_ARCHIVE_STREAM_BYTES", 512, [("a", b"safe", tarfile.REGTYPE)],
+            "unreadable or invalid archive",
+        ),
+    ],
+)
+def test_archive_expansion_limits_fail_closed(tmp_path, limit, value, members, message):
+    status, output = _run_archive_scan(tmp_path, _tar_bytes(members), limits={limit: value})
+    assert status == 1
+    assert message in output
+    assert "evidence.tar.gz" in output
+
+
+@pytest.mark.parametrize(
+    "data",
+    [b"not a tar archive", b"\x1f\x8bgarbage", _tar_bytes([("a", b"safe", tarfile.REGTYPE)])[:-6]],
+)
+def test_corrupt_archive_fails_closed(tmp_path, data):
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 1
+    assert "unreadable or invalid archive" in output
+    assert "evidence.tar.gz" in output
+
+
+@pytest.mark.parametrize("kind", [tarfile.REGTYPE, tarfile.DIRTYPE])
+def test_archive_member_paths_are_scanned_even_without_contents(tmp_path, kind):
+    member = f"records/{ARCHIVE_WORD}.txt"
+    data = _tar_bytes([(member, b"\0safe", kind)])
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 1
+    assert "prohibited word in archive member path" in output
+    assert "evidence.tar.gz" in output
+    assert "records/ .txt" in output
+
+
+@pytest.mark.parametrize("name", ["nested.tar.gz", "opaque.bin"])
+def test_nested_archive_is_rejected_before_binary_skip(tmp_path, name):
+    nested = _tar_bytes([("safe", b"safe\n", tarfile.REGTYPE)])
+    data = _tar_bytes([(name, nested, tarfile.REGTYPE)])
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 1
+    assert "nested archive is not supported" in output
+    assert name in output
+    assert "skipped binary member" not in output
+
+
+@pytest.mark.parametrize("suffix", ["zip", "tar.xz", "gz", "bz2", "7z", "rar", "zst", "whl", "jar"])
+def test_unhandled_archive_extensions_fail_closed(tmp_path, suffix):
+    status, output = _run_archive_scan(tmp_path, b"safe", name=f"evidence.{suffix}")
+    assert status == 1
+    assert "unsupported archive format" in output
+
+
+@pytest.mark.parametrize("magic", [b"PK\x03\x04", b"\xfd7zXZ\x00", b"BZh9", b"7z\xbc\xaf\x27\x1c"])
+def test_unhandled_archive_magic_fails_closed_without_extension(tmp_path, magic):
+    status, output = _run_archive_scan(tmp_path, magic + b"safe", name="evidence.data")
+    assert status == 1
+    assert "unsupported archive format" in output
+
+
+@pytest.mark.parametrize("control", ["::", "%0A", "%0D", ",", "=", "\r", "\n"])
+@pytest.mark.parametrize("binary", [False, True])
+def test_archive_member_diagnostics_keep_control_bytes_inert(tmp_path, control, binary):
+    member = f"records/{ARCHIVE_WORD}{control}report.txt"
+    payload = b"\0safe" if binary else f" {ARCHIVE_WORD} ".encode()
+    status, output = _run_archive_scan(tmp_path, _tar_bytes([(member, payload, tarfile.REGTYPE)]))
+    assert status == 1  # Path hits must fail even when the member is binary.
+    for line in output.splitlines():
+        if "records/" in line:
+            assert "::" not in line
+            assert "%" not in line
+    assert "records/ " in output
+
+
+@pytest.mark.parametrize("word", ["σ", "s", "err", ":", "::", "*", "contents", "member"])
+def test_archive_reports_preserve_existing_mask_semantics(tmp_path, word):
+    member = "ο-ς.txt" if word == "σ" else "ſ-safe.txt" if word == "s" else "safe.txt"
+    data = _tar_bytes([(member, f" {word} \n".encode(), tarfile.REGTYPE)])
+    status, output = _run_archive_scan(tmp_path, data, words=word)
+    assert status == 1
+    assert output
+
+
+def test_archive_text_uses_literal_word_boundaries_and_all_terms(tmp_path):
+    payload = f"prefix{ARCHIVE_WORD}suffix ZqxvXDummy {ARCHIVE_WORD.lower()} second-dummy\n"
+    data = _tar_bytes([("notes.txt", payload.encode(), tarfile.REGTYPE)])
+    status, output = _run_archive_scan(tmp_path, data, words=f"{ARCHIVE_WORD},second-dummy")
+    assert status == 1
+    assert output.count("prohibited word in archive member contents (1 occurrence(s))") == 2
+
+
+def test_non_archive_binary_contents_still_fail(tmp_path):
+    status, output = _run_archive_scan(
+        tmp_path, f"\0 {ARCHIVE_WORD} \n".encode(), name="frames.bin"
+    )
+    assert status == 1
+    assert "prohibited word in contents (1 occurrence(s))" in output
+
+
+def test_archive_limits_allow_exact_boundary(tmp_path):
+    data = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)])
+    status, output = _run_archive_scan(
+        tmp_path, data,
+        limits={
+            "MAX_ARCHIVE_MEMBERS": 1,
+            "MAX_ARCHIVE_MEMBER_BYTES": 4,
+            "MAX_ARCHIVE_TOTAL_BYTES": 4,
+        },
+    )
+    assert status == 0
+    assert "scanned 1 text member(s)" in output
+
+
+@pytest.mark.parametrize("corruption", ["later-header", "crc", "missing-end", "trailer", "concatenated"])
+def test_archive_corruption_cannot_masquerade_as_end_of_archive(tmp_path, corruption):
+    raw = _tar_bytes(
+        [("first", b"safe", tarfile.REGTYPE), ("second", b"safe", tarfile.REGTYPE)],
+        compressed=False,
+    )
+    if corruption == "later-header":
+        raw = raw[:1024] + b"!" + raw[1025:]  # Invalid second-header checksum.
+    elif corruption == "missing-end":
+        raw = raw[:2048]
+    elif corruption == "trailer":
+        raw += b"hidden payload"
+    data = gzip.compress(raw, mtime=0)
+    if corruption == "crc":
+        data = data[:-8] + bytes([data[-8] ^ 1]) + data[-7:]
+    elif corruption == "concatenated":
+        data += gzip.compress(raw, mtime=0)
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 1
+    assert "unreadable or invalid archive" in output
+
+
+@pytest.mark.parametrize("archive_format", [tarfile.PAX_FORMAT, tarfile.GNU_FORMAT])
+def test_archive_long_member_names_are_scanned_without_line_parsing(tmp_path, archive_format):
+    member = "records/" + "x" * 120 + f"/{ARCHIVE_WORD}.txt"
+    data = _tar_bytes([(member, b"safe", tarfile.REGTYPE)], archive_format=archive_format)
+    status, output = _run_archive_scan(tmp_path, data)
+    assert status == 1
+    assert "prohibited word in archive member path" in output
+    assert "records/" in output
+
+
+def test_archive_pax_nul_path_cannot_inject_event_records(tmp_path):
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        member = tarfile.TarInfo("placeholder")
+        member.pax_headers = {"path": "bad\0skip\0injected"}
+        archive.addfile(member)
+    status, output = _run_archive_scan(tmp_path, gzip.compress(buffer.getvalue(), mtime=0))
+    assert status == 1
+    assert "unsafe member path" in output
+    assert "skipped binary member" not in output
+
+
+def test_archive_metadata_headers_also_count_toward_limit(tmp_path):
+    data = _tar_bytes(
+        [("x" * 120, b"safe", tarfile.REGTYPE)], archive_format=tarfile.PAX_FORMAT
+    )
+    status, output = _run_archive_scan(tmp_path, data, limits={"MAX_ARCHIVE_MEMBERS": 1})
+    assert status == 1
+    assert "member count limit" in output
+
+
+@pytest.mark.parametrize("member", ["nested.zip", "nested.tar", "nested.tar.xz"])
+def test_nested_archive_suffix_is_rejected_even_for_text_payload(tmp_path, member):
+    status, output = _run_archive_scan(tmp_path, _tar_bytes([(member, b"safe", tarfile.REGTYPE)]))
+    assert status == 1
+    assert "nested archive is not supported" in output
+
+
+def test_archive_outer_path_still_scanned_and_masked(tmp_path):
+    name = f"{ARCHIVE_WORD}.tar.gz"
+    data = _tar_bytes([("notes.txt", b"safe", tarfile.REGTYPE)])
+    status, output = _run_archive_scan(tmp_path, data, name=name)
+    assert status == 1
+    assert "prohibited word in path  .tar.gz" in output
+
+
+def test_archive_gzip_magic_is_recognized_without_extension(tmp_path):
+    data = _tar_bytes([("notes.txt", f" {ARCHIVE_WORD} ".encode(), tarfile.REGTYPE)])
+    status, output = _run_archive_scan(tmp_path, data, name="evidence.data")
+    assert status == 1
+    assert "prohibited word in archive member contents" in output

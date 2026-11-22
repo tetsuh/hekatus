@@ -256,6 +256,18 @@ when a need appears — no staged plan):
   staged data. A tracked entry that cannot be read, or an enumeration failure,
   fails the guard rather than producing a clean result.
 
+  Archives (`.tar.gz`, `.tgz`, `.tar`, also recognized by gzip/tar magic) are
+  scanned member-by-member, not as container bytes. Every member path and
+  every NUL-free regular member's contents are scanned; NUL-containing
+  members are listed with archive/member names and skipped, so text embedded
+  in them is not detected. Extension alone never marks a member as binary.
+  Expansion stays in bounded memory without creating extracted paths: at most
+  256 headers (including metadata), 128 MiB per member, 256 MiB total payload,
+  and 272 MiB including tar metadata/padding. Links, special files, unsafe
+  paths, nested archives, unsupported archive extensions/magic, corruption,
+  and limit violations fail closed. Non-archive tracked binary files retain
+  the existing contents scan, and all diagnostics retain masking/sanitization.
+
   The guard covers tracked file contents and paths on same-repository pull
   requests and pushes to `main`. It does not cover issue or pull-request
   comments; no CI check in this repository reads them. A pull request from a

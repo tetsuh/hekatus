@@ -50,6 +50,16 @@ jobs:
           # status instead of sed's success, allowing its loop to terminate.
           set -o pipefail
 
+          # Issue #190: production archives have 16 members and ~64 MiB each.
+          # Leave headroom, but bound headers (including PAX/GNU metadata), each
+          # member, total payload, and the entire expanded tar stream against bombs.
+          MAX_ARCHIVE_MEMBERS=256
+          MAX_ARCHIVE_MEMBER_BYTES=134217728
+          MAX_ARCHIVE_TOTAL_BYTES=268435456
+          MAX_ARCHIVE_STREAM_BYTES=285212672
+          export MAX_ARCHIVE_MEMBERS MAX_ARCHIVE_MEMBER_BYTES
+          export MAX_ARCHIVE_TOTAL_BYTES MAX_ARCHIVE_STREAM_BYTES
+
           if [ -z "$WORDS" ]; then
             echo "::error::KEYWORD_GUARD_WORDS repository secret is not set; configure it before merging."
             exit 1
@@ -225,7 +235,226 @@ jobs:
             exit 1
           fi
 
+          # Python's standard library exposes tar metadata without extraction;
+          # shell tar listings cannot safely delimit arbitrary member names.
+          # Supported: .tar.gz / .tgz / .tar, also recognized by gzip/tar magic.
+          # Other known archive extensions/magic fail closed, including standalone
+          # gzip, zip, xz, bzip2, zstd, 7z and rar. Nested archives fail closed:
+          # no recursion means one resource budget and no opaque binary bypass.
+          # Each member is expanded once into bounded memory, then sent to GNU
+          # grep for every term (the same locale/options as tracked files).
+          # No member is written to disk and no archive-provided path is opened.
+          # Known limit (#190): text inside a NUL-containing member is NOT detected.
+          printf '%s\0' "${words[@]}" >"$scan_dir/words"
+          cat >"$scan_dir/archive.py" <<'PY'
+          import gzip
+          import os
+          import re
+          import subprocess
+          import sys
+          import tarfile
+
+          MAX_HEADERS = int(os.environ["MAX_ARCHIVE_MEMBERS"])
+          MAX_MEMBER = int(os.environ["MAX_ARCHIVE_MEMBER_BYTES"])
+          MAX_TOTAL = int(os.environ["MAX_ARCHIVE_TOTAL_BYTES"])
+          MAX_STREAM = int(os.environ["MAX_ARCHIVE_STREAM_BYTES"])
+          SUPPORTED = (".tar.gz", ".tgz", ".tar")
+          UNSUPPORTED = (
+              ".zip", ".gz", ".xz", ".bz2", ".zst", ".zstd", ".7z", ".rar",
+              ".tbz", ".tbz2", ".txz", ".tzst", ".jar", ".war", ".whl",
+              ".egg", ".lz", ".lzma", ".lzo", ".lz4", ".br", ".cab", ".iso",
+              ".ar", ".a", ".deb", ".rpm", ".cpio", ".Z",
+          )
+
+          class Rejected(Exception):
+              pass
+
+          def event(kind, name="", detail=""):
+              for field in (kind, name, str(detail)):
+                  sys.stdout.buffer.write(os.fsencode(field) + b"\0")
+
+          def reject(name, reason):
+              event("error", name, reason)
+              raise Rejected
+
+          def suffix(name):
+              name = name.lower()
+              if name.endswith(SUPPORTED):
+                  return "tar"
+              if name.endswith(tuple(ext.lower() for ext in UNSUPPORTED)):
+                  return "unsupported"
+              return ""
+
+          def magic(data):
+              if data.startswith(b"\x1f\x8b"):
+                  return "gzip"
+              if data.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08",
+                                  b"\xfd7zXZ\0", b"BZh", b"\x28\xb5\x2f\xfd",
+                                  b"7z\xbc\xaf\x27\x1c", b"Rar!\x1a\x07",
+                                  b"\x04\x22\x4d\x18", b"!<arch>\n", b"MSCF",
+                                  b"\xed\xab\xee\xdb", b"070701", b"070702")):
+                  return "unsupported"
+              if len(data) >= 512 and any(data[:512]):
+                  try:
+                      tarfile.TarInfo.frombuf(data[:512], "utf-8", "surrogateescape")
+                      return "tar"
+                  except tarfile.HeaderError:
+                      # An invalid ustar checksum is still an archive, not text.
+                      if data[257:262] == b"ustar":
+                          return "tar"
+              return ""
+
+          class BoundedReader:
+              def __init__(self, source):
+                  self.source = source
+                  self.remaining = MAX_STREAM
+
+              def read(self, size):
+                  data = self.source.read(min(size, 65536, self.remaining + 1))
+                  self.remaining -= len(data)
+                  if self.remaining < 0:
+                      raise ValueError("expanded stream limit")
+                  return data
+
+          class StrictInfo(tarfile.TarInfo):
+              headers = 0
+
+              @classmethod
+              def frombuf(cls, buf, encoding, errors):
+                  # tarfile normally treats a bad *later* header as EOF. Do not
+                  # accept a corrupt/truncated archive as a successful scan.
+                  if buf != b"\0" * 512:
+                      cls.headers += 1
+                      if cls.headers > MAX_HEADERS:
+                          reject("", "member count limit exceeded")
+                  try:
+                      return super().frombuf(buf, encoding, errors)
+                  except tarfile.EOFHeaderError:
+                      raise
+                  except tarfile.HeaderError as exc:
+                      raise tarfile.ReadError("invalid header") from exc
+
+          def scan_terms(data, kind, name, words):
+              options = "-oaiwF" if kind == "contents" else "-oiwF"
+              for word in words:
+                  result = subprocess.run(
+                      [b"grep", options.encode(), b"--", word], input=data,
+                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                  )
+                  if result.returncode not in (0, 1):
+                      reject(name, "unable to scan archive member")
+                  if result.returncode == 0:
+                      event(kind, name, result.stdout.count(b"\n"))
+
+          def scan(path, words):
+              hint = suffix(path)
+              try:
+                  raw = open(path, "rb")
+              except OSError:
+                  if not hint:
+                      return 3  # Preserve ordinary unreadable-file diagnostics.
+                  raise
+              with raw:
+                  signature = magic(raw.read(512))
+                  raw.seek(0)
+                  if hint == "unsupported" or signature == "unsupported":
+                      reject("", "unsupported archive format")
+                  if not hint and not signature:
+                      return 3  # Ordinary tracked files keep the shell scanner.
+                  if signature not in ("gzip", "tar") and hint != "tar":
+                      reject("", "unsupported archive format")
+                  source = gzip.GzipFile(fileobj=raw) if signature == "gzip" else raw
+                  reader = BoundedReader(source)
+                  total = scanned = skipped = 0
+                  with tarfile.open(fileobj=reader, mode="r|", tarinfo=StrictInfo) as archive:
+                      for member in archive:
+                          name = member.name
+                          # PAX can encode NUL even though filesystem paths cannot.
+                          # Reject before using our NUL-delimited event protocol.
+                          if "\0" in name:
+                              reject("", "unsafe member path")
+                          scan_terms(os.fsencode(name), "path", name, words)
+                          parts = name.replace("\\", "/").split("/")
+                          if (not name or name.startswith(("/", "\\")) or
+                                  ".." in parts or re.match(r"^[A-Za-z]:", name)):
+                              reject(name, "unsafe member path")
+                          if (member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE,
+                                                  tarfile.DIRTYPE) or member.sparse is not None):
+                              reject(name, "unsupported member type")
+                          if member.size < 0 or member.size > MAX_MEMBER:
+                              reject(name, "member size limit exceeded")
+                          total += member.size
+                          if total > MAX_TOTAL:
+                              reject(name, "total size limit exceeded")
+                          if member.isdir():
+                              if member.size:
+                                  reject(name, "invalid directory payload")
+                              continue
+                          with archive.extractfile(member) as stream:
+                              data = stream.read(MAX_MEMBER + 1)
+                          if len(data) != member.size:
+                              reject(name, "unreadable or invalid archive member")
+                          if suffix(name) or magic(data[:512]):
+                              reject(name, "nested archive is not supported")
+                          if b"\0" in data:
+                              event("skip", name)
+                              skipped += 1
+                          else:
+                              scan_terms(data, "contents", name, words)
+                              scanned += 1
+                      # Drain the stream through tarfile's buffer, checking both
+                      # end blocks, trailing padding, and gzip's CRC/trailer.
+                      # Nonzero trailers/concatenated tar payloads fail closed.
+                      tail_size = 0
+                      while True:
+                          tail = archive.fileobj.read(65536)
+                          if not tail:
+                              break
+                          tail_size += len(tail)
+                          if any(tail):
+                              reject("", "unreadable or invalid archive trailer")
+                      if tail_size < 512:
+                          reject("", "unreadable or invalid archive end blocks")
+                  event("summary", str(scanned), skipped)
+              return 0
+
+          try:
+              with open(sys.argv[2], "rb") as word_file:
+                  words = word_file.read().split(b"\0")[:-1]
+              status = scan(sys.argv[1], words)
+          except Rejected:
+              status = 1
+          except Exception:
+              # Never emit exception text: it can include unmasked paths/data.
+              event("error", "", "unreadable or invalid archive")
+              status = 1
+          sys.exit(status)
+          PY
+
           while IFS= read -r -d '' f; do
+            archive_status=0
+            python3 "$scan_dir/archive.py" "$f" "$scan_dir/words" >"$scan_dir/events" 2>/dev/null || archive_status=$?
+            if [ "$archive_status" -ne 0 ] && [ "$archive_status" -ne 3 ]; then
+              report "" "keyword guard: unable to scan archive or tracked contents of $f"
+              fail=1
+            fi
+            while IFS= read -r -d '' kind && IFS= read -r -d '' member && IFS= read -r -d '' detail; do
+              case "$kind" in
+                contents|path)
+                  report "" "$f: $member: prohibited word in archive member $kind ($detail occurrence(s))"
+                  fail=1 ;;
+                skip)
+                  report_plain "keyword guard: $f: $member: skipped binary member" ;;
+                error)
+                  report "" "keyword guard: $f: $member: $detail"
+                  fail=1 ;;
+                summary)
+                  report_plain "keyword guard: archive $f: scanned $member text member(s); skipped $detail binary member(s)" ;;
+                *)
+                  report "" "keyword guard: invalid archive scan result"
+                  fail=1 ;;
+              esac
+            done <"$scan_dir/events"
             safe=$(mask_path "$f")
             for w in "${words[@]}"; do
               # -a: scan binary contents as text; -w: word boundaries;
@@ -233,22 +462,24 @@ jobs:
               # ordinary no-match; every other failure is a scan failure.
               matches_file="$scan_dir/matches"
               hits=0
-              if grep -oaiwF -- "$w" "$f" >"$matches_file" 2>/dev/null; then
-                hits=$(wc -l <"$matches_file")
-              else
-                grep_status=$?
-                if [ "$grep_status" -ne 1 ]; then
-                  report "" "keyword guard: unable to scan tracked contents"
+              if [ "$archive_status" -eq 3 ]; then
+                if grep -oaiwF -- "$w" "$f" >"$matches_file" 2>/dev/null; then
+                  hits=$(wc -l <"$matches_file")
+                else
+                  grep_status=$?
+                  if [ "$grep_status" -ne 1 ]; then
+                    report "" "keyword guard: unable to scan tracked contents"
+                    fail=1
+                  fi
+                fi
+                if [ "$hits" -gt 0 ]; then
+                  if [ "$safe" = "$f" ]; then
+                    report "$f" "prohibited word in contents ($hits occurrence(s))"
+                  else
+                    report "" "prohibited word in contents of $f ($hits occurrence(s))"
+                  fi
                   fail=1
                 fi
-              fi
-              if [ "$hits" -gt 0 ]; then
-                if [ "$safe" = "$f" ]; then
-                  report "$f" "prohibited word in contents ($hits occurrence(s))"
-                else
-                  report "" "prohibited word in contents of $f ($hits occurrence(s))"
-                fi
-                fail=1
               fi
 
               path_file="$scan_dir/path"
