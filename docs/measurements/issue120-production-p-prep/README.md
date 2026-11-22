@@ -4,13 +4,16 @@ The following describes the original non-authorizing preparation at74917fe.
 The owner subsequently adopted520s/N22155167 on2026-11-21 and authorized one P1
 then conditional one P2. The [adoption precommit](../issue120-production-p-adoption-plan.md)
 now describes explicit v2 metadata,durable consumption/external completion and
-the renewed source-matched host proof. Its current host13.282386s and reserves
+the renewed source-matched host proof. Its pre-run host13.282386s and reserves
 31.525745s/41.525745s supersede the historical table below;conditional pessimistic
-cap margin remains positive9.414s. No production run is claimed by this update.
+cap margin was positive9.414s in that scenario. This preparation update did not
+claim a production run; the later [actual pair](../issue120-production/2026-11-21-p/README.md)
+is published separately.
 
-This stage is board-free only. No board/device/tt-smi access or real runtime P
-session occurs. The separate startup sandbox invokes the unchanged native only
-with no device nodes/discovery,stopping at No chips detected before board access.520s/22155167writes is an **owner recommendation only**,
+The original stage was board-free only. No board/device/tt-smi access or real
+runtime P session occurred. Its separate startup sandbox invoked the unchanged
+native with no device nodes/discovery,stopping at No chips detected before board
+access. At that stage,520s/22155167writes was an **owner recommendation only**,
 not count adoption or execution authority. The
 [precommitted invariants](../issue120-production-p-prep-plan.md) govern this work.
 

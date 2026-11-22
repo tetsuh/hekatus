@@ -1,5 +1,9 @@
 # Issue #120 production preparation — board-free invariants
 
+This is the historical preparation-stage precommit, before dated adoption and
+execution. The later [published P1/P2 pair](issue120-production/2026-11-21-p/README.md)
+does not grant new execution authority or change these original invariants.
+
 ## Authority and single selection
 
 This stage is **board-free only**:no board/device/tt-smi,real P session or native

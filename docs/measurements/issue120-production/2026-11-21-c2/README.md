@@ -66,7 +66,9 @@ There are32767 intervals,so P99.9 meets the existing20000-sample minimum.
 P99.99 remains insufficient. Conversion uses approximately1350MHz weighted
 over the observed host program envelope,not exact frame wall-clock calibration.
 C1/C2 are both loaded calibrations; there is no same-session control difference.
-The production result slot in design.md section12 remains empty.
+At the C2 publication, the production result slot in design.md section12 was
+empty. The later separately approved [P1/P2 pair](../2026-11-21-p/README.md)
+now supplies that result; it does not change this calibration's scope.
 
 ## Worker rates, drift and host/card overlap
 

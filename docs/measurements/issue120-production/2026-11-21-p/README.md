@@ -203,4 +203,5 @@ This fills the narrowly scoped measurement objective,not a general timing
 certification. Remaining concerns include single-pair order/drift,other machines
 and runtime versions,different CPU/PCIe loading,instrumentation costs,clock-sample
 resolution,unidentified native cost terms and the existing independent open
-issues. PR remains draft;review/merge are separate owner-controlled steps.
+issues. The PR was draft at result publication and is now open and non-draft;
+review and merge remain separate owner-controlled steps.

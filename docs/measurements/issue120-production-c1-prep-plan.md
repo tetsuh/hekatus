@@ -1,5 +1,10 @@
 # Issue #120 C1 host-trace preparation — invariants before RED
 
+This historical precommit describes the powered-down C1 preparation stage.
+Later separately approved C1/C2 and the [published P1/P2 pair](issue120-production/2026-11-21-p/README.md)
+are recorded separately; the restrictions below describe that stage, not missing
+production results or permission to repeat completed runs.
+
 ## Scope and authority
 
 C1 approval remains valid, but the owner is powering off p150a: **no board,

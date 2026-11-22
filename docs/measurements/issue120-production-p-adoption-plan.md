@@ -6,7 +6,9 @@ The owner adopts 520 seconds / 22155167 fixed writes and authorizes exactly one
 production-v1-control-500000 (P1), followed only after every health/release gate
 by exactly one production-v1-loaded-500000 (P2). No renewed permission is needed
 after board-free repairs and successful complete gates. This is not permission
-to bypass a failed gate. No hardware execution has consumed this authority.
+to bypass a failed gate. At this precommit, no hardware execution had consumed
+this authority. The later [published P1/P2 pair](issue120-production/2026-11-21-p/README.md)
+consumed both single-use roles; this historical approval cannot authorize another run.
 
 ## Invariants before implementation
 
@@ -125,6 +127,8 @@ never upload evidence externally without permission. Report all AC metrics,
 causal lower bounds versus submitted totals,weighted-AICLK scope,predictions,
 actual cap/retrieval costs and remaining limitations. Only two healthy runs
 populate design section12 and the measurements result slot. Commit -F,push,
-verify CI/Sonar;leave PR draft/unmerged. Final report is issue120-production-p-report.md
+verify CI/Sonar. The original delivery instruction kept the PR draft/unmerged;
+the PR has since been marked ready, with review and merge still separate
+owner-controlled steps. Final report is issue120-production-p-report.md
 in the new execution work directory. No hostname or private absolute paths in
 public evidence.

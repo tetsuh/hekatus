@@ -2146,6 +2146,10 @@ run budgets and the validity of a single-clock projection is tracked in
 and conversion audit are tracked separately in
 [Issue #122](https://github.com/tetsuh/hekatus/issues/122).
 
+The following Issue #120 history records the state at each attempt, including
+its then-unresolved gates. The later production-pair subsection records the
+completed result; historical restrictions below are not its current status.
+
 The host-load condition (c) is outside this result and is tracked in
 [Issue #120](https://github.com/tetsuh/hekatus/issues/120). Its
 [board-free feasibility plan](measurements/issue120-feasibility-plan.md) audits

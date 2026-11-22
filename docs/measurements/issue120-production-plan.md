@@ -1,7 +1,8 @@
 # Issue #120 production preparation (board-free stage A)
 
-Status: design/implementation preparation only. No board access, calibration,
-production result, timing acceptance, or execution approval is provided here.
+Historical stage-A status: design/implementation preparation only. That stage
+provided no board access, calibration, production result, timing acceptance, or
+execution approval. The completed production follow-up is recorded below.
 Base: PR #172 merged as `8c96cdc`; preserve all of its measured artifacts and
 sources. Production completes the remaining Issue #120 scope in a later
 owner-authorized phase of this PR.
@@ -23,7 +24,7 @@ is inferred;original stage/calibration decisions and records remain unchanged.
 
 The owner approved **Linux6.8.0-149-generic and TT-KMD2.12.0 on2026-11-18**
 as the new production-measurement baseline and authorized B1, followed by B2
-only after a healthy B1. C and P remain unauthorized. The earlier run8 evidence
+only after a healthy B1. At that baseline decision, C and P remained unauthorized. The earlier run8 evidence
 used Linux6.8.0-138-generic/TT-KMD2.11.0; do not claim an identical-environment
 comparison with it. Its rates remain uncalibrated planning inputs only.
 
@@ -265,9 +266,10 @@ not_evaluable/torn/clock/frame failure, or timeout/abnormal exit. All stop befor
 production except a specifically authorized calibration sequence's healthy branch.
 
 Later results belong in `docs/design.md` section12 and the measurement README.
-Stage A adds only a pointer/reserved result slot: **no result is present**.
+Stage A initially added only a pointer/reserved result slot, with no result then
+present. The later approved P1/P2 results now populate both documents.
 
-## Proposed board runs (not executed)
+## Original proposed board runs (historical pre-run plan)
 
 All require fresh device0 identity/image/head/native/config hashes, quiescent
 host, no surviving container, named lifecycle capture, frozen power, only the
@@ -441,4 +443,6 @@ resident metrics, checks the original atomic native envelope/direct status/raw
 stream fingerprints and frozen power. This is scoped validation, not a claim of
 completeness. Power freezes after a bounded wait for a terminal sample and uses
 an explicit observed-host-envelope scope; it does not invent an exact card UTC
-end or frame-window average. The result slots remain empty.
+end or frame-window average. The result slots were empty at this preparation
+stage; the completed production follow-up and linked archive above now supply
+the published results.

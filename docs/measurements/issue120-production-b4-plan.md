@@ -1,5 +1,9 @@
 # Issue #120 B4 — renewed v2 B unit precommit
 
+This historical B4 precommit and its outcome describe authority at that stage.
+Later C1/C2 and the [published P1/P2 pair](issue120-production/2026-11-21-p/README.md)
+required separate approvals; none of these completed roles may be replayed.
+
 The owner reauthorized B1 followed by B2 only after a healthy B1, using the new
 harness, v2 record and a fresh session. C/P remain unauthorized. This plan does
 not reinterpret/reuse the previous B1 invocation: its launcher exit2 and original

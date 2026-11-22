@@ -1,5 +1,9 @@
 # Issue #120 C2 — precommitted compatibility and one-run plan
 
+This historical C2 precommit predates its execution and the later separately
+approved [P1/P2 pair](issue120-production/2026-11-21-p/README.md). Its original
+C2-only authority is not a statement that production results are still absent.
+
 ## Scope and immutable work
 
 The owner approved **one** `production-v1-calibration-large`:32768frames,

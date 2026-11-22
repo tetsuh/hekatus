@@ -7,6 +7,10 @@ reformatting them would change their manifest SHA-256 values.
 
 ## Issue #120 board-free feasibility preparation
 
+The following is a chronological history: each unresolved or unauthorized state
+refers to that stage, not the current production status. The later completed
+pair is reported in the production-results section below.
+
 The [feasibility plan](issue120-feasibility-plan.md) records the v0.75.0 source
 audit, bounded experimental probes, predictions and mechanism-selection gates.
 Phase 1 performs no board run and adds no timing result. A payload witness is
@@ -168,7 +172,8 @@ that measurement stage kept C2-only admission and P remained unexecuted.
 
 The later [board-free P preparation](issue120-production-p-prep/README.md)
 adds a separately versioned compatible-production receipt without changing
-legacy admissions. One selection holds the recommended target/count,not adoption.
+legacy admissions. At that stage, one selection held the recommended target/count,
+not adoption.
 Real500000-row CPU fixtures measure record construction,analysis,hash/copy/fsync,
 publication and rereading,including P2's in-wrapper P1 validation; native2GB
 retrieval remains unmeasured. Updated conditional cap margins and a one-screen

@@ -14,7 +14,8 @@ proportional work. A concurrent read of plain Traffic.emitted would race.
 The owner approved only the catalog small calibration,16384frames/1048576writes,
 Watcher off/60s/device0. The owner then powered down p150a and limited this task
 to board-free preparation. C1 authority remains for a later power-on/fresh
-preflight; no current board/device/tt-smi access, session activation or C2/P.
+preflight; at that preparation stage there was no board/device/tt-smi access,
+session activation or C2/P.
 
 ADR-0019's exact program-identity admission cannot equate a changed host native
 with original B4. The original records must not be rewritten to claim a new
@@ -136,8 +137,10 @@ no settled main decision is rewritten and no hardware/P authority is inferred.
 
 ## Compatible production preparation refinement
 
-The owner permits board-free preparation only,not P1/P2 execution or count
-adoption. A distinct versioned compatible-production receipt roots eligibility
+At this historical preparation stage, the owner permitted board-free work only,
+not P1/P2 execution or count adoption. The later dated adoption refinement below
+records the subsequent decision, without changing this stage's authority.
+A distinct versioned compatible-production receipt roots eligibility
 in byte-exact original C1/C2 primary/archive/session/environment and build/device/
 image/baseline proofs. Complete metadata-only successor maps are explicit; legacy
 exact-provenance,C1 and C2 admission remain unchanged and separately dispatched.
@@ -193,7 +196,7 @@ See the [pre-implementation invariants](../measurements/issue120-production-p-ad
   prove a500-second model, continuous traffic or a production count.
 - The earlier C1-only stage kept C2/P blocked and created no runtime session
   while powered down. Later C1/C2 needed their separate owner approvals; their
-  evidence does not authorize P. This production-preparation follow-up remains
+  evidence does not authorize P. The production-preparation follow-up was
   board-free,with isolated fixture sessions only and no actual device samples.
 - Any future owner-authorized P begins with fresh Linux149/KMD2.12 and all other
   exact baseline/proof checks,a new same-pair boot-bound session,and a clean/pushed
@@ -202,6 +205,11 @@ See the [pre-implementation invariants](../measurements/issue120-production-p-ad
   not a formal proof for arbitrary malicious compilers or source modifications.
 
 ## Status history
+
+- Publication follow-up: the separately authorized single-use P1/P2 pair completed
+  and is archived in [the production results](../measurements/issue120-production/2026-11-21-p/README.md).
+  Historical preparation-only wording above describes those stages, not missing
+  production results or renewed execution authority; no decision is changed.
 
 - 2026-11-21: Owner-adopted target/count and single-use conditional pair;
   same-unmerged-PR refinement adds explicit v2 dated adoption metadata and durable
