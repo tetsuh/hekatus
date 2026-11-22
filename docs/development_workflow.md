@@ -256,26 +256,21 @@ when a need appears — no staged plan):
   staged data. A tracked entry that cannot be read, or an enumeration failure,
   fails the guard rather than producing a clean result.
 
-  Archives (`.tar.gz`, `.tgz`, `.tar`, also recognized by gzip/tar magic) are
-  scanned member-by-member, not as container bytes. Every member path and
-  every NUL-free regular member's contents are scanned; NUL-containing
-  members are listed with archive/member names and skipped, so text embedded
-  in them is not detected. Extension alone never marks a member as binary.
-  Expansion stays in bounded memory without creating extracted paths: at most
-  256 headers (including metadata), 128 MiB per member, 256 MiB total payload,
-  and 272 MiB including tar metadata/padding. Physical tar framing and bounds
-  are checked independently of tarfile's member parsing, and disagreement
-  between them fails closed. Links, special files, unsafe paths, nested
-  archives, unsupported archive extensions/strong signatures, corruption,
-  and limit violations fail closed. Padding/reserved bytes and string tails
-  must be zero; all physical and PAX/GNU path values are scanned. Gzip uses
-  one checked stream (header CRC when present and trailer checks), with no extra tail.
-  Container-only gzip fields, tar filesystem metadata and non-path PAX
-  auxiliary values are not file contents and are not keyword-scanned.
-  Unknown formats without a known suffix or
-  strong signature retain the original byte scan, possibly of compressed bytes.
-  Non-archive tracked binary files retain
-  the existing contents scan, and all diagnostics retain masking/sanitization.
+  Recognized archives must fit a narrow profile: one checked gzip stream
+  containing POSIX ustar, with canonical typeflag `'0'` regular files only
+  (typically `.tar.gz` / `.tgz`, also recognized by magic). Raw `.tar`, legacy
+  NUL typeflags, PAX/GNU records, directories, links, special files, GNU/V7
+  layouts, base-256 numbers and recognized nested archives fail closed.
+  Raw prefix/name bytes are scanned without normalization; unsafe/control
+  paths, bad checksums, nonzero spare/padding bytes and invalid end records
+  fail. Bounds are 256 members, 128 MiB each, 256 MiB total payload and 272 MiB
+  expanded stream, all in memory without extracted filesystem paths. NUL-free
+  payloads are scanned regardless of extension; NUL-containing members are
+  named and skipped, so embedded text is not detected. Gzip container fields
+  and fixed tar filesystem metadata are not file contents and are not
+  keyword-scanned. Unsupported suffixes/signatures fail; unknown formats
+  without either retain the original byte scan, possibly of compressed bytes.
+  Non-archive binary scans and all mask/sanitize rules remain unchanged.
 
   The guard covers tracked file contents and paths on same-repository pull
   requests and pushes to `main`. It does not cover issue or pull-request
