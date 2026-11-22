@@ -55,6 +55,7 @@ def test_every_frame_and_both_endpoints_are_recomputed():
                                      "tail", "timestamp", "duplicate", "map"])
 def test_false_coverage_is_not_promoted(mutation):
     rows, native, index = fixture()
+    assert coverage.analyze(rows, native, index)["coverage_analysis"]["coverage"] == "covered"
     if mutation == "startup":
         native["consumer_stats"][56] = 0
     elif mutation == "checksum":
@@ -73,7 +74,32 @@ def test_false_coverage_is_not_promoted(mutation):
         rows[1][4] = 0
     else:
         rows[0][10] += 1  # individually plausible but never emitted tuple
-    assert coverage.analyze(rows, native, index)["coverage_analysis"]["coverage"] != "covered"
+    # Check the intended seam before any downstream cascade can hide its cause.
+    if mutation in {"checksum", "duplicate"}:
+        result = coverage.analyze(rows, native, index)["coverage_analysis"]
+        assert result["coverage"] == "not_evaluable"
+        assert result["reason"] == "frame identity/checksum/work/clock differs"
+    else:
+        checks = {
+            "startup": (coverage._startup, (native["consumer_stats"], index),
+                        coverage.MissingProgress, "startup gate has no validated progress"),
+            "gap": (coverage._frame, (rows[1], 16, 3, 10, index),
+                    coverage.MissingProgress, "fresh CPU/DMA response not observed"),
+            "torn": (coverage._frame, (rows[0], 7, 2, 10, index),
+                     ValueError, "torn/invalid progress page"),
+            "clock": (coverage._frame, (rows[1], 16, 3, 10, index),
+                      ValueError, "ambiguous consumer clock"),
+            "tail": (coverage._tail, (native["consumer_stats"], 26, 5, 2, index),
+                     coverage.MissingProgress, "fresh CPU/DMA response not observed"),
+            "timestamp": (coverage._frame, (rows[1], 16, 3, 10, index),
+                          ValueError, "frame causal interval ordering differs"),
+            "map": (coverage._frame, (rows[0], 7, 2, 10, index),
+                    ValueError, "observed tuple differs from committed host association"),
+        }
+        check, args, exception, message = checks[mutation]
+        with pytest.raises(exception, match=f"^{message}$"):
+            check(*args)
+        assert coverage.analyze(rows, native, index)["coverage_analysis"]["coverage"] != "covered"
 
 
 def test_exhausted_fixed_work_is_honest_not_covered():

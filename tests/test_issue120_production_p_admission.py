@@ -40,6 +40,7 @@ def test_preparation_is_single_selection_and_artifact_bound_not_authority(prepar
 @pytest.mark.parametrize("field", ["count", "native", "baseline", "archive", "reserve", "source", "selection"])
 def test_receipt_cannot_relabel_evidence_or_override_selected_model(prepared, field):
     receipt, current = prepared
+    production.validate_receipt(receipt, current)
     receipt = copy.deepcopy(receipt)
     if field == "count":
         receipt["fixed_repetitions"] += 1
@@ -55,7 +56,7 @@ def test_receipt_cannot_relabel_evidence_or_override_selected_model(prepared, fi
         receipt["python_transition"]["after"]["coverage.py"] = "b" * 64
     else:
         receipt["selection"]["target_worker_seconds"] += 1
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="^compatible production receipt/provenance/selection differs$"):
         production.validate_receipt(receipt, current)
 
 
@@ -81,14 +82,16 @@ def test_frozen_evidence_and_fixture_identity_need_no_local_native_build(monkeyp
 
 def test_pending_host_proof_cannot_unlock_operational_p(prepared):
     receipt, _ = prepared
+    assert len(production.specs(receipt)) == 2
     receipt["postprocess_proof"]["report"]["measurement_pending"] = True
-    with pytest.raises(ValueError, match="measured"):
+    with pytest.raises(ValueError, match="^production requires measured host costs and a feasible explicit cap model$"):
         production.specs(receipt)
 
 
 def test_native_or_nonmetadata_python_change_requires_stopping(prepared):
     _, current = prepared
+    production.validate_receipt(production.make_receipt(current), current)
     current = copy.deepcopy(current)
     current["python_sources_sha256"]["coverage.py"] = "b" * 64
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="^production changed native/device or unreviewed metadata source$"):
         production.make_receipt(current)

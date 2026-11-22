@@ -32,9 +32,11 @@ def valid_origin():
 @pytest.mark.parametrize("field", ["condition", "phase", "plan_identity", "configuration", "configuration_sha256"])
 def test_new_p_session_cannot_release_nonproduction_p1(field):
     manifest, row = valid_origin()
-    row[field] = "historical"
-    with (patch.object(sessions, "read_session", return_value=(manifest, "a" * 64)), pytest.raises(ValueError)):
+    with patch.object(sessions, "read_session", return_value=(manifest, "a" * 64)):
         production.control_release(row, manifest["session_id"])
+        row[field] = "historical"
+        with pytest.raises(ValueError, match="^production control role/origin or paired-clock anomalies require owner review$"):
+            production.control_release(row, manifest["session_id"])
 
 
 def test_authentic_control_role_still_passes():
@@ -58,13 +60,19 @@ def test_production_program_cannot_delete_session_contract_to_skip_container_gat
     sid = "a" * 32
     directory = tmp_path / sid
     directory.mkdir()
-    (directory / "manifest.json").write_text(json.dumps({"schema": "issue120-production-session-v1", "session_id": sid,
+    manifest = {"schema": "issue120-production-session-v1", "session_id": sid,
         "program_identity": {"production_admission_contract": runtime.PRODUCTION_CONTRACT},
-        "runs": {plan.RUNS[4].identity: {}}, "host_boot_id_sha256": "old"}))
+        "production_contract": runtime.PRODUCTION_CONTRACT,
+        "runs": {plan.RUNS[4].identity: {}}, "host_boot_id_sha256": "same-boot"}
+    path = directory / "manifest.json"
+    path.write_text(json.dumps(manifest))
     monkeypatch.setattr(sessions, "SESSIONS", tmp_path)
     monkeypatch.setattr(runtime, "ROOT", Path("/work"))
-    monkeypatch.setattr(sessions, "boot_fingerprint", lambda: "new")
-    with pytest.raises(ValueError, match="contract|boot"):
+    monkeypatch.setattr(sessions, "boot_fingerprint", lambda: "same-boot")
+    assert sessions.read_session(sid)[0] == manifest
+    del manifest["production_contract"]
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="^production session contract is missing$"):
         sessions.read_session(sid)
 
 
@@ -82,10 +90,13 @@ def test_new_p_checks_boot_inside_work_mount(tmp_path, monkeypatch):
     sid = "a" * 32
     directory = tmp_path / sid
     directory.mkdir()
-    (directory / "manifest.json").write_text(json.dumps({"schema": "issue120-production-session-v1", "session_id": sid,
-        "production_contract": runtime.PRODUCTION_CONTRACT, "host_boot_id_sha256": "old"}))
+    manifest = {"schema": "issue120-production-session-v1", "session_id": sid,
+        "production_contract": runtime.PRODUCTION_CONTRACT, "host_boot_id_sha256": "old"}
+    (directory / "manifest.json").write_text(json.dumps(manifest))
     monkeypatch.setattr(sessions, "SESSIONS", tmp_path)
     monkeypatch.setattr(runtime, "ROOT", Path("/work"))
+    monkeypatch.setattr(sessions, "boot_fingerprint", lambda: "old")
+    assert sessions.read_session(sid)[0] == manifest
     monkeypatch.setattr(sessions, "boot_fingerprint", lambda: "new")
-    with pytest.raises(ValueError, match="boot"):
+    with pytest.raises(ValueError, match="^production session current boot changed, including the container boundary$"):
         sessions.read_session(sid)
