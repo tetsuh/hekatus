@@ -50,6 +50,16 @@ jobs:
           # status instead of sed's success, allowing its loop to terminate.
           set -o pipefail
 
+          # Issue #190: production archives have 16 members and ~64 MiB each.
+          # Leave headroom, but bound regular members, each payload, total payload,
+          # and the entire expanded stream against bombs. Other record types fail.
+          MAX_ARCHIVE_MEMBERS=256
+          MAX_ARCHIVE_MEMBER_BYTES=134217728
+          MAX_ARCHIVE_TOTAL_BYTES=268435456
+          MAX_ARCHIVE_STREAM_BYTES=285212672
+          export MAX_ARCHIVE_MEMBERS MAX_ARCHIVE_MEMBER_BYTES
+          export MAX_ARCHIVE_TOTAL_BYTES MAX_ARCHIVE_STREAM_BYTES
+
           if [ -z "$WORDS" ]; then
             echo "::error::KEYWORD_GUARD_WORDS repository secret is not set; configure it before merging."
             exit 1
@@ -225,7 +235,299 @@ jobs:
             exit 1
           fi
 
+          # Narrow profile: one gzip stream containing POSIX ustar, typeflag '0'
+          # only. PAX/GNU extensions, directories, legacy NUL typeflag, GNU/V7
+          # layouts and base-256 numbers fail. Hierarchy needs no directory entry.
+          # Typical suffixes: .tar.gz/.tgz; gzip magic handles renamed files.
+          # Raw .tar and known unsupported formats fail, as do recognized nested
+          # archives. Extensions are an open set: this inventory is not exhaustive.
+          # Unlisted suffixes without a strong signature get the original byte scan,
+          # possibly of compressed bytes, so encoded member text may be missed.
+          # Python/zlib bounds and checks gzip integrity (FHCRC when present and
+          # CRC32/ISIZE), with no extra stream/tail. A fixed 512-byte header walk
+          # needs no tarfile parser. Spare bytes/padding/end records must be zero.
+          # Raw prefix/name bytes go to grep without normalization; no disk
+          # extraction or archive-provided filesystem path is ever used.
+          # Detection grep starts <= (2*M+1)*W for M members, W configured terms:
+          # raw path + NUL-free contents + outer tracked path. No metadata loop.
+          # Keep per-term calls: grep -f changes overlapping occurrence semantics.
+          # Reporter masking is unchanged; member paths are at most 256 bytes.
+          # Gzip filename/comment/extra and tar permissions/IDs/times/owner/group
+          # are container/format metadata, not file contents: intentionally no
+          # keyword scan there (the container-only-hit AC requires this).
+          # Known limit (#190): text inside a NUL-containing member is NOT detected.
+          printf '%s\0' "${words[@]}" >"$scan_dir/words"
+          cat >"$scan_dir/archive.py" <<'PY'
+          import io
+          import os
+          import re
+          import subprocess
+          import sys
+          import zlib
+
+          MAX_HEADERS = int(os.environ["MAX_ARCHIVE_MEMBERS"])
+          MAX_MEMBER = int(os.environ["MAX_ARCHIVE_MEMBER_BYTES"])
+          MAX_TOTAL = int(os.environ["MAX_ARCHIVE_TOTAL_BYTES"])
+          MAX_STREAM = int(os.environ["MAX_ARCHIVE_STREAM_BYTES"])
+          # Reviewed sources, not an exhaustive extension registry:
+          # https://www.gnu.org/software/tar/manual/html_node/gzip.html (auto-compress)
+          # https://github.com/libarchive/libarchive/blob/master/tar/creation_set.c
+          # https://7-zip.org/ (common archive families, not every decoder suffix)
+          # https://github.com/google/brotli/blob/master/c/tools/brotli.c (.br)
+          # Only these three tar candidates escape suffix refusal; raw .tar still
+          # fails the gzip profile. Priority handles .tar.gz before standalone .gz.
+          # Terminal suffixes cover compounds (.tar.Z/.tar.lz4); aliases are explicit.
+          # Case-folding intentionally merges GNU .taZ and .taz; both are refused.
+          SUPPORTED = (".tar.gz", ".tgz", ".tar")
+          UNSUPPORTED = (
+              # GNU tar auto-compress, excluding the supported .tgz candidate:
+              ".gz", ".taz", ".z", ".bz2", ".tz2", ".tbz2", ".tbz", ".lz",
+              ".lzma", ".tlz", ".lzo", ".xz", ".zst", ".tzst",
+              # Remaining libarchive resolver formats/filters and short aliases:
+              ".7z", ".ar", ".cpio", ".grz", ".iso", ".lrz", ".lz4", ".mtree",
+              ".shar", ".txz", ".tzo", ".tz", ".uu", ".warc", ".xar", ".zip",
+              # Common archives and retained ZIP-package/compressor aliases:
+              ".rar", ".arj", ".lzh", ".lha", ".wim", ".dmg", ".cab", ".a",
+              ".deb", ".rpm", ".jar", ".war", ".whl", ".egg", ".zstd", ".br",
+          )
+
+          class Rejected(Exception):
+              pass
+
+          def event(kind, name="", detail=""):
+              for field in (kind, name, str(detail)):
+                  sys.stdout.buffer.write(os.fsencode(field) + b"\0")
+
+          def reject(name, reason):
+              event("error", name, reason)
+              raise Rejected
+
+          def suffix(name):
+              name = name.lower()
+              if name.endswith(SUPPORTED):
+                  return "tar"
+              if name.endswith(UNSUPPORTED):
+                  return "unsupported"
+              return ""
+
+          def magic(data):
+              # Do not add Unix-compress 1f 9d: a two-byte prefix can collide with
+              # ordinary binary data. Known suffixes fail; unknowns keep byte scans.
+              if (len(data) >= 10 and data.startswith(b"\x1f\x8b\x08") and
+                      not data[3] & 0xe0):
+                  return "gzip"
+              if data.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08",
+                                  b"\xfd7zXZ\0", b"\x28\xb5\x2f\xfd",
+                                  b"7z\xbc\xaf\x27\x1c", b"Rar!\x1a\x07\x00",
+                                  b"Rar!\x1a\x07\x01\x00", b"\x04\x22\x4d\x18",
+                                  b"!<arch>\n", b"MSCF\0\0\0\0", b"\xed\xab\xee\xdb")):
+                  return "unsupported"
+              # Text-like prefixes alone are not archive signatures. Require
+              # bzip2's block/end marker, or cpio's first fixed-width hex field.
+              if re.match(rb"BZh[1-9](1AY&SY|\x17rE8P\x90)|07070[12][0-9A-Fa-f]{8}", data):
+                  return "unsupported"
+              if len(data) >= 512:
+                  block = data[:512]
+                  try:
+                      checksum = probe_octal(block[148:156])
+                      if checksum == sum(block[:148]) + 256 + sum(block[156:]):
+                          if block[257:265] in (b"ustar\x0000", b"ustar  \x00"):
+                              return "tar"
+                          if block[257:265] == b"\0" * 8:
+                              for start, end in ((100, 108), (108, 116), (116, 124), (124, 136), (136, 148)):
+                                  probe_octal(block[start:end])
+                              return "tar"
+                  except ValueError:
+                      pass
+              return ""
+
+          def expand_tar(raw):
+              expanded = io.BytesIO()
+              remaining = MAX_STREAM
+              decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+              pending = b""
+              while True:
+                  supplied = pending or raw.read(65536)
+                  try:
+                      chunk = decoder.decompress(supplied, min(65536, remaining + 1))
+                  except zlib.error:
+                      reject("", "unreadable or invalid archive gzip envelope")
+                  pending = decoder.unconsumed_tail
+                  remaining -= len(chunk)
+                  if remaining < 0:
+                      raise ValueError("expanded stream limit")
+                  expanded.write(chunk)
+                  if decoder.eof:
+                      if decoder.unused_data or pending or raw.read(1):
+                          reject("", "unreadable or invalid archive: trailing gzip data")
+                      return expanded
+                  if not supplied and not chunk:
+                      reject("", "unreadable or invalid archive gzip envelope")
+
+          def probe_octal(value):
+              # Legacy signature classification only, never accepted-header parsing.
+              head, _, tail = value.partition(b"\0")
+              digits = head.strip(b" ")
+              if any(c not in b"\0 " for c in tail) or any(c not in b"01234567" for c in digits):
+                  raise ValueError("non-octal field")  # Includes all base-256 encodings.
+              return int(digits or b"0", 8)
+
+          def ustar_octal(value, *, unused=False):
+              # Mandatory: mode, uid, gid, size, mtime, checksum. All must start
+              # with digits, terminate, and have only NUL/space fill thereafter.
+              # Size/checksum affect framing; others are shape-checked metadata.
+              # Unused regular-file devmajor/devminor permit Python's all-NUL
+              # encoding or the same grammar encoding zero, never a nonzero value.
+              if unused and value == b"\0" * len(value):
+                  return 0
+              match = re.fullmatch(rb"([0-7]+)[\0 ][\0 ]*", value)
+              if not match:
+                  raise ValueError("invalid octal framing")
+              number = int(match[1], 8)
+              if unused and number:
+                  raise ValueError("nonzero unused device field")
+              return number
+
+          def text_field(value):
+              head, _, tail = value.partition(b"\0")
+              if any(tail):
+                  raise ValueError("nonzero string tail")
+              return head
+
+          def ustar_members(data):
+              members = []
+              pos = total = 0
+              while pos + 512 <= len(data):
+                  block = data[pos:pos + 512].tobytes()
+                  if block == b"\0" * 512:
+                      if len(data) - pos < 1024 or len(data) % 512 or any(data[pos:]):
+                          reject("", "unreadable or invalid archive end records")
+                      return members
+                  if len(members) >= MAX_HEADERS:
+                      reject("", "member count limit exceeded")
+                  if block[156:157] != b"0":
+                      reject("", "unsupported member type")
+                  if block[257:265] != b"ustar\x0000":
+                      reject("", "unreadable or invalid archive: POSIX ustar required")
+                  try:
+                      values = [ustar_octal(block[a:b]) for a, b in
+                                ((100, 108), (108, 116), (116, 124), (124, 136),
+                                 (136, 148), (148, 156))]
+                      for a, b in ((329, 337), (337, 345)):
+                          ustar_octal(block[a:b], unused=True)
+                      if values[5] != sum(block[:148]) + 256 + sum(block[156:]):
+                          raise ValueError("checksum mismatch")
+                      if any(block[157:257]) or any(block[500:]):
+                          raise ValueError("nonzero spare bytes")
+                      text_field(block[265:297])  # Owner/group are format metadata.
+                      text_field(block[297:329])
+                      name, prefix = text_field(block[:100]), text_field(block[345:500])
+                  except ValueError:
+                      reject("", "unreadable or invalid archive header field")
+                  path = prefix + b"/" + name if prefix else name
+                  parts = path.replace(b"\\", b"/").split(b"/")
+                  if (not name or path.startswith((b"/", b"\\")) or b".." in parts or
+                          re.match(rb"^[A-Za-z]:", path) or any(c < 32 or c == 127 for c in path)):
+                      reject("", "unsafe member path")
+                  size = values[3]
+                  if size > MAX_MEMBER:
+                      reject(os.fsdecode(path), "member size limit exceeded")
+                  total += size
+                  if total > MAX_TOTAL:
+                      reject(os.fsdecode(path), "total size limit exceeded")
+                  start, end = pos + 512, pos + 512 + size
+                  pos = start + ((size + 511) // 512) * 512
+                  if pos > len(data):
+                      reject("", "unreadable or invalid archive payload")
+                  if any(data[end:pos]):
+                      reject("", "unreadable or invalid archive: nonzero padding")
+                  members.append((path, start, end))
+              reject("", "unreadable or invalid archive end records")
+
+          def scan_terms(data, kind, name, words):
+              options = "-oaiwF" if kind == "contents" else "-oiwF"
+              for word in words:
+                  result = subprocess.run(
+                      [b"grep", options.encode(), b"--", word], input=data,
+                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                  )
+                  if result.returncode not in (0, 1):
+                      reject(name, "unable to scan archive member")
+                  if result.returncode == 0:
+                      event(kind, name, result.stdout.count(b"\n"))
+
+          def scan(path, words):
+              hint = suffix(path)
+              try:
+                  raw = open(path, "rb")
+              except OSError:
+                  if not hint:
+                      return 3  # Preserve ordinary unreadable-file diagnostics.
+                  raise
+              with raw:
+                  signature = magic(raw.read(512))
+                  raw.seek(0)
+                  if hint == "unsupported" or signature == "unsupported":
+                      reject("", "unsupported archive format")
+                  if not hint and not signature:
+                      return 3  # Ordinary tracked files keep the shell scanner.
+                  if signature != "gzip":
+                      reject("", "unreadable or invalid archive: gzip ustar profile required")
+                  expanded = expand_tar(raw)
+                  scanned = skipped = 0
+                  with expanded.getbuffer() as data:
+                      for path, start, end in ustar_members(data):
+                          name = os.fsdecode(path)  # Rendering only; detection uses raw bytes.
+                          scan_terms(path, "path", name, words)
+                          payload = data[start:end].tobytes()
+                          if suffix(name) or magic(payload[:512]):
+                              reject(name, "nested archive is not supported")
+                          if b"\0" in payload:
+                              event("skip", name)
+                              skipped += 1
+                          else:
+                              scan_terms(payload, "contents", name, words)
+                              scanned += 1
+                  event("summary", str(scanned), skipped)
+              return 0
+
+          try:
+              with open(sys.argv[2], "rb") as word_file:
+                  words = word_file.read().split(b"\0")[:-1]
+              status = scan(sys.argv[1], words)
+          except Rejected:
+              status = 1
+          except Exception:
+              # Never emit exception text: it can include unmasked paths/data.
+              event("error", "", "unreadable or invalid archive")
+              status = 1
+          sys.exit(status)
+          PY
+
           while IFS= read -r -d '' f; do
+            archive_status=0
+            python3 "$scan_dir/archive.py" "$f" "$scan_dir/words" >"$scan_dir/events" 2>/dev/null || archive_status=$?
+            if [ "$archive_status" -ne 0 ] && [ "$archive_status" -ne 3 ]; then
+              report "" "keyword guard: unable to scan archive or tracked contents of $f"
+              fail=1
+            fi
+            while IFS= read -r -d '' kind && IFS= read -r -d '' member && IFS= read -r -d '' detail; do
+              case "$kind" in
+                contents|path)
+                  report "" "$f: $member: prohibited word in archive member $kind ($detail occurrence(s))"
+                  fail=1 ;;
+                skip)
+                  report_plain "keyword guard: $f: $member: skipped binary member" ;;
+                error)
+                  report "" "keyword guard: $f: $member: $detail"
+                  fail=1 ;;
+                summary)
+                  report_plain "keyword guard: archive $f: scanned $member text member(s); skipped $detail binary member(s)" ;;
+                *)
+                  report "" "keyword guard: invalid archive scan result"
+                  fail=1 ;;
+              esac
+            done <"$scan_dir/events"
             safe=$(mask_path "$f")
             for w in "${words[@]}"; do
               # -a: scan binary contents as text; -w: word boundaries;
@@ -233,22 +535,24 @@ jobs:
               # ordinary no-match; every other failure is a scan failure.
               matches_file="$scan_dir/matches"
               hits=0
-              if grep -oaiwF -- "$w" "$f" >"$matches_file" 2>/dev/null; then
-                hits=$(wc -l <"$matches_file")
-              else
-                grep_status=$?
-                if [ "$grep_status" -ne 1 ]; then
-                  report "" "keyword guard: unable to scan tracked contents"
+              if [ "$archive_status" -eq 3 ]; then
+                if grep -oaiwF -- "$w" "$f" >"$matches_file" 2>/dev/null; then
+                  hits=$(wc -l <"$matches_file")
+                else
+                  grep_status=$?
+                  if [ "$grep_status" -ne 1 ]; then
+                    report "" "keyword guard: unable to scan tracked contents"
+                    fail=1
+                  fi
+                fi
+                if [ "$hits" -gt 0 ]; then
+                  if [ "$safe" = "$f" ]; then
+                    report "$f" "prohibited word in contents ($hits occurrence(s))"
+                  else
+                    report "" "prohibited word in contents of $f ($hits occurrence(s))"
+                  fi
                   fail=1
                 fi
-              fi
-              if [ "$hits" -gt 0 ]; then
-                if [ "$safe" = "$f" ]; then
-                  report "$f" "prohibited word in contents ($hits occurrence(s))"
-                else
-                  report "" "prohibited word in contents of $f ($hits occurrence(s))"
-                fi
-                fail=1
               fi
 
               path_file="$scan_dir/path"

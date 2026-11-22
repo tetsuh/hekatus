@@ -256,6 +256,29 @@ when a need appears — no staged plan):
   staged data. A tracked entry that cannot be read, or an enumeration failure,
   fails the guard rather than producing a clean result.
 
+  Recognized archives must fit a narrow profile: one checked gzip stream
+  containing POSIX ustar, with canonical typeflag `'0'` regular files only
+  (typically `.tar.gz` / `.tgz`, also recognized by magic). Raw `.tar`, legacy
+  NUL typeflags, PAX/GNU records, directories, links, special files, GNU/V7
+  layouts, base-256 numbers and recognized nested archives fail closed.
+  Mandatory mode/uid/gid/size/mtime/checksum fields require octal digits first,
+  a NUL/space terminator, then NUL/space fill only. Unused regular-file device
+  fields must be all-NUL or encode zero with that same grammar.
+  Raw prefix/name bytes are scanned without normalization; unsafe/control
+  paths, bad checksums, nonzero spare/padding bytes and invalid end records
+  fail. Bounds are 256 members, 128 MiB each, 256 MiB total payload and 272 MiB
+  expanded stream, all in memory without extracted filesystem paths. NUL-free
+  payloads are scanned regardless of extension; NUL-containing members are
+  named and skipped, so embedded text is not detected. Gzip container fields
+  and fixed tar filesystem metadata are not file contents and are not
+  keyword-scanned. Listed unsupported suffixes/signatures fail; the finite
+  suffix inventory cites GNU tar/libarchive and common formats in the workflow.
+  Extensions are an open set, not an exhaustive registry: unlisted suffixes
+  without a strong signature retain the original byte scan, possibly of
+  compressed bytes, so encoded member text may be missed. Unix-compress's
+  two-byte magic is not added because it can collide with ordinary binary data.
+  Non-archive binary scans and all mask/sanitize rules remain unchanged.
+
   The guard covers tracked file contents and paths on same-repository pull
   requests and pushes to `main`. It does not cover issue or pull-request
   comments; no CI check in this repository reads them. A pull request from a
