@@ -15,19 +15,23 @@ closing it; the record in `design.md` is what persists.
 
 | # | Item | Who | State |
 |---|---|---|---|
-| B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | blocked until a chip-to-chip transfer runs (#30) |
+| B1 | ERISC receive-path development and first link/transfer | Track B | #30 source study distinguishes retained legacy CCL EDM from current persistent TT-Fabric; no universal fabric-on default. Host discovery waits for firmware training and skips BH host retrain; first-training trigger/base-firmware source and FPGA interoperability remain open. First transfer unverified; [study](measurements/issue30-source-study.md) / [plan](measurements/issue30-first-transfer-plan.md) |
 | B2 | Effective efficiency is measured for both stock and hand-written Newton-Schulz rows: stock reaches 3.024% on its best BF16 row, while Issue #63 reaches 15.6% at L=32 and 3.24% at packed L=16. The result is between 3.2% and 30%; the residual planning gap remains open | Track B | measured; residual gap open |
-| B3 | `run_routing()` firing conditions and their jitter impact | Track B | blocked until a link carries traffic; it is an idle-loop property of the Ethernet core |
-| B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
+| B3 | `run_routing()` / fabric context-switch conditions and jitter | Track B | source-resolved in #30: local-progress idle test, configurable periodic path, BH two-ERISC coordination; continuous arrival does not exclude calls. Actual cost/jitter unmeasured, awaits verified traffic and separately approved instrumentation; [study section 4](measurements/issue30-source-study.md#4-b3-can-a-routingcontext-switch-call-occur-during-a-continuous-stream) |
+| B4 | Card-to-card latency/jitter measurement | Track B | unmeasured; boards/cabling reported present but link and content-verified transfer unverified. #30 has a bounded official-smoke [plan](measurements/issue30-first-transfer-plan.md), not execution authority or timing evidence |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
 | B6 | Clock calibration between the TT cycle counter and host CLOCK_MONOTONIC | Track B | open |
 | B7 | Issue #12 resident producer/consumer timing protocol on pinned v0.75.0 | Track B | Final authority is `2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json` with companion power CSV, N=499,999, P50/P99/P99.9/P99.99 1,349,988/1,350,061/1,350,065/1,350,065 ticks, work min/max 1,062–1,087 ticks, zero overflow, zero paired outliers, and wrap-tracked clock metadata; `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` is the intermediate controlled comparison, superseded after eaf6632 corrected the resident drain decision. Issue #104's three sampler-mode runs and board-free wrap analysis are recorded in `docs/measurements/README.md`. |
 
 The Ethernet items above were blocked on a board without ports; that is no
-longer the constraint. Two target boards are cabled together, but no link
-has trained, and this generation trains from the runtime rather than from a
-flashing step (design.md §2) — so each of them now waits on the same thing:
-a transfer that actually crosses the wire.
+longer the constraint. Two target boards are reported cabled together, but no
+link/transfer has been verified. Issue #30's board-free source findings do not
+need a board: the legacy/fabric distinction and context-switch conditions are
+now documented. The source shows runtime observation/cooperation with base
+firmware, not a guaranteed host first-training command (design.md §2–§3).
+First verified receiver content remains the shared hardware gate for #13 and
+B4; B3's measured cost still needs traffic/instrumentation. B5/B6 remain open,
+and #105 stage 3 also needs its own acceptance criteria before implementation.
 
 **B2 still matters most**, but the question has changed shape. The #65
 0.75.0 full sweep found 190 successful rows and 94 failed rows out of 284.

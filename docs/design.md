@@ -229,11 +229,13 @@ the image that produced it, which is what makes a moved pin readable rather
 than confusing, and whether
 the toolchain moves the figures at all is measured rather than assumed.
 
-Ethernet is present but no link was up as delivered, and the topology tool
-does not support this generation — Blackhole trains its links from the
-runtime rather than from a flashing step. Establishing an actual chip-to-chip
-transfer is the first step of the receive-path work, not an assumption it can
-start from.
+Ethernet is present but no link was up as delivered. TT-Topology explicitly
+excludes Blackhole PCIe cards. The pinned source shows runtime discovery
+waiting for firmware training status and application ERISC cooperation with
+base firmware; it does **not** establish a host call guaranteed to start first
+training on these cards (Issue #30's [source study](measurements/issue30-source-study.md),
+section 2). Establishing an actual chip-to-chip transfer remains the first
+board step, not an assumption the receive-path work can start from.
 
 ### What limits this workload
 
@@ -286,31 +288,47 @@ not remotely suffice.
 
 ### The Ethernet receive path
 
-`erisc_datamover.cpp` in tt-metal has been reviewed. The ERISC delivers
-received payloads over the NoC directly into worker Tensix cores' L1 and
-signals with semaphores.
+**Pinned source result (Issue #30, board-free):** tt-metal v0.75.0,
+`d9a68815f5fcf08a5bfbffb6f1f811823fba8edd`, retains two distinct paths.
+The [source study](measurements/issue30-source-study.md) supplies immutable
+file/line references, UMD/image pins and explicit open questions.
 
-- Receive flow: `RECEIVER_WAITING_FOR_ETH` → `RECEIVER_SIGNALING_WORKER`
-  → `RECEIVER_WAITING_FOR_WORKER`
-- Semaphore-based credit control
-- `num_buffers_per_channel` provides built-in multi-buffering; no
-  hand-rolled double buffering needed to overlap receive and compute
-- Each channel can have independent buffers and worker groups, so 256
-  channels can be spread across several receive channels into different
-  Tensix core groups
+- The earlier `erisc_datamover.cpp` reading describes **legacy non-persistent
+  CCL EDM**. Its `RECEIVER_WAITING_FOR_ETH` → worker signalling → worker
+  completion sequence uses semaphores, per-channel buffering and separate
+  receipt/completion acknowledgements. Workers consume receive buffers;
+  this is not evidence that this kernel pushes every payload into worker L1.
+- **TT-Fabric uses a persistent packet router/EDM**, with a different magic/
+  identity handshake, generated buffer/credit layout, routing fields and NoC
+  command headers. Its receive side can deliver packets over NoC locally or
+  forward them. The split handshake is explicitly deprecated for legacy CCL,
+  not supported with TT-Fabric. Current all-gather and fabric sockets have
+  traced fabric paths; MeshDevice alone does not universally enable fabric
+  (the default configuration is disabled, with a remote-dispatch exception).
+- The two-card official 1D fabric smoke is the first transfer candidate, not
+  a new kernel. Discovery, physical link readiness, logical mesh mapping and
+  application handshake are separate gates. No link or transfer was tested
+  by the source study; the [first-transfer plan](measurements/issue30-first-transfer-plan.md)
+  requires separate owner approvals for both-card discovery and transfer.
 
-**FPGA side:** the EDM is designed for chip-to-chip links and assumes an EDM
-peer. The FPGA must mimic the initial handshake, the `erisc_info` field
-operations, and the ack handling. There is no spec document, but everything
-derives from the source.
+**FPGA side remains open:** the source establishes software peer obligations,
+not a sufficient external sender specification. The legacy `erisc_info`
+fields/ack are not the fabric protocol. Fabric additionally assumes remote
+L1/register operations, firmware identities, matching credit layouts and link
+bring-up. Neither a generic FPGA MAC nor successful TT-to-TT traffic proves
+compatibility. No receive architecture or production backpressure contract
+is selected here; downstream still never makes enodia wait.
 
-**Caution:** the reviewed code uses the handshake in the `deprecated`
-namespace. Check at implementation time whether a newer fabric-based EDM is
-the current recommendation.
-
-**Concern:** the main loop calls `run_routing()` after `SWITCH_INTERVAL`
-(4M idle iterations). With data always flowing it should never fire, but it
-is a potential jitter source across frame gaps and mode switches. Measure.
+**B3 correction:** continuous arrival is not a sufficient condition to prevent
+routing/context-switch calls. Legacy's idle branch tests **local progress**, not
+line activity (threshold comparison is `counter++ > 4000000`). Fabric has
+separate idle/periodic policies; the default two-ERISC Blackhole compute-router
+builder selects 32 / WAIT_FOR_IDLE, not 4M. An idle TX/master can coordinate a
+pause of the busy RX/subordinate even during receive traffic. Full routing and
+Blackhole no-sync link-status service paths also differ. Source conditions are
+known; their actual jitter cost, continuous-stream behavior on these cards and
+B4 latency remain **unverified on hardware**. See source-study section 4 for a
+later instrumented measurement proposal; B5/B6 and #105 stage 3 remain open.
 
 ---
 
