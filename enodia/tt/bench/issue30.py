@@ -37,6 +37,9 @@ GOOD_EXECUTION = {"exit": 0, "client_exit": 0, "started": True, "elapsed_seconds
                   "timed_out": False, "terminated": True,
                   "watcher_clean": True, "containers_clean": True}
 CONTAINERS = "containers/"
+DOWN = "DOWN/unconnected"
+EXECUTION_FILE = "execution.json"
+BEFORE_FILE = "before.json"
 MASKS = ["/sys", "/proc/bus", "/proc/driver", "/proc/acpi", "/proc/asound",
          "/proc/interrupts", "/proc/kcore", "/proc/keys", "/proc/latency_stats",
          "/proc/timer_list", "/proc/timer_stats", "/proc/sched_debug", "/proc/scsi"]
@@ -159,7 +162,7 @@ def board_request(phase: str, identity: str, assets: Path, output: Path, *,
     _binary_binding(assets, receipt)
     payload = request(phase, identity, assets, output, uid=os.getuid(), gid=os.getgid())
     nodes = [c.get("node", "") for c in environment["cards"]]
-    if len(set(nodes)) != 2 or any(not re.fullmatch(r"/dev/tenstorrent/[0-9]{1,6}", n) for n in nodes):
+    if len(set(nodes)) != 2 or any(not re.fullmatch(r"/dev/tenstorrent/\d{1,6}", n, re.ASCII) for n in nodes):
         raise ValueError("device_mapping")
     host = payload["HostConfig"]
     host["Devices"] = [{"PathOnHost": n, "PathInContainer": n, "CgroupPermissions": "rw"} for n in nodes]
@@ -171,16 +174,16 @@ def board_request(phase: str, identity: str, assets: Path, output: Path, *,
 
 
 def _bundle_report_name(value):
-    if not re.fullmatch(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?:\.0)?", value):
+    if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}(?:\.0)?", value, re.ASCII):
         raise ValueError("environment")
     return ".".join(str(int(x)) for x in value.split(".")[:3])
 
 
 def _card(card):
     erisc, cmfw = card.get("erisc", ""), card.get("cmfw", "")
-    if not re.fullmatch(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}", erisc):
+    if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}", erisc, re.ASCII):
         raise ValueError("environment")
-    if not re.fullmatch(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?:\.[0-9]{1,3})?", cmfw):
+    if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?", cmfw, re.ASCII):
         raise ValueError("environment")
     if not any(map(int, cmfw.split("."))) or tuple(map(int, erisc.split("."))) < (1, 4, 1):
         raise ValueError("environment")
@@ -222,7 +225,7 @@ def _environment(env, identity):
             or not env.get("boot") or env.get("image") != IMAGE or env.get("watcher") != "1"):
         raise ValueError("environment")
     kmd = env.get("kmd", "")
-    if not re.fullmatch(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}", kmd) or tuple(map(int, kmd.split("."))) < (2, 8, 0):
+    if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}", kmd, re.ASCII) or tuple(map(int, kmd.split("."))) < (2, 8, 0):
         raise ValueError("environment")
     _cards(env.get("cards"))
     _links(env)
@@ -248,7 +251,7 @@ def _xml(phase, raw):
 
 
 def _number(text):
-    if not re.fullmatch(r"[0-9]{1,10}", text):
+    if not re.fullmatch(r"\d{1,10}", text, re.ASCII):
         raise ValueError("peer_links")
     return int(text)
 
@@ -283,14 +286,14 @@ def _link(text):
     t = text.split()
     if len(t) < 8 or (t[0], t[1], t[3], t[5]) != ("eth", "channel", "core", "link"):
         raise ValueError("peer_links")
-    if not re.fullmatch(r"[0-9]{1,3}-[0-9]{1,3}", t[4]):
+    if not re.fullmatch(r"\d{1,3}-\d{1,3}", t[4], re.ASCII):
         raise ValueError("peer_links")
     data = {"channel": _number(t[2]), "core": t[4], "state": t[6]}
-    if t[6:] == ["DOWN/unconnected", "(QSFP)"]:
+    if t[6:] == [DOWN, "(QSFP)"]:
         return data
     if len(t) < 14 or t[6:11] != ["UP", "(QSFP),", "connected", "to", "Chip"] or t[-2] != "core":
         raise ValueError("peer_links")
-    if not re.fullmatch(r"[0-9]{1,3}-[0-9]{1,3}", t[-1]):
+    if not re.fullmatch(r"\d{1,3}-\d{1,3}", t[-1], re.ASCII):
         raise ValueError("peer_links")
     return data | {"peer": _number(t[11]), "peer_core": t[-1]}
 
@@ -303,7 +306,7 @@ def _warning(env, body):
     except ValueError as exc:
         raise ValueError("diagnostic") from exc
     indices = {c["chip"]: c["pcie_index"] for c in env["cards"]}
-    if (not sep or parsed["state"] != "DOWN/unconnected" or indices.get(chip) != pcie
+    if (not sep or parsed["state"] != DOWN or indices.get(chip) != pcie
             or [chip, parsed["channel"]] not in env.get("uncabled", [])):
         raise ValueError("diagnostic")
 
@@ -331,7 +334,7 @@ def _health_link(env, lines, index, chip):
     data = _link(lines[index])
     if chip is None:
         raise ValueError("peer_links")
-    if data.pop("state") == "DOWN/unconnected":
+    if data.pop("state") == DOWN:
         if [chip, data["channel"]] not in env.get("uncabled", []):
             raise ValueError("peer_links")
         return None
@@ -522,7 +525,7 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
         _cleanup(name, cid, output, start, state)
         state["elapsed_seconds"] = time.monotonic() - start
         state["artifacts"] = _captured_files(output)
-        publish(output / "execution.json", state)
+        publish(output / EXECUTION_FILE, state)
     return state
 
 
@@ -554,7 +557,7 @@ def _git(source, *args):
 
 
 def _authorize(phase, identity, inputs, output):
-    env = _load(inputs / "before.json")
+    env = _load(inputs / BEFORE_FILE)
     receipt = _load(CURRENT_RECEIPT, ROOT)
     if _git(ROOT, "status", "--porcelain"):
         raise ValueError("hardware capture requires a clean committed tree")
@@ -574,16 +577,16 @@ def _authorize(phase, identity, inputs, output):
 
 
 def _review(phase, identity, output, inputs):
-    execution = _load(output / "execution.json")
+    execution = _load(output / EXECUTION_FILE)
     review = _load(inputs / "review.json")
     if execution.get("schema") != "issue30-execution-v1" or execution.get("attempt") != identity:
         raise ValueError("execution schema/attempt mismatch")
     if (review.get("schema") != "issue30-review-v1" or review.get("attempt") != identity
-            or review.get("execution_sha256") != digest(_read(output / "execution.json"))):
+            or review.get("execution_sha256") != digest(_read(output / EXECUTION_FILE))):
         raise ValueError("review execution binding")
     if execution.get("device_free") is not False:
         raise ValueError("device-free capture cannot qualify as board evidence")
-    if _load(output / "observations-before.json") != _load(inputs / "before.json"):
+    if _load(output / "observations-before.json") != _load(inputs / BEFORE_FILE):
         raise ValueError("captured before observation mismatch")
     if phase == "B":
         watcher = output / "logs/generated/watcher/watcher.log"
@@ -598,7 +601,7 @@ def _judge(phase, identity, output, inputs):
         if review.get(field + "_sha256") != digest(_read(inputs / (field + ".json"))):
             raise ValueError("review observation fingerprint mismatch")
     discovery = _load(inputs / "discovery.json") if phase == "B" else None
-    result = evaluate(phase, identity, _load(inputs / "before.json"), _load(inputs / "after.json"),
+    result = evaluate(phase, identity, _load(inputs / BEFORE_FILE), _load(inputs / "after.json"),
                       _read(output / "native/gtest.xml"), _read(output / "stdout.bin"),
                       _read(output / "stderr.bin"), execution, discovery)
     publish(output / "result.json", result)

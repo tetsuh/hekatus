@@ -135,7 +135,8 @@ def test_no_device_skip_is_not_success():
 
 @pytest.mark.parametrize(("field", "value"), [("serial", "wrong"), ("erisc", "0.0.0"),
                                                ("dram_healthy", False), ("aiclk_mhz", 0),
-                                               ("eth_heartbeat_healthy", False), ("cmfw", "unknown"), ("cmfw", "0.0.0.0")])
+                                               ("eth_heartbeat_healthy", False), ("cmfw", "unknown"), ("cmfw", "0.0.0.0"),
+                                               ("erisc", "١.٤.١"), ("cmfw", "٠.٢٨.٠.٠")])
 def test_one_environment_mutation(field, value):
     assert verdict()["reason"] == "accepted"
     after = copy.deepcopy(environment()); after["cards"][1][field] = value

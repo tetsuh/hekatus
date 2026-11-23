@@ -11,9 +11,9 @@ probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
 The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
 remain immutable evidence for their original head. Hardened admission selects
-`receipt-v2.json`, which must be populated by fresh verification before admission.
-No hardware
-correctness, dispatch, link training or jitter result is claimed. All 47 local
+[G0 receipt v2](receipt-v2.json) and [build receipt v2](build-receipt-v2.json),
+now populated from fresh private-scratch/fixed-layout verification. No hardware
+correctness, dispatch, link training or jitter result is claimed. All 49 local
 G0 unit cases pass; full-suite/CI/Sonar evidence is recorded in the PR/report.
 CodeRabbit CLI could not authenticate at review time; no review was completed.
 The [source study](../issue30-source-study.md) pins T/U and the runtime image.
@@ -47,7 +47,7 @@ compiler/link streams and intermediate files are retained under the relative
 `out/issue30/g0` role. `enodia/tt/bench/issue30_build/CMakeLists.txt` compiles
 **unmodified upstream test translation units** with the upstream pinned
 GoogleTest/gmock_main and headers, linking the image's audited libtt_metal and
-libtt_stl. It does not build replacement Metal/UMD libraries or new kernels.
+libtt_stl and libtt-umd. It does not build replacement libraries or new kernels.
 `tools/build_issue30.py` hashes inputs, toolchain, commands and outputs. Runtime
 library pin is the same one audited for #120. See the receipt for actual success
 or stop phase; no hardware-readiness claim follows from compile alone.
@@ -66,8 +66,11 @@ a successful Docker cleanup command does not turn a failed build into success.
 Device-free checks use `LD_BIND_NOW=1`, Watcher=1 and the same masked sandbox.
 Listing must include the two intended selectors. The first negative attempts reached a missing runtime-root error and are
 **not qualified device-absence evidence**. A separate runtime-root RED test
-fixed the default sandbox environment before fresh v2 attempts. A non-list
-invocation without devices must not yield eligible A/B evidence, regardless of GoogleTest exit;
+fixed the default sandbox environment before fresh v2 attempts. Hardened v3
+attempts repeated eager listing and zero-chip refusal with private scratch;
+the successor receipt binds those new attempts without altering old files.
+A non-list invocation without devices must not yield eligible A/B evidence,
+regardless of GoogleTest exit;
 the wrapper's non-list device-free CLI returns 2 and `judge` explicitly rejects
 `device_free=true`. Loader/list/absent outcomes are recorded separately in the
 receipt, not inferred from build success.
