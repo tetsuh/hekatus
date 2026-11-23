@@ -310,6 +310,9 @@ file/line references, UMD/image pins and explicit open questions.
   application handshake are separate gates. No link or transfer was tested
   by the source study; the [first-transfer plan](measurements/issue30-first-transfer-plan.md)
   requires separate owner approvals for both-card discovery and transfer.
+  The [G0 follow-up](measurements/issue30-g0/README.md) supplies built official
+  binaries, isolated loader/list/zero-chip refusal evidence and a tested wrapper;
+  none is evidence of a trained link or a successful device transfer.
 
 **FPGA side remains open:** the source establishes software peer obligations,
 not a sufficient external sender specification. The legacy `erisc_info`

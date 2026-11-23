@@ -53,7 +53,9 @@ metadata names ttnn 0.75.0. Two copied source files match T byte-for-byte:
 
 This is a two-file packaging check, **not** proof of every linked library's
 source identity. The exported image has neither `fabric_smoke_tests` nor
-`fabric_unit_tests`; building an official test is a prerequisite of the plan.
+`fabric_unit_tests`. The [G0 follow-up](issue30-g0/README.md) now provides built
+health/smoke binaries and qualified device-free startup evidence against this
+image; this does not establish dispatch or transfer on hardware.
 
 ## 1. Which datamover is current?
 
@@ -149,7 +151,7 @@ Firmware prerequisites are layered, not one invented version requirement:
 |---|---|
 | `U:device/firmware/firmware_info_provider.cpp:324-337` | Blackhole minimum compatible **bundle** 18.5.0; UMD latest-supported constant 19.7.1. These are not proof of first-link behavior or an exact CMFW requirement. |
 | `U:device/api/umd/device/firmware/erisc_firmware.hpp:20-25` and `U:device/topology/topology_discovery.cpp:628-664` | Minimum ERISC 1.4.1 and per-core version consistency checks; older expected versions generate a warning. |
-| `U:device/topology/topology_discovery.cpp:549-600,667-727` | Bundle consistency/support and firmware heartbeat checks; a flash-bundle label alone is not an ERISC health check. |
+| `U:device/topology/topology_discovery.cpp:554-602,302-306,667-727` | Bundle consistency/support and an available heartbeat helper. **Blackhole discovery skips the heartbeat check** at 302-306; no warning is not a BH heartbeat-health proof. A flash-bundle label alone is not an ERISC health check. |
 | `T:INSTALLING.md:26-42` | Installation guidance lists Blackhole bundle 19.8.1 and KMD >=2.8.0. This differs from UMD's latest-supported constant. Record the discrepancy; do not silently upgrade. |
 | Existing `2026-11-14-p150a-issue120-p6-api-lock-semaphore-v3-env.json` | Historical device0 bundle 19.6.0.0 / CMFW 0.28.0.0, telemetry eth_fw 0.0.0. Not a fresh two-card check, nor the required base ERISC version. |
 
@@ -189,11 +191,16 @@ change is a separately approved intervention, not part of this study.
 | Official health report | `T:tests/tt_metal/tt_fabric/system_health/test_system_health.cpp:257-340` reports link/peer/retrain information. The source explicitly says this test does not fail despite reported errors. Zero exit is not a health verdict. Blackhole CRC/codeword reads are excluded by a Wormhole check (`:315-324`); displayed zeros are not measured Blackhole error counts. |
 | `ETH_LIVE_STATUS`, `ETH_FW_VERSION` in saved tt-smi telemetry | `U:device/firmware/firmware_info_provider.cpp:212-230` says BH ETH_LIVE_STATUS is always zero before 19.9 and ETH_FW_VERSION is unimplemented. On >=19.9, upper 16 bits are link, lower 16 heartbeat. Thus the historical 19.6 zeros cannot establish link-down or ERISC version. Host tt-smi's formatting/version is separate from pinned UMD; fresh field availability remains unverified. |
 
-Panel-port-to-ETH-channel mapping is **open**: the official health test labels
-P150 channel values 4..11 as QSFP (`system_health/test_system_health.cpp:85-91`), but
-that does not specify which physical connector each pair uses. Physical cable
-tracing and an authoritative board port map must precede inference from channel
-numbers. Do not transplant Wormhole port diagrams.
+**G0 follow-up: panel-port mapping found.**
+`T:tools/scaleout/board/board.cpp:330-350` defines P150 ASIC 0 QSFP-DD ports:
+port 1 -> channels {11,9}, port 2 -> {8,10}, port 3 -> {7,5}, port 4 -> {4,6}.
+This is the software board-port/ASIC-channel mapping, not a harvested-core
+coordinate mapping; translate through the runtime SoC descriptor. The public
+[Blackhole multi-card documentation](https://docs.tenstorrent.com/aibs/blackhole/multi-card-topologies.html#port-and-card-numbering)
+identifies port 1 as furthest from the motherboard, port 4 closest, and one
+passive QSFP-DD cable as two Ethernet links. This public documentation is not
+part of T's pin. Actual cable endpoints/channel health remain unobserved.
+See the [G0 receipt and prerequisites](issue30-g0/README.md).
 
 ## 3. What the peer must imitate
 
@@ -314,13 +321,14 @@ latency. #105 stage 3 remains blocked and needs its own AC before starting.
 1. **First-training trigger:** installed CMFW/base ERISC source revision,
    initial boot/training sequence and exact runtime action that can bring up
    these never-linked ports. Discovery waits; Blackhole host retrain is skipped.
-2. **Physical configuration:** connector pairs, cable properties and actual
-   channel/port/harvesting mapping on both cards; no observed link here.
+2. **Physical configuration:** actual connector pairs, cable properties and
+   harvested/runtime core mapping on both cards; no observed link here. The
+   G0 follow-up above establishes the source's P150 port/channel table.
 3. **Firmware compatibility:** reconcile installation guidance, UMD constants
    and the fresh owner-approved two-card baseline, without an automatic update.
-4. **First transfer:** official smoke binary must be built/provenanced; it is
-   not shipped in the inspected runtime image. Then mapping, handshake, content
-   check, teardown and <=60-second feasibility must be observed, not presumed.
+4. **First transfer:** the G0 follow-up built/provenanced the official binaries
+   and checked loader/listing/zero-chip refusal. Actual mapping, handshake,
+   content check, teardown and <=60-second board feasibility remain unverified.
 5. **FPGA interoperability and production receive architecture:** not settled
    by chip-to-chip source or by a future successful TT-to-TT smoke.
 6. **B3/B4 cost:** conditions are source-resolved; jitter and card-to-card timing

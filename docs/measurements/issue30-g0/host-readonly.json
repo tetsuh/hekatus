@@ -1,0 +1,21 @@
+{
+  "schema": "issue30-host-readonly-v1",
+  "captured_utc": "2026-11-23T19:26:41.017253+00:00",
+  "scope": "execution host only; board applicability and device access unverified",
+  "board_access": false,
+  "meminfo": {
+    "HugePages_Total": "0", "HugePages_Free": "0", "HugePages_Rsvd": "0",
+    "HugePages_Surp": "0", "Hugepagesize": "2048 kB", "Hugetlb": "8388608 kB"
+  },
+  "hugepages": {
+    "1048576kB": {"nr_hugepages": 8, "free_hugepages": 7, "resv_hugepages": 0, "surplus_hugepages": 0},
+    "2048kB": {"nr_hugepages": 0, "free_hugepages": 0, "resv_hugepages": 0, "surplus_hugepages": 0}
+  },
+  "hugetlbfs": [
+    {"role": "one-gib-hugetlbfs", "options": "rw,nosuid,nodev,relatime,mode=777,pagesize=1024M"},
+    {"role": "two-mib-hugetlbfs", "options": "rw,nosuid,nodev,relatime,pagesize=2M"}
+  ],
+  "installed_kmd": "2.12.0",
+  "kmd_loaded_sysfs_present": false,
+  "settings_changed": false
+}

@@ -1,6 +1,12 @@
 # Issue #30: first chip-to-chip transfer proposal
 
 **Status: board-free plan only; no board action is authorized or executed.**
+
+The G0 follow-up's [receipt, fixed judgment rules and final one-screen A/B
+approval units](issue30-g0/README.md) supersede this document's original
+preparation gaps. Upstream commands below identify the workload only; future
+execution uses the attempt-bound wrapper, not an improvised bare invocation.
+A failed/incomplete G0 receipt blocks both approvals.
 Refs #30; related #13 and #105 stage 3. Source authority and all T/U reference
 pins are in [the source study](issue30-source-study.md). This is not a runtime
 training success claim, latency measurement, or selection of the FPGA protocol.
@@ -81,11 +87,12 @@ an automatic retry. Firmware flashing is a different intervention again.
   type/part and intended port pairs against the board/cable documentation.
   Do not unplug/replug during a run. No cable type/length is established by
   the source study.
-- Obtain the authoritative p150a panel-port/channel map. Source only identifies
-  P150 channel values 4..11 as QSFP; it does not assign each panel connector.
-  After A compare discovered channel/peer pairs in both directions with this
-  physical table. If no link exists, do not infer cabling from empty discovery
-  or swap ports until a separate physical intervention is approved.
+- Use the source P150 port/channel table found in G0: port 1={11,9},
+  2={8,10}, 3={7,5}, 4={4,6}, with port 1 furthest from the motherboard.
+  Record both physical cable endpoints and translate ASIC channels through
+  the SoC descriptor; compare real discovered peers in both directions.
+  If no link exists, do not infer cabling from empty discovery or swap ports
+  until a separate physical intervention is approved.
 - Confirm actual bundle, CMFW and **per-core base ERISC** versions on both
   cards. Historical bundle 19.6.0.0 / CMFW 0.28.0.0 and tt-smi eth_fw=0 are
   insufficient: before bundle 19.9 that telemetry is unavailable/zero. UMD's
@@ -117,7 +124,9 @@ operations as a preflight shortcut.
 **Identity:** `issue30-g0-official-smoke-build-v1`. Purpose: retain upstream
 programs rather than invent a kernel. The inspected runtime image contains
 ttnn 0.75.0 and matching router/handshake sources, **not the official test
-binaries**. Therefore this plan is not yet a ready-to-launch artifact receipt.
+binaries**. The [G0 follow-up](issue30-g0/README.md) has now built them and
+verified isolated loading/listing/zero-chip refusal, with receipts. Fresh
+hardware observations and the separate A/B approvals are still required.
 
 In a separate, device-unmapped build environment, initialize the pinned source
 submodules and build upstream `test_system_health` and `fabric_smoke_tests`.
@@ -143,15 +152,14 @@ Record `TT_METAL_HOME`, `TT_METAL_RUNTIME_ROOT`, library resolution and working
 directory using **logical roles/relative paths in public records**, not machine
 names or local absolute paths.
 
-No new launcher/harness is included in this documentation-only change: the
-selected workload and structured result writer already exist upstream. G0
-must additionally freeze an operator-reviewed invocation/capture recipe with
-the file/lifecycle requirements below before hardware approval. If executable
-wrapper code is needed then, it must first have board-free argument/schema/
-validation tests and a new reviewed commit; this plan is not permission to
-improvise it during a board session. Standard GoogleTest XML is a result file,
-not the last-stdout-line transport rejected by ADR-0018. Existing Issue #120
-JSON schemas/runners must not be repurposed to label this as #120 evidence.
+The follow-up implements `enodia.tt.bench.issue30` with board-free tests for
+arguments, absolute deadlines, schemas, file publication and source-shaped
+positive/single-mutation negative judgment fixtures. Its default capture is
+device-free; hardware additionally requires exact owner approval/environment/
+head/boot/receipt bindings. See the G0 receipt for actual build/loader status;
+source-level preparation is not a successful G0 receipt. Standard GoogleTest
+XML is a result file, not the last-stdout-line transport rejected by ADR-0018.
+Existing Issue #120 JSON schemas/runners are unchanged and not repurposed.
 
 ## Separately approved hardware units
 
