@@ -117,6 +117,15 @@ def test_xml_negative_reason(change):
                       m.GOOD_EXECUTION)["reason"] == "test_result"
 
 
+def test_source_warning_location_suffix_is_not_a_health_error():
+    assert verdict()["reason"] == "accepted"
+    lines = transcript().decode("ascii").splitlines()
+    source = "\n".join(line + " (test_system_health.cpp:361)" if line.startswith("warning |") else line
+                       for line in lines).encode("ascii")
+    assert m.evaluate("A", "synthetic-a", environment(), environment(), xml(), source, b"",
+                      m.GOOD_EXECUTION)["reason"] == "accepted"
+
+
 def test_no_device_skip_is_not_success():
     assert verdict("B")["reason"] == "accepted"
     raw = xml("B").replace(b'/></testsuite>', b'><skipped/></testcase></testsuite>')
@@ -143,11 +152,15 @@ def test_deadlines_absolute_not_reset_by_stage():
 def test_payload_sandbox_and_fixed_argv(tmp_path):
     payload = m.request("A", "synthetic-a", tmp_path, tmp_path, uid=1000, gid=1000)
     h = payload["HostConfig"]
-    assert payload["Image"] == m.IMAGE and payload["User"] == "1000:1000"
-    assert h["NetworkMode"] == "none" and h["ReadonlyRootfs"]
-    assert h["Devices"] == [] and h["CapDrop"] == ["ALL"]
+    assert payload["Image"] == m.IMAGE
+    assert payload["User"] == "1000:1000"
+    assert h["NetworkMode"] == "none"
+    assert h["ReadonlyRootfs"]
+    assert h["Devices"] == []
+    assert h["CapDrop"] == ["ALL"]
     assert {"/sys", "/proc/bus", "/proc/driver"} <= set(h["MaskedPaths"])
-    assert payload["Env"][:3] == ["TT_METAL_WATCHER=1", "HOME=/tmp", "LD_BIND_NOW=1"]
+    assert payload["Env"][:3] == ["TT_METAL_WATCHER=1", "HOME=/scratch", "LD_BIND_NOW=1"]
+    assert "mode=0700,uid=1000,gid=1000" in h["Tmpfs"]["/scratch"]
     assert "TT_METAL_RUNTIME_ROOT=/opt/venv/lib/python3.12/site-packages/ttnn" in payload["Env"]
     assert payload["Cmd"][0:3] == ["timeout", "--signal=KILL", "40s"]
     assert '--gtest_filter=Cluster.ReportSystemHealth' in payload["Cmd"]

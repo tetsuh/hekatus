@@ -11,8 +11,10 @@ from enodia.tt.bench import issue30 as m
 
 
 @pytest.fixture(autouse=True)
-def no_real_docker_ps(monkeypatch):
+def no_real_docker_ps(monkeypatch, tmp_path):
     monkeypatch.setattr(m, "_docker_ps", lambda path, timeout: path.write_bytes(b""))
+    monkeypatch.setattr(m, "WORK", tmp_path)
+    monkeypatch.setattr(m, "ASSETS", tmp_path)
 
 
 def test_cli_defaults_to_the_receipted_assets(tmp_path, monkeypatch, capsys):
@@ -24,11 +26,12 @@ def test_cli_defaults_to_the_receipted_assets(tmp_path, monkeypatch, capsys):
         return original(phase, identity, assets, output, **kwargs)
 
     monkeypatch.setattr(m, "request", record_request)
-    monkeypatch.setattr("sys.argv", ["issue30", "plan", "--phase", "A", "--attempt", "synthetic",
-                                    "--out", str(tmp_path / "attempt")])
+    monkeypatch.setattr("sys.argv", ["issue30", "plan", "--phase", "A", "--attempt", "synthetic"])
     assert m.main() == 0
     assert json.loads(capsys.readouterr().out)["Image"] == m.IMAGE
-    assert observed == ["out/issue30/g0/assets"]
+    assert observed == [m.ASSETS.as_posix()]
+    assert m.CURRENT_RECEIPT.name == "receipt-v2.json"
+    assert m.CURRENT_RECEIPT.parent == m.ROOT / "docs/measurements/issue30-g0"
 
 
 def test_capture_preserves_bytes_and_direct_exit(tmp_path, monkeypatch):
@@ -40,7 +43,7 @@ def test_capture_preserves_bytes_and_direct_exit(tmp_path, monkeypatch):
             return []
         if path.startswith("containers/create"):
             assert body["HostConfig"]["Devices"] == []
-            return {"Id": "synthetic-container-id"}
+            return {"Id": "a" * 64}
         if path.endswith("/json"):
             return {"State": {"ExitCode": 7, "Running": False}}
         return {}
@@ -53,12 +56,14 @@ def test_capture_preserves_bytes_and_direct_exit(tmp_path, monkeypatch):
     monkeypatch.setattr(m.subprocess, "Popen", popen)
     output = tmp_path / "fresh"
     state = m.capture("A", "synthetic", tmp_path, output)
-    assert state["exit"] == 7 and state["client_exit"] == 0
-    assert state["device_free"] and state["containers_clean"]
+    assert state["exit"] == 7
+    assert state["client_exit"] == 0
+    assert state["device_free"]
+    assert state["containers_clean"]
     assert (output / "stdout.bin").read_bytes() == b"\x00\xffafter-result\n"
     assert (output / "stderr.bin").read_bytes() == b"\xfe\n"
     assert json.loads((output / "execution.json").read_bytes())["schema"] == "issue30-execution-v1"
-    assert any(x[1] == "containers/synthetic-container-id?force=1" for x in calls)
+    assert any(x[1] == "containers/" + "a" * 64 + "?force=1" for x in calls)
     with pytest.raises(FileExistsError):
         m.capture("A", "synthetic", tmp_path, output)
 
@@ -86,16 +91,17 @@ def test_timeout_kills_named_container_then_client_before_cleanup(tmp_path, monk
     def api(method, path, body=None, timeout=5):
         actions.append((method, path, timeout))
         if path.startswith("containers/create"):
-            return {"Id": "synthetic-id"}
+            return {"Id": "a" * 64}
         if path.endswith("/json"):
             return {"State": {"ExitCode": 137, "Running": False}}
         return [] if path == "containers/json?all=1" else {}
 
     monkeypatch.setattr(m, "_api", api)
     state = m.capture("B", "synthetic", tmp_path, tmp_path / "attempt")
-    assert state["timed_out"] and state["terminated"]
+    assert state["timed_out"]
+    assert state["terminated"]
     assert process.wait.call_args_list[0].kwargs["timeout"] == 1.0
-    assert ("POST", "containers/synthetic-id/kill", 4.0) in actions
+    assert ("POST", "containers/" + "a" * 64 + "/kill", 4.0) in actions
     process.kill.assert_called_once()
     assert state["elapsed_seconds"] <= 60
 
@@ -111,11 +117,12 @@ def test_collision_does_not_delete_existing_container(tmp_path, monkeypatch):
 
     monkeypatch.setattr(m, "_api", api)
     state = m.capture("A", "synthetic", tmp_path, tmp_path / "attempt")
-    assert state["exit"] is None and not state["started"]
+    assert state["exit"] is None
+    assert not state["started"]
     assert "DELETE" not in calls
 
 
-def test_failed_g0_receipt_cannot_authorize_hardware(tmp_path, monkeypatch):
+def approval_inputs(tmp_path):
     from tests.test_issue30 import environment
 
     env = environment()
@@ -124,11 +131,17 @@ def test_failed_g0_receipt_cannot_authorize_hardware(tmp_path, monkeypatch):
     for name in m.BINARIES.values():
         (tmp_path / name).write_bytes(b"synthetic-not-an-executable")
     receipt = {"schema": "issue30-g0-v1", "all_passed": True,
+               "current_wrapper_sources": m.program_sources(),
                "binaries": {name: m.digest(b"synthetic-not-an-executable") for name in m.BINARIES.values()}}
     approval = {"schema": "issue30-owner-approval-v1", "attempt": "synthetic-a", "phase": "A",
                 "head": "synthetic-head", "boot": env["boot"],
                 "environment_sha256": m.digest(json.dumps(env, sort_keys=True).encode()),
                 "receipt_sha256": m.digest(json.dumps(receipt, sort_keys=True).encode())}
+    return env, receipt, approval
+
+
+def test_failed_g0_receipt_cannot_authorize_hardware(tmp_path):
+    env, receipt, approval = approval_inputs(tmp_path)
     positive = m.board_request("A", "synthetic-a", tmp_path, tmp_path / "out", approval=approval,
                                environment=env, receipt=receipt, head="synthetic-head")
     assert len(positive["HostConfig"]["Devices"]) == 2
@@ -143,3 +156,38 @@ def test_failed_g0_receipt_cannot_authorize_hardware(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="approval_binding"):
         m.board_request("A", "synthetic-a", tmp_path, tmp_path / "out", approval=approval,
                         environment=env, receipt=receipt, head="synthetic-head")
+
+
+def test_stale_source_receipt_cannot_authorize_hardware(tmp_path):
+    env, receipt, approval = approval_inputs(tmp_path)
+    assert m.board_request("A", "synthetic-a", tmp_path, tmp_path / "out", approval=approval,
+                           environment=env, receipt=receipt, head="synthetic-head")["Image"] == m.IMAGE
+    receipt["current_wrapper_sources"]["enodia/tt/bench/issue30.py"] = "0" * 64
+    approval["receipt_sha256"] = m.digest(json.dumps(receipt, sort_keys=True).encode())
+    with pytest.raises(ValueError, match="receipt_source_binding"):
+        m.board_request("A", "synthetic-a", tmp_path, tmp_path / "out", approval=approval,
+                        environment=env, receipt=receipt, head="synthetic-head")
+
+
+def test_paths_and_identity_rejected_before_io(tmp_path, monkeypatch):
+    assert m._owned(tmp_path / "safe") == tmp_path / "safe"
+    assert m._identity("synthetic") == "synthetic"
+    with pytest.raises(ValueError, match="program-owned"):
+        m.capture("A", "synthetic", tmp_path, tmp_path.parent / "escape")
+    with pytest.raises(ValueError, match="identity"):
+        m.capture("A", "../escape", tmp_path, tmp_path / "must-not-exist")
+    assert not (tmp_path / "must-not-exist").exists()
+
+
+def test_cli_rejects_arbitrary_path_flags(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["issue30", "capture", "--phase", "A", "--attempt", "synthetic",
+                                    "--out", "/unapproved"])
+    with pytest.raises(SystemExit) as error:
+        m.main()
+    assert error.value.code == 2
+
+
+def test_daemon_id_is_not_a_path_or_option():
+    assert m._container_id("a" * 64) == "a" * 64
+    with pytest.raises(ValueError, match="daemon container identity"):
+        m._container_id("../../other")

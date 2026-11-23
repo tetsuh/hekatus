@@ -9,8 +9,11 @@ visible chips and fail there; they never open an actual device.
 required selectors listed with eager symbol binding, and both rooted absence
 probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
-See [build receipt](build-receipt.json) / [G0 receipt](receipt.json). No hardware
-correctness, dispatch, link training or jitter result is claimed. All 42 local
+The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
+remain immutable evidence for their original head. Hardened admission selects
+`receipt-v2.json`, which must be populated by fresh verification before admission.
+No hardware
+correctness, dispatch, link training or jitter result is claimed. All 47 local
 G0 unit cases pass; full-suite/CI/Sonar evidence is recorded in the PR/report.
 CodeRabbit CLI could not authenticate at review time; no review was completed.
 The [source study](../issue30-source-study.md) pins T/U and the runtime image.
@@ -51,7 +54,9 @@ or stop phase; no hardware-readiness claim follows from compile alone.
 
 Isolation is non-root, network none, read-only root/source/dependencies, no
 capabilities, no-new-privileges, no mapped devices and private writable build/
-output/tmp only. Docker 29 rejects user mounts under proc here. Engine
+output/scratch only. Scratch is mode 0700, owned by the non-root container UID;
+no shared writable temporary directory is used. Docker 29 rejects user mounts
+under proc here. Engine
 `HostConfig.MaskedPaths` successfully masks sys, proc-bus and proc-driver,
 verified empty by the child before work. No systempaths-unconfined or privileged
 fallback was used. Earlier mount failures are retained as failed attempts,
@@ -69,13 +74,23 @@ receipt, not inferred from build success.
 
 ## Wrapper, schemas and acceptance
 
-Entry: `uv run python -m enodia.tt.bench.issue30` with `plan`, `capture`, `judge`.
-`plan` emits role-normalized mounts, never local paths. `capture` defaults to
-device-free; `--approval`, `--before` and `--receipt` are all required for the
-separate hardware branch. No such branch was invoked in G0. The future receipt
-layout places binaries in `out/issue30/g0/assets` and pinned source in the
-sibling source role; neither source nor device nodes come from inherited TT
-variables. Only the two approved nodes and BDF visibility are allowed.
+Entry: `uv run python -m enodia.tt.bench.issue30` with `plan`, `capture`, `judge`,
+`--phase A|B` and a safe `--attempt` identity. `plan` emits role-normalized mounts.
+There are **no arbitrary path CLI flags**. Assets are fixed at
+`out/issue30/g0/assets`; isolated outputs at `out/issue30/g0/checks/<attempt>`;
+hardware outputs at `out/issue30/runs/<attempt>`. Owner inputs have fixed slots
+under `out/issue30/observations/<attempt>`: `before.json`, `after.json`,
+`approval.json`, `review.json`, and B's `discovery.json`. The selected G0 receipt is fixed
+at this document's `receipt-v2.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
+program-owned roots; identity is validated before any file/process operation.
+
+`capture` defaults to device-free; **`--approved-board`** additionally requires
+all separate owner/admission gates. No such branch was invoked in G0. Current
+wrapper/build/test/lock-file hashes must match the receipt, not just binary
+hashes. Source/device nodes never come from inherited TT variables; only the
+two approved nodes and fixed BDF visibility are allowed. Docker arguments have
+an option terminator and returned container IDs must be 64 lowercase hex digits.
+Canonical path, stale-receipt and daemon-ID mutations have negative tests.
 
 - `issue30-environment-v1`: attempt/boot/image/KMD/Watcher plus exactly the two
   serial/PCI identities, runtime chip-to-PCIe-index map, bundle, CMFW, base ERISC,
@@ -100,7 +115,9 @@ variables. Only the two approved nodes and BDF visibility are allowed.
   defusedxml, is bounded, rejects declarations/entities and must contain exactly
   the expected executed, completed, non-skipped testcase and no errors/failures.
 
-A's source-shaped report parser requires exactly two chip headers, expected
+A's bounded, token-based source-report parser avoids unbounded backtracking
+and strips the source logger's filename/line suffix before interpretation.
+It requires exactly two chip headers, expected
 PCIe indices, one matching firmware-bundle establishment, every declared UP
 link with its reverse peer/core and zero retrain counts. Unexpected DOWN or
 UP links fail. It rejects unknown warnings/errors/fatal/critical diagnostics. The sole
