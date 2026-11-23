@@ -1,0 +1,23 @@
+{
+  "schema": "issue120-production-device-check-v1",
+  "cases": [
+    {"case": "producer-watcher-0", "compile_time_args": [1,4096,1,1,4,4,514,1,4096,1,1,1,1,514,2,4096,2,4096], "returncode": 0, "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {"case": "producer-watcher-1", "compile_time_args": [1,4096,1,1,4,4,514,1,4096,1,1,1,1,514,2,4096,2,4096], "returncode": 0, "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {"case": "consumer-watcher-0", "compile_time_args": [1,4096,1,1,4,4,514,1,4096,1,1,1,1,258,2,4096,2,4096,2,4096,2,4096,2,4096], "returncode": 0, "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {"case": "consumer-watcher-1", "compile_time_args": [1,4096,1,1,4,4,514,1,4096,1,1,1,1,258,2,4096,2,4096,2,4096,2,4096,2,4096], "returncode": 0, "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+  ],
+  "all_passed": true,
+  "scope": "syntax/constexpr only; not device link, dispatch or execution",
+  "compiler_sha256": "f13c2418084b18b5a7cac7bc1d0bab3c1b43db2163f2a803b2f5487f55e28e7f",
+  "flags_helper_sha256": "f762cab89cadff2880b25610ef4d4c3369595214afd1597997a548ee3e1d515d",
+  "manifest_sha256": "eeaeb2cdcd0249dd7472e7687f43daab62960f87153996c33783405f1fa5785f",
+  "derived_sources": {
+    "device.hpp": "eead1032618e6ebaf4ddca36b5b089c5c49cce063ee028b78d7326a2803c64c2",
+    "production_consumer.cpp": "864680c4782a58e966e60570c4039cfdb3cbd9e689bf28073e2baa9684269c56",
+    "production_producer.cpp": "1ba9af269b3317c99dacc4a2486e2fd822e8c16ccaf6610cb411fbb366f8e149",
+    "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+    "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c"
+  },
+  "isolation": {"image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621", "network": "none", "device_mappings": 0, "device_requests": 0, "masked_paths": ["/sys", "/proc/bus", "/proc/driver"], "read_only_root": true, "source_mount_read_only": true, "user": "1000:1000", "cap_drop": ["ALL"], "no_new_privileges": true, "accelerator_runtime_imported": false},
+  "timing_evidence": false
+}

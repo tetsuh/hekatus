@@ -1,0 +1,5 @@
+environment -> <project>/out/issue120-production/sessions/57c99372bc2a42a7a33845dde446591f/cases/production-v1-calibration-small/env-20261121T0107019969389561539527928Z.json
+
+results     -> <project>/out/issue120-production/sessions/57c99372bc2a42a7a33845dde446591f/cases/production-v1-calibration-small/runner-result.json
+telemetry sampler -> default (2s)
+power trace -> <project>/out/issue120-production/sessions/57c99372bc2a42a7a33845dde446591f/cases/production-v1-calibration-small/power-20261121T0107019969389561539527928Z.csv

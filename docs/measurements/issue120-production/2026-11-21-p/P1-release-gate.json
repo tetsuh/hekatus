@@ -1,0 +1,14 @@
+{
+  "P2_conditional_cap_margin_seconds": 9.414183823938515,
+  "P2_conditional_frame_margin_seconds": 19.279083349203177,
+  "abort_drop_overflow_pairs": 0,
+  "all_release_conditions_passed": true,
+  "baseline_warnings_only": true,
+  "clock_routing_mailbox_power_healthy": true,
+  "head": "4fd4900b8813e813263ed3d5148e3b5feb3a59b8",
+  "identity_checksum_work_complete": true,
+  "native_wrapper_container_launcher_exit": 0,
+  "ordinary_reread_and_external_ack_passed": true,
+  "post_health_800MHz_DRAM_and_zero_containers": true,
+  "session_id": "a729ec3dec50456998fc668b2100648f"
+}

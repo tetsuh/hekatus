@@ -1,0 +1,54 @@
+{
+  "acceptance_used": false,
+  "checks": [
+    {
+      "link": "https://github.com/tetsuh/hekatus/actions/runs/44921277708/job/136897632427",
+      "name": "traceability-guard",
+      "state": "SUCCESS"
+    },
+    {
+      "link": "https://github.com/tetsuh/hekatus/runs/136897359409",
+      "name": "CodeQL",
+      "state": "SUCCESS"
+    },
+    {
+      "link": "https://github.com/tetsuh/hekatus/actions/runs/44921139829/job/136897214055",
+      "name": "keyword-guard",
+      "state": "SUCCESS"
+    },
+    {
+      "link": "https://github.com/tetsuh/hekatus/actions/runs/44921139771/job/136897213696",
+      "name": "adr-status-guard",
+      "state": "SUCCESS"
+    },
+    {
+      "link": "https://github.com/tetsuh/hekatus/actions/runs/44921139785/job/136897213953",
+      "name": "lint-and-test",
+      "state": "SUCCESS"
+    },
+    {
+      "link": "https://sonarcloud.io/dashboard?id=tetsuh_hekatus&pullRequest=181",
+      "name": "SonarCloud Code Analysis",
+      "state": "SUCCESS"
+    },
+    {
+      "link": "https://github.com/tetsuh/hekatus/actions/runs/44921135995/job/136897206563",
+      "name": "Analyze (actions)",
+      "state": "SUCCESS"
+    },
+    {
+      "link": "https://github.com/tetsuh/hekatus/actions/runs/44921135995/job/136897206575",
+      "name": "Analyze (c-cpp)",
+      "state": "SUCCESS"
+    },
+    {
+      "link": "https://github.com/tetsuh/hekatus/actions/runs/44921135995/job/136897206368",
+      "name": "Analyze (python)",
+      "state": "SUCCESS"
+    }
+  ],
+  "gate": "OK",
+  "head": "4fd4900b8813e813263ed3d5148e3b5feb3a59b8",
+  "hotspots": 0,
+  "issues": 0
+}

@@ -1,0 +1,20 @@
+{
+  "schema": "issue120-production-b-baseline-session-v1",
+  "owner_approval_date": "2026-11-18",
+  "owner_approved_kernel": "Linux 6.8.0-149-generic",
+  "owner_approved_kmd": "2.12.0",
+  "run8_environment_different": true,
+  "previous_kernel": "Linux 6.8.0-138-generic",
+  "previous_kmd": "2.11.0",
+  "session_id": "13ba906388a94f7ba744f367481ae818",
+  "runtime_manifest_file": "runtime-session-manifest.json",
+  "runtime_manifest_sha256": "af81743c28acd8e20fc7275baf445c5aba0164b2a023c3034a3052e9ca6c1a4a",
+  "host_boot_id_sha256": "c2a4c97beb06d3aed7a593602935fa3a7b16810bf22f45cc7b4c530ea5030c6a",
+  "fresh_baseline_file": "fresh-baseline.json",
+  "fresh_baseline_sha256": "445c7b732363e9f8888b558709f224ed5d2542145f9860dfd1e8ea90e4d988a5",
+  "approved_runs": [
+    "production-v1-control-watch",
+    "production-v1-load-watch"
+  ],
+  "calibration_and_production_authorized": false
+}

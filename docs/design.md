@@ -2146,6 +2146,10 @@ run budgets and the validity of a single-clock projection is tracked in
 and conversion audit are tracked separately in
 [Issue #122](https://github.com/tetsuh/hekatus/issues/122).
 
+The following Issue #120 history records the state at each attempt, including
+its then-unresolved gates. The later production-pair subsection records the
+completed result; historical restrictions below are not its current status.
+
 The host-load condition (c) is outside this result and is tracked in
 [Issue #120](https://github.com/tetsuh/hekatus/issues/120). Its
 [board-free feasibility plan](measurements/issue120-feasibility-plan.md) audits
@@ -2277,6 +2281,60 @@ conservative fixed-work bounds/calibration, real control/load integration and
 same-session acceptance/precommit/approval. A legacy expected2 diagnostic label
 is scoped to zero frames; actual final token4098 is correct and #179 tracks
 that metadata wording without changing recorded bytes or coverage.
+
+### Issue #120 host CPU / PCIe production pair (2026-11-21)
+
+The owner-adopted520s/22155167-write pair completed once at harness
+`4fd4900b8813e813263ed3d5148e3b5feb3a59b8`,in one boot-bound session with the
+same receipt/device-open configuration:500000frames,1350000-tick period,
+64checksum/work iterations,Watcher off,device0,and600s native/outer caps.
+The [production archive](measurements/issue120-production/2026-11-21-p/README.md)
+retains exact records/companions,frozen power,claims and all pre/post gates.
+The [plan](measurements/issue120-production-plan.md),[ADR-0019](adr/0019-issue120-production-causal-instrument.md)
+and [ADR-0020](adr/0020-issue120-host-trace-c1-admission.md) state the instrument
+and dated-adoption boundaries. No native/device-facing content changed.
+
+| Device ticks | Control | Loaded | Loaded minus control |
+|---|---:|---:|---:|
+| P50 |1350001 |1349991 |−10 |
+| P99 |1350816 |1350834 |+18 |
+| P99.9 |1351065 |1351070 |+5 |
+| P99.99 |1351227 |1351205 |−22 |
+| Maximum |1351658 |1351677 |+19 |
+
+Both rows verified all500000 frames,with zero abort/drop/overflow and #104
+paired outliers;all native/container/wrapper/launcher exits were0. Loaded work
+submitted22155167 transfers/90747564032bytes,88620668 targeted challenge-read
+bytes and725980512256 CPU operations. Strict causal evaluation verified all
+frames covered,with first-through-last lower bounds499999 transfers,
+2047995904bytes and16383967232 CPU operations;submission totals are not all
+claimed inside that narrower scope. Worker duration531.795384s continued31.070s
+after observed terminal completion. Memory remains bounded in repeat count.
+
+Weighted host-program-envelope AICLK was1350.000000/1349.968724MHz. These are
+left-held frozen-sample observations,not exact per-frame clocks or maximum-AICLK
+substitutions. The qualified median conversion is1000.000741/1000.016501us:
+its sign differs from the tick-domain difference because observed clocks differ.
+Native execution503.376/534.238s and container start-to-die511.587/549.632s stayed
+within unchanged caps;container windows exclude surrounding Docker/wrapper work.
+Native aggregates including2GB retrieval,verification,close and publication were
+0.574/0.469s;isolated DMA cost was not instrumented. Warnings were baseline-only,
+containers0,both cards800MHz/DRAM healthy,resets/retries0.
+
+The pre-run prediction placed centers near1350000ticks and differences near0,
+without an advance latency threshold or established sign/max bound. Observed
+quantile/max differences were−22..+19ticks. This is one sequential synthetic
+resident-instrument pair,not significance,a population bound,exact product
+wall-time determinism,full ultrasound processing or host-in-data-path evidence.
+Complete histograms,assumptions,prediction comparisons,actual cap/retrieval costs
+and remaining limitations accompany the archive;the qualified interpretation of
+cycle-domain observations under ADR-0015 remains unchanged.
+
+The measured native's error paths are not hardened as a whole; production-plan
+Invariant 3 is verified only for cases covered by the host-sequence tests, and
+this class is deferred to [#193](https://github.com/tetsuh/hekatus/issues/193)
+before another board measurement. Healthy B4/C1/C2/P1/P2 records are unaffected;
+the measured source and digest remain unchanged.
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

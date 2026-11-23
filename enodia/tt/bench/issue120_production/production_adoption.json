@@ -1,0 +1,14 @@
+{
+  "schema": "issue120-owner-production-adoption-v1",
+  "decision_date": "2026-11-21",
+  "target_worker_seconds": 520,
+  "fixed_repetitions": 22155167,
+  "selection_file_sha256": "1dfa6c958513bb49ebfeb78d2baa73eb92c5a97e1ccdd3df137fe1beb1d81bb2",
+  "scope": {
+    "production-v1-control-500000": 1,
+    "production-v1-loaded-500000": 1
+  },
+  "conditional_loaded_requires_healthy_control": true,
+  "same_session_required": true,
+  "automatic_retry_allowed": false
+}

@@ -1,0 +1,78 @@
+{
+  "boards": [
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "000004033191411c",
+        "board_type": "p150a",
+        "bus_id": "0000:06:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0,
+      "limits": {
+        "asic_fmax": "1350",
+        "board_power_limit": "300",
+        "bus_peak_limit": 0,
+        "fan_rpm_limit": 0,
+        "tdc_limit": "200",
+        "tdp_limit": "150",
+        "therm_trip_l1_limit": "90",
+        "thm_limit": "110",
+        "vdd_max": "0.90",
+        "vdd_min": "0.70"
+      }
+    },
+    {
+      "aiclk_mhz": 800,
+      "board": {
+        "board_id": "0000040331914124",
+        "board_type": "p150a",
+        "bus_id": "0000:09:00.0",
+        "coords": "N/A",
+        "dram_speed": "16G",
+        "dram_status": true,
+        "pcie_speed": 4,
+        "pcie_width": "16"
+      },
+      "firmware": {
+        "cm_fw": "0.28.0.0",
+        "cm_fw_date": "2020-00-28",
+        "dm_app_fw": "0.22.0.0",
+        "dm_bl_fw": "0.0.0.0",
+        "eth_fw": "0.0.0",
+        "fw_bundle_version": "19.6.0.0",
+        "gddr_fw": "2.12",
+        "tt_flash_version": "N/A"
+      },
+      "gddr_uncorrected_errors": 0,
+      "limits": {
+        "asic_fmax": "1350",
+        "board_power_limit": "300",
+        "bus_peak_limit": 0,
+        "fan_rpm_limit": 0,
+        "tdc_limit": "200",
+        "tdp_limit": "150",
+        "therm_trip_l1_limit": "90",
+        "thm_limit": "110",
+        "vdd_max": "0.90",
+        "vdd_min": "0.70"
+      }
+    }
+  ],
+  "containers_remaining": 0,
+  "resets": 0
+}

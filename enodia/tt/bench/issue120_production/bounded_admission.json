@@ -1,0 +1,298 @@
+{
+  "allowed_plan_identities": [
+    "production-v1-calibration-large"
+  ],
+  "c1_evidence": {
+    "archive": "docs/measurements/issue120-production/2026-11-21-c1/C1-evidence.tar.gz",
+    "archive_sha256": "e76ea42e1b7712f530e25e96eaf45ac5b3eaeae704768f9f80c76133537f6865",
+    "harness_commit": "b38095571dd62742a161662e5d166fafa75f5b41",
+    "manifest_sha256": "849e126f36c6982dbfb39632d7cde094ba98b9cc72f5297406f0f6b2e776955c",
+    "original_admission_sha256": "9d18d931b03bc4371933cc24a2894002430a4b720aade24a05f4864f785dd9b7",
+    "record_sha256": "7ec089657d949849465b67cdb2df38dea17b71c16e433866462822bd35571609",
+    "session_sha256": "b6d06c027ec2854f6d2350492e8121989c33fe02c766e3b61aed68162deeb342"
+  },
+  "c1_program_identity": {
+    "compile_manifest_sha256": "eeaeb2cdcd0249dd7472e7687f43daab62960f87153996c33783405f1fa5785f",
+    "device_compile_proof_sha256": "0259164a64b5044e60accaca7a14389be1354d7ec5a5905d336cbbe51004b92c",
+    "host_trace_contract": "issue120-host-submission-trace-v1",
+    "kernel_sources_sha256": {
+      "device.hpp": "eead1032618e6ebaf4ddca36b5b089c5c49cce063ee028b78d7326a2803c64c2",
+      "production_consumer.cpp": "864680c4782a58e966e60570c4039cfdb3cbd9e689bf28073e2baa9684269c56",
+      "production_producer.cpp": "1ba9af269b3317c99dacc4a2486e2fd822e8c16ccaf6610cb411fbb366f8e149",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+      "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c"
+    },
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "native_sha256": "0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6",
+    "python_sources_sha256": {
+      "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
+      "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
+      "artifacts.py": "77bf193bf88b4ee03d86f2d7a2a806e86d8f653d85447cf4324e5c89d3942825",
+      "bounded_evidence.py": "00b94c6e34609dbb4d1776a75110db2e501fe87eace3579c6e2248829fc1c9ec",
+      "checks.py": "cd6140b706c28cc0f130ae8ffd434cc763e678bb2711290b930833c942ca415d",
+      "coverage.py": "ca1342299f2582a649e6cd15d2ae2fe003f000124846a74c0b799fa0d98b93a2",
+      "diagnostics.py": "f962505540536e8129e40014f1ac83fa41a50bfb3b15a78641a38c90a2dc7ced",
+      "host_build_inputs.py": "c2f232d78986b6362a64fb4b63e89bc064df1a559f38e75fcb9442e3d10b2614",
+      "host_trace.py": "773b37185e7967baa87385175a4190974b7d93c536a7874d89526a50955b0149",
+      "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
+      "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
+      "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
+      "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
+      "recording.py": "fa05c9c852392a6c02317aa07943d5fab7be91e0e44678b4212d0dcbb38c878f",
+      "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
+      "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
+      "runner.py": "8d8763e5489175095a124e8cc8b1509fccc6f6b996eb16d6d8c5e12f9ac53604",
+      "runtime.py": "b04b0d2fbb8332cd9ae641258ebaf24825b953bc4915b7ba315ac47f0e24ddfd",
+      "sessions.py": "e52937369ff39dc149a39655c5ac0df80ad29dbbca07492efb5b4029ae969e6c"
+    }
+  },
+  "configuration_sha256": {
+    "production-v1-calibration-large": "05db574c334e5cc34a134b4c664b25cd34ff9c4f8539d43e4b907864f5795b71",
+    "production-v1-calibration-small": "4622d037bce62c0c386381213e58047bbad0fa4a515a24713bdf7a64b3fac579"
+  },
+  "evidence_program_identity": {
+    "compile_manifest_sha256": "eeaeb2cdcd0249dd7472e7687f43daab62960f87153996c33783405f1fa5785f",
+    "device_compile_proof_sha256": "0259164a64b5044e60accaca7a14389be1354d7ec5a5905d336cbbe51004b92c",
+    "kernel_sources_sha256": {
+      "device.hpp": "eead1032618e6ebaf4ddca36b5b089c5c49cce063ee028b78d7326a2803c64c2",
+      "production_consumer.cpp": "864680c4782a58e966e60570c4039cfdb3cbd9e689bf28073e2baa9684269c56",
+      "production_producer.cpp": "1ba9af269b3317c99dacc4a2486e2fd822e8c16ccaf6610cb411fbb366f8e149",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+      "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c"
+    },
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "native_sha256": "bd0ac1384aeebcce715a9cb7527211453ef3378f28e868bbc85080fe7bc4c3c0",
+    "python_sources_sha256": {
+      "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
+      "artifacts.py": "77bf193bf88b4ee03d86f2d7a2a806e86d8f653d85447cf4324e5c89d3942825",
+      "checks.py": "cd6140b706c28cc0f130ae8ffd434cc763e678bb2711290b930833c942ca415d",
+      "coverage.py": "ca1342299f2582a649e6cd15d2ae2fe003f000124846a74c0b799fa0d98b93a2",
+      "diagnostics.py": "f962505540536e8129e40014f1ac83fa41a50bfb3b15a78641a38c90a2dc7ced",
+      "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
+      "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
+      "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
+      "recording.py": "7fdaf0a16e679afcbe0ad84eeb65c4d265c14c2704cdbe8c52ad6439643fea94",
+      "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
+      "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
+      "runner.py": "8d8763e5489175095a124e8cc8b1509fccc6f6b996eb16d6d8c5e12f9ac53604",
+      "runtime.py": "26617d4e2969fbd48a7a21d42784d6d3e68b719ac085476f0e614952f093c298",
+      "sessions.py": "6e9084bef1e12463023feb6ba698e2975bda37b6adb7aad61925a16840d0166c"
+    }
+  },
+  "execution_authorized": false,
+  "harness_binding": "retain original C1 commit; target binds fresh session commit and exact source maps",
+  "host_only_source_proof": {
+    "base_cmake_sha256": "83a2e6b23752bc9d4ccbd3f9a0d34eb63befd0f6c7404ff675906d44eede657f",
+    "base_native_sha256": "bd0ac1384aeebcce715a9cb7527211453ef3378f28e868bbc85080fe7bc4c3c0",
+    "base_native_source_sha256": "f88288968958bdc7ba1cae385ae9b2de3ba2125f83e8356e2ca279828ff8d9e1",
+    "cmake_host_source_only_change": true,
+    "device_dispatch_unchanged": true,
+    "host_headers_sha256": {
+      "host_protocol_trace.hpp": "388b713e105e1dd0c24ed7e1ee251065da6dcec328a948cb0182891213000d63",
+      "host_trace.hpp": "e806ffa7752172aaf65b5013b330086c10a1513ac3ad408ff83584942ab911f4"
+    },
+    "insertions": 11,
+    "preserved_support_sha256": {
+      "../issue120/CMakeLists.txt": "368b338ceacad300a19dbef4ba249d9f0d90a3e6682fe69de4837a1c67e7362d",
+      "../issue120/native_result_io.hpp": "2b3c235adcea60590635d66ea0570cd209e18567dadea32f86e9ad94d730cea1",
+      "../issue120/q4_host_sequence.hpp": "cd796ffbecb9f1fabab39efd159ab103b21d108a84ce59e012b310c71e60a344",
+      "../issue120/q4_runtime_args.hpp": "017eb0ac1fce8154e34cd242923a89046073587f8994985b5cc3fcc89de96111",
+      "host_protocol.hpp": "679fce752a119d864965336f73b8e3008166813f34164d691b2d91724e7b1525",
+      "host_sequence.hpp": "ed3a7d6c36de7c63f268a4abc075d732a985c370dae75ad1e63a94835ca79e8f",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed"
+    },
+    "schema": "issue120-host-only-source-proof-v1",
+    "successor_source_sha256": "7bbdd0e57327669d849c60f1ca3e29d0999406eb68da96d435535f8bd45dd6fa"
+  },
+  "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+  "not_covered_policy": "diagnostic rates/costs only; no coverage or production promotion",
+  "offline_tools_sha256": {
+    "tools/analyze_issue120_calibration_pair.py": "7b0c4b2ed92f3ba342f21d4e5266411c62a126ff73624adbf6f63593049f596e",
+    "tools/prepare_issue120_c2_admission.py": "363cf61ddc08a7e264a688755ad2a7938ad2991f84876f67c9df43a58fcd28ba"
+  },
+  "operator_watcher_reviewed": true,
+  "program_identity": {
+    "calibration_compatibility_contract": "issue120-calibration-compatibility-v1",
+    "compile_manifest_sha256": "eeaeb2cdcd0249dd7472e7687f43daab62960f87153996c33783405f1fa5785f",
+    "device_compile_proof_sha256": "0259164a64b5044e60accaca7a14389be1354d7ec5a5905d336cbbe51004b92c",
+    "host_trace_contract": "issue120-host-submission-trace-v1",
+    "kernel_sources_sha256": {
+      "device.hpp": "eead1032618e6ebaf4ddca36b5b089c5c49cce063ee028b78d7326a2803c64c2",
+      "production_consumer.cpp": "864680c4782a58e966e60570c4039cfdb3cbd9e689bf28073e2baa9684269c56",
+      "production_producer.cpp": "1ba9af269b3317c99dacc4a2486e2fd822e8c16ccaf6610cb411fbb366f8e149",
+      "protocol.hpp": "12b44c53730d4a80e9d0fd530126e3d14ef14ebbdaa6ad98122904728b11b2ed",
+      "resident_tables.h": "090a48f3296c404bfce5d6662ce880ac3048aa0bf40d28c6fbd6258efd1d925c"
+    },
+    "library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "native_sha256": "0a36ed6011a8cb71773545751f98767961e1392ffb16244f2e07e4fe709234e6",
+    "python_sources_sha256": {
+      "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
+      "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
+      "artifacts.py": "77bf193bf88b4ee03d86f2d7a2a806e86d8f653d85447cf4324e5c89d3942825",
+      "bounded_evidence.py": "00b94c6e34609dbb4d1776a75110db2e501fe87eace3579c6e2248829fc1c9ec",
+      "checks.py": "cd6140b706c28cc0f130ae8ffd434cc763e678bb2711290b930833c942ca415d",
+      "coverage.py": "ca1342299f2582a649e6cd15d2ae2fe003f000124846a74c0b799fa0d98b93a2",
+      "diagnostics.py": "f962505540536e8129e40014f1ac83fa41a50bfb3b15a78641a38c90a2dc7ced",
+      "host_build_inputs.py": "c2f232d78986b6362a64fb4b63e89bc064df1a559f38e75fcb9442e3d10b2614",
+      "host_trace.py": "773b37185e7967baa87385175a4190974b7d93c536a7874d89526a50955b0149",
+      "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
+      "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
+      "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
+      "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
+      "recording.py": "99f59548fbdc7269cefd06bfcc099a9b2ee589209da14359b720f5fb172476a1",
+      "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
+      "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
+      "runner.py": "8d8763e5489175095a124e8cc8b1509fccc6f6b996eb16d6d8c5e12f9ac53604",
+      "runtime.py": "8b52f8dde08c147ce68dac777282b751c6e8329c24f39395e733c59f2f10a04f",
+      "sessions.py": "e07f920a5b33036ff00efcfceb07aff3ac98f4a7eae1a1549b773f40b1bea885"
+    }
+  },
+  "python_transition": {
+    "after": {
+      "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
+      "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
+      "artifacts.py": "77bf193bf88b4ee03d86f2d7a2a806e86d8f653d85447cf4324e5c89d3942825",
+      "bounded_evidence.py": "00b94c6e34609dbb4d1776a75110db2e501fe87eace3579c6e2248829fc1c9ec",
+      "checks.py": "cd6140b706c28cc0f130ae8ffd434cc763e678bb2711290b930833c942ca415d",
+      "coverage.py": "ca1342299f2582a649e6cd15d2ae2fe003f000124846a74c0b799fa0d98b93a2",
+      "diagnostics.py": "f962505540536e8129e40014f1ac83fa41a50bfb3b15a78641a38c90a2dc7ced",
+      "host_build_inputs.py": "c2f232d78986b6362a64fb4b63e89bc064df1a559f38e75fcb9442e3d10b2614",
+      "host_trace.py": "773b37185e7967baa87385175a4190974b7d93c536a7874d89526a50955b0149",
+      "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
+      "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
+      "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
+      "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
+      "recording.py": "99f59548fbdc7269cefd06bfcc099a9b2ee589209da14359b720f5fb172476a1",
+      "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
+      "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
+      "runner.py": "8d8763e5489175095a124e8cc8b1509fccc6f6b996eb16d6d8c5e12f9ac53604",
+      "runtime.py": "8b52f8dde08c147ce68dac777282b751c6e8329c24f39395e733c59f2f10a04f",
+      "sessions.py": "e07f920a5b33036ff00efcfceb07aff3ac98f4a7eae1a1549b773f40b1bea885"
+    },
+    "before": {
+      "__init__.py": "33813c8d2cf8303bc8e887f819da7a517b09c33295c889231e903372a7548eae",
+      "admission_bridge.py": "7c6133d62961ec0fc0d0193d20213843ab1297cb7a358b280526cbdb222e1c05",
+      "artifacts.py": "77bf193bf88b4ee03d86f2d7a2a806e86d8f653d85447cf4324e5c89d3942825",
+      "bounded_evidence.py": "00b94c6e34609dbb4d1776a75110db2e501fe87eace3579c6e2248829fc1c9ec",
+      "checks.py": "cd6140b706c28cc0f130ae8ffd434cc763e678bb2711290b930833c942ca415d",
+      "coverage.py": "ca1342299f2582a649e6cd15d2ae2fe003f000124846a74c0b799fa0d98b93a2",
+      "diagnostics.py": "f962505540536e8129e40014f1ac83fa41a50bfb3b15a78641a38c90a2dc7ced",
+      "host_build_inputs.py": "c2f232d78986b6362a64fb4b63e89bc064df1a559f38e75fcb9442e3d10b2614",
+      "host_trace.py": "773b37185e7967baa87385175a4190974b7d93c536a7874d89526a50955b0149",
+      "host_trace_contract.py": "82fad01001255f5392cfc0eccf7ff9a0de49ccabee0c6afaf2c7eb1a1de8a8b3",
+      "kernel_adapter.py": "e34741bcba41cd336e9c7c10fe65c58adc02541b72bf17fd625490a6f42c200e",
+      "plan.py": "ccbf22d98ee39300872adcb56162ef7764a6c0ba16368cae675ca360a9e2e6d6",
+      "protocol.py": "44d9397f1b719d757ce2384bbb1270381e2e9ffbba6c3f75f5b2197b5cf53e5b",
+      "recording.py": "fa05c9c852392a6c02317aa07943d5fab7be91e0e44678b4212d0dcbb38c878f",
+      "records.py": "89a64c7f48dec8dfbbc49a4c852eddd2384d81633d4509879bc228300b0a1cdb",
+      "run_production.py": "c672e55e219148b62f85d71c4446166733ec9407fe8a3b81a4d6fdf183678352",
+      "runner.py": "8d8763e5489175095a124e8cc8b1509fccc6f6b996eb16d6d8c5e12f9ac53604",
+      "runtime.py": "b04b0d2fbb8332cd9ae641258ebaf24825b953bc4915b7ba315ac47f0e24ddfd",
+      "sessions.py": "e52937369ff39dc149a39655c5ac0df80ad29dbbca07492efb5b4029ae969e6c"
+    },
+    "changed": {
+      "recording.py": {
+        "after": "99f59548fbdc7269cefd06bfcc099a9b2ee589209da14359b720f5fb172476a1",
+        "before": "fa05c9c852392a6c02317aa07943d5fab7be91e0e44678b4212d0dcbb38c878f"
+      },
+      "runtime.py": {
+        "after": "8b52f8dde08c147ce68dac777282b751c6e8329c24f39395e733c59f2f10a04f",
+        "before": "b04b0d2fbb8332cd9ae641258ebaf24825b953bc4915b7ba315ac47f0e24ddfd"
+      },
+      "sessions.py": {
+        "after": "e07f920a5b33036ff00efcfceb07aff3ac98f4a7eae1a1549b773f40b1bea885",
+        "before": "e52937369ff39dc149a39655c5ac0df80ad29dbbca07492efb5b4029ae969e6c"
+      }
+    },
+    "scope": "host metadata admission/provenance/offline analysis only; native/device unchanged"
+  },
+  "records": [
+    {
+      "archive": "docs/measurements/issue120-production/2026-11-18-b4/B1-evidence.tar.gz",
+      "archive_sha256": "e4652097838ffd712f7b85a288706cfe56f16aecb59c7e430ea6f8e1f8a3370e",
+      "case": "B1",
+      "manifest": "docs/measurements/issue120-production/2026-11-18-b4/B1-manifest.json",
+      "manifest_sha256": "d513796b2679e99d83b323b3a0b8d00cecfa8f86583d296b4a5e68b2ff601f6f",
+      "record_file": "results-20261118T1445539271829941429764960Z.json",
+      "record_sha256": "871161088bd3260dd9f3d785c1c31dbdc882f28ac1088adf97bc187bbb07fc26"
+    },
+    {
+      "archive": "docs/measurements/issue120-production/2026-11-18-b4/B2-evidence.tar.gz",
+      "archive_sha256": "e3d1a23a016bc27b3ab7568deb542955c12065f861d3552c73be0f545962f9e9",
+      "case": "B2",
+      "manifest": "docs/measurements/issue120-production/2026-11-18-b4/B2-manifest.json",
+      "manifest_sha256": "16e26ee1704c20aebcb09c00882265358c110e855037a75a52a1bb9268accd03",
+      "record_file": "results-20261118T14472425729255814391413846Z.json",
+      "record_sha256": "e1ab9c9b84d4cefaeab958fc2c2bb2906a627776e7ea436db2dd6f43a35c8e04"
+    }
+  ],
+  "schema": "issue120-bounded-admission-v3",
+  "stable_environment": {
+    "board_info": {
+      "board_id": "000004033191411c",
+      "board_type": "p150a",
+      "bus_id": "0000:06:00.0",
+      "coords": "N/A",
+      "dram_speed": "16G",
+      "dram_status": true,
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "device_node": "/dev/tenstorrent/0",
+    "firmwares": {
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "dm_app_fw": "0.22.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "eth_fw": "0.0.0",
+      "fw_bundle_version": "19.6.0.0",
+      "gddr_fw": "2.12",
+      "tt_flash_version": "N/A"
+    },
+    "host_sw_vers": {
+      "pyluwen": "0.9.0",
+      "tt_smi": "6.2.1",
+      "tt_umd": "0.9.8"
+    },
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-149-generic",
+    "kmd_version": "2.12.0",
+    "limits": {
+      "asic_fmax": "1350",
+      "board_power_limit": "300",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "tdc_limit": "200",
+      "tdp_limit": "150",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "vdd_max": "0.90",
+      "vdd_min": "0.70"
+    },
+    "smbus_telem_limits": {
+      "AICLK_ARB_MAX": "0x80546",
+      "AICLK_ARB_MIN": "0x10320",
+      "AICLK_LIMIT_MAX": "0x546",
+      "BOARD_POWER_LIMIT": "0x12c",
+      "ENABLED_MAX_ARB": "0x1d1",
+      "ENABLED_MIN_ARB": "0x3",
+      "TDC_LIMIT_MAX": "0xc8",
+      "TDP_LIMIT_MAX": "0x96",
+      "THM_LIMIT_SHUTDOWN": "0x6e",
+      "THM_LIMIT_THROTTLE": "0x5a",
+      "VDD_LIMITS": "0x38402bc"
+    },
+    "telemetry_sampler": {
+      "interval_seconds": 2.0,
+      "mode": "default",
+      "power_trace": "required",
+      "timing_evidence": "available"
+    },
+    "tt_env_active_release": "0.75.0"
+  },
+  "work_units": {
+    "bytes_per_write": 4096,
+    "cpu_operations_per_write": 32768
+  }
+}

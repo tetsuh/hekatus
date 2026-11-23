@@ -1,0 +1,8 @@
+{
+  "baseline_sha256": "6d246afc424a3fe5640dd0ae5c39cd7a3d40b5eda300cc542f6268d344ec877f",
+  "known_baseline_lines": 7,
+  "passed": true,
+  "sample_truncated": false,
+  "unexpected_count": 0,
+  "unexpected_sample": []
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "issue120-b-provisional-projection-v1",
+  "not_calibration": true,
+  "host_rate_from_B": null,
+  "candidate_N_unchanged": 24439669,
+  "old_run8_slow_planning_seconds_not_new_baseline_measurement": 574.6546851161758,
+  "prior_reserve_seconds": 20,
+  "b1_linear_projected_analysis_retrieval_seconds": 29.862237670918553,
+  "b1_linear_projected_reserve_seconds": 38.603410967918705,
+  "conditional_old_rate_plus_projected_reserve_seconds": 613.2580960840944,
+  "conditional_600s_headroom_seconds": -13.258096084094461,
+  "watcher_control_short_run_extrapolation_not_a_bound": true,
+  "naive_scaled_program_span_seconds_not_valid_production_estimate": 597.9001895751953,
+  "pre_arithmetic_observation_median_period_fraction": 0.04497888888888889,
+  "calibration_and_production_authorized": false
+}

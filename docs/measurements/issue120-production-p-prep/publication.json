@@ -1,0 +1,8 @@
+{
+  "report": "out/issue120-publication-check/7e102b4560f242ad97f8ea81a57ad11e",
+  "fixture_only": true,
+  "publisher_euid": 0,
+  "reader_euid": 1000,
+  "launcher_exit": 0,
+  "snapshot_mode": "0o644"
+}

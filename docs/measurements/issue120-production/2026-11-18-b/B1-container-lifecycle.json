@@ -1,0 +1,37 @@
+[
+  {
+    "action": "create",
+    "time": 1795005664,
+    "timeNano": 1795005664508753186,
+    "name": "hekatus-bench-7618-24236",
+    "exitCode": null
+  },
+  {
+    "action": "attach",
+    "time": 1795005664,
+    "timeNano": 1795005664509435348,
+    "name": "hekatus-bench-7618-24236",
+    "exitCode": null
+  },
+  {
+    "action": "start",
+    "time": 1795005664,
+    "timeNano": 1795005664617589420,
+    "name": "hekatus-bench-7618-24236",
+    "exitCode": null
+  },
+  {
+    "action": "die",
+    "time": 1795005673,
+    "timeNano": 1795005673885952388,
+    "name": "hekatus-bench-7618-24236",
+    "exitCode": "0"
+  },
+  {
+    "action": "destroy",
+    "time": 1795005673,
+    "timeNano": 1795005673896489069,
+    "name": "hekatus-bench-7618-24236",
+    "exitCode": null
+  }
+]

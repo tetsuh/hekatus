@@ -7,6 +7,10 @@ reformatting them would change their manifest SHA-256 values.
 
 ## Issue #120 board-free feasibility preparation
 
+The following is a chronological history: each unresolved or unauthorized state
+refers to that stage, not the current production status. The later completed
+pair is reported in the production-results section below.
+
 The [feasibility plan](issue120-feasibility-plan.md) records the v0.75.0 source
 audit, bounded experimental probes, predictions and mechanism-selection gates.
 Phase 1 performs no board run and adds no timing result. A payload witness is
@@ -97,6 +101,90 @@ runtime/accessor/host xy. Explicit distribution and guarded diagnostics passed
 short feasibility, not production. Only baseline warnings, healthy postchecks,
 no reset/retry/production; previous bytes unchanged. See run8 for the remaining
 long-run/control gates and #179's legacy expected2 label caveat (actual4098).
+
+## Issue #120 production results (2026-11-21)
+
+The [single approved P1/P2 pair](issue120-production/2026-11-21-p/README.md)
+completed at4fd4900 in one fresh session:500000frames each,1ms reference period,
+Watcher off,device0,600s native/outer caps;loaded fixed22155167writes adopted by
+owner on2026-11-21. Both rows had full identity/checksum/work integrity,all exits0,
+zero abort/drop/overflow/paired outliers,healthy frozen power and post-run health.
+P2 strict first-to-last causal coverage is covered. No retry/reset occurred.
+
+| Ticks | Control | Loaded | Loaded minus control |
+|---|---:|---:|---:|
+| P50 |1350001 |1349991 |−10 |
+| P99 |1350816 |1350834 |+18 |
+| P99.9 |1351065 |1351070 |+5 |
+| P99.99 |1351227 |1351205 |−22 |
+| Maximum |1351658 |1351677 |+19 |
+
+Full499999-interval histograms,CPU/read/write totals,causal lower bounds,weighted
+AICLK and conversion assumptions,predictions versus observations,actual native/
+container/retrieval costs and byte-exact compressed companions are in the archive.
+Native/device content and all historical records remain unchanged. This is one
+sequential synthetic-instrument pair without significance or product wall-time
+guarantees;no advance latency threshold was imposed. See design section12,
+[Stage-A plan](issue120-production-plan.md),[ADR-0019](../adr/0019-issue120-production-causal-instrument.md)
+and [ADR-0020](../adr/0020-issue120-host-trace-c1-admission.md).
+
+### Historical bounded/calibration/preparation stages
+
+The [2026-11-18 B attempt](issue120-production/2026-11-18-b/README.md) used the
+owner-approved Linux6.8.0-149/KMD2.12.0 baseline. B1 native/wrapper completed4096
+healthy frames, but host reread of a protected snapshot failed; B2/C/P were not
+run. Exact evidence is archived, with reference-only control metrics and #182/
+#183 follow-ups. This is not a completed B unit or a production timing result.
+
+The [board-free B3 follow-up](issue120-production-b3-plan.md) adds readable v2
+publication, an explicit v2 power scope and full post-child readback tests while
+preserving B1 bytes/interpretation. Its [cap study](issue120-production-b3-cap-study.md)
+does not change600s,500000 frames or the550s target and grants no B/C/P approval.
+
+The [renewed B4 v2 control/load archive](issue120-production/2026-11-18-b4/README.md)
+at9873978 records healthy same-session4096-frame Watcher rows, actual launcher
+readback and loaded causal coverage. Reference loaded-control P50/P99/max changes
+are+3/+185.82/+45 ticks; overflow/drop/abort/paired outliers are0. No production
+timing or C/P execution is claimed. Its inclusive worker rate41153.868writes/s
+contains a possible fixed lead; the updated cap study and B4 plan retain that
+uncertainty rather than adopt an uncalibrated shorter target.
+
+The [C1 host-trace preparation](issue120-production-c1-prep-plan.md) preserves
+those B4 bytes and adds bounded host diagnostics plus a C1-only evidence bridge
+under ADR-0020. That stage ended board-free while the owner powered down the
+board; the next-boot C1 retained the catalog60s/Watcher-off scope.
+
+The [single2026-11-21 C1](issue120-production/2026-11-21-c1/README.md) atb380955
+then completed16384frames/1048576writes with all direct exits0,covered causal
+frame/map evidence and zero overflow/drop/abort/paired outliers. Its17-point
+host trace shows24974committed writes already at main enqueue return,not a
+full dead worker lead. No same-session control difference is available. The
+archive contains unchanged originals and conditional cap/C2 planning,not a
+production count or approval. At that stage C2/P remained unexecuted.
+
+The separately approved [single C2](issue120-production/2026-11-21-c2/README.md)
+atf5d46fb completed32768frames/1572864writes,all exits0,covered,zero anomalies,
+with the same native/device identity. Its25-point trace and artifact-validated
+C1/C2 metadata bridge preserve both original origins. Conditional slab-based
+550/530/520s tables recommend owner consideration of520s/22155167writes with
+explicit unbounded rate/frame/reserve assumptions. No count/floor was adopted;
+that measurement stage kept C2-only admission and P remained unexecuted.
+
+The later [board-free P preparation](issue120-production-p-prep/README.md)
+adds a separately versioned compatible-production receipt without changing
+legacy admissions. At that stage, one selection held the recommended target/count,
+not adoption.
+Real500000-row CPU fixtures measure record construction,analysis,hash/copy/fsync,
+publication and rereading,including P2's in-wrapper P1 validation; native2GB
+retrieval remains unmeasured. Updated conditional cap margins and a one-screen
+owner checklist accompany the isolated admission/session/launcher dry-run.
+That preparation alone granted no hardware authority. The later
+[dated adoption precommit](issue120-production-p-adoption-plan.md) supplied explicit
+v2 authority and durable session-role consumption plus external completion gates;
+the owner-approved actual pair above followed all fresh baseline/proof/resource/
+quiescence checks and exact-head6350tests/CI9/Sonar0/0/OK. Raw64 MB companions are
+stored byte-exactly in20.6/27.4 MB gzip archives,not as uncompressed Git blobs;
+local original transport and wrapper bytes remain untouched.
 
 ## Issue #137 duration-bounded runner (revision 2)
 
