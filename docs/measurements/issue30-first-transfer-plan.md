@@ -516,3 +516,15 @@ B3 routing-call jitter, B4 physical latency, #13 loopback and #105 stage3 remain
 separate experiments; none is licensed by B success. #105 still requires B5/B6
 resolution and prewritten stage3 acceptance criteria. FPGA peer compatibility is
 not established by TT-to-TT traffic.
+
+## After the single B: source-only failure analysis and morning proposals
+
+The [B record](2026-11-24-issue30-b-smoke/README.md) preserves the completed,
+rejected RX-JIT stop. The owner has powered off the cards; no board/tt-smi/device
+access is permitted. The [failure-analysis plan](issue30-b-failure-analysis-plan.md)
+separates observed stages from source-control-flow inference, compares fixture
+requirements with actual1x2/two-unit meshes/two PCIe-local cards/four links,
+explains why this failed rather than skipped, and provides bounded separate
+morning approval units. It proposes include/export-layout qualification, not a
+firmware/reset remedy for a host compilation/filesystem error. Original A/B
+records and current one-use authority are not rewritten or renewed.
