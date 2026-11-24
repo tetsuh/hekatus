@@ -18,6 +18,8 @@ FIXTURE = ROOT / "docs/measurements/issue196/official-smoke-source.txt"
 B_ARCHIVE = ROOT / "docs/measurements/2026-11-24-issue30-b-smoke/B-native-evidence.tar.gz"
 COMPILER = "/opt/tenstorrent/sfpi/compiler/bin/riscv-tt-elf-g++"
 OLD_ROOT = "/opt/venv/lib/python3.12/site-packages/ttnn"
+DEPENDENCY_FILE = "kernel.d"
+PROCESSORS = {"brisc", "ncrisc", "trisc0", "trisc1", "trisc2", "active_erisc", "subordinate_active_erisc"}
 EXPECTED_IDS = {f"observed-{i:02d}-{p}" for i, p in enumerate(
     ["brisc", "ncrisc", "trisc0", "trisc1", "trisc2", "brisc"] +
     ["subordinate_active_erisc", "subordinate_active_erisc", "active_erisc",
@@ -61,6 +63,8 @@ def validate_manifest(value):
     if tuple(value["captured_common_flags"]) != FLAGS or value["failed_argv"][0] != COMPILER:
         raise ValueError("compiler options differ from captured control")
     for case in cases:
+        if case.get("processor") not in PROCESSORS:
+            raise ValueError("unsupported processor option")
         if case.get("optimization") not in ("O2", "O3", "Os"):
             raise ValueError("unsafe compiler optimization option")
         if not case["defines"] or any("BENCHMARK_MODE" in x or x.startswith("-") for x in case["defines"]):
@@ -132,13 +136,13 @@ def driver(case):
 def dependency_hashes(path):
     text = path.read_text().replace("\\\n", " ").partition(":")[2]
     names = sorted(set(text.split()))
-    hashes = {}
+    hashes = []
     allowed = (runtime.CAPTURE, runtime.IMAGE_ROOT, runtime.SOURCE_ROOT, Path("/opt/tenstorrent/sfpi"))
     for name in names:
         source = (Path(name) if Path(name).is_absolute() else path.parent / name).resolve()
         if not any(source.is_relative_to(base) for base in allowed) or not source.is_file():
             raise ValueError("dependency escaped fixed input/output roles")
-        hashes[name] = sha(source.read_bytes())
+        hashes.append({"path": name, "sha256": sha(source.read_bytes())})
     return hashes
 
 
@@ -147,7 +151,7 @@ def compile_case(value, case, root, inputs):
     working.mkdir()
     output = working / "kernel.o"
     command = [COMPILER, *options(value, case, root), "-c", "-o", str(output),
-               str(root / driver(case)), "-MF", str(working / "kernel.d")]
+               str(root / driver(case)), "-MF", str(working / DEPENDENCY_FILE)]
     start = time.monotonic()
     done = subprocess.run(command, cwd=working, capture_output=True, check=False, timeout=40)
     elapsed = time.monotonic() - start
@@ -158,9 +162,9 @@ def compile_case(value, case, root, inputs):
             "origin": case["origin"], "argv": command, "exit": done.returncode,
             "elapsed_seconds": elapsed, "stdout_sha256": sha(done.stdout), "stderr_sha256": sha(done.stderr),
             "object_sha256": sha(output.read_bytes()) if output.is_file() else None,
-            "dependency_sha256": sha((working / "kernel.d").read_bytes()) if (working / "kernel.d").is_file() else None,
+            "dependency_sha256": sha((working / DEPENDENCY_FILE).read_bytes()) if (working / DEPENDENCY_FILE).is_file() else None,
             "missing_include_control": b"kernel_utils.hpp: No such file or directory" in done.stderr,
-            "input_dependencies": dependency_hashes(working / "kernel.d") if done.returncode == 0 else {}}
+            "input_dependencies": dependency_hashes(working / DEPENDENCY_FILE) if done.returncode == 0 else []}
 
 
 def run(mode):

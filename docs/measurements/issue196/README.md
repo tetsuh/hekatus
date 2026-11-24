@@ -104,8 +104,17 @@ credit/handshake, payload correctness or a guarantee for the whole cold-JIT path
 - Four isolated new-layout gates passed: A/B exact selectors list with eager
   loading, and A/B no-chip probes each exit1/No chips detected in the cluster;
   no device mappings, all containers cleaned. [compile-proof.json](compile-proof.json)
-  retains exact argv/results; receipt-v8 binds31 sources and unchanged17 transport/
-  watchdog functions/19 constants. Full-suite/ruff/CI/Sonar are in the report.
+  retains exact argv/results. Its typed publication keeps each dependency as
+  explicit path/SHA256 records (filename-keyed digests triggered a token-name
+  secret false positive); initial JSON is preserved byte-exact in
+  compile-proof-initial.tar.gz, all paths/hashes/measurement values unchanged.
+  No analysis finding was accepted/muted. A successor proof/receipt-v9 binds
+  the clarified schema/processor guard and unchanged native layout/ELFs; v8
+  remains historical at its revision. [compile-proof-v3.json](compile-proof-v3.json)
+  repeats current controls: old RX include error reproduced,24 GREEN cases0,
+  13.435495187s/2702 dependency entries/export write passed. Four native gates
+  are reused byte-exact after runtime/command/transport AST equality against v8.
+  Full-suite/ruff/CI/Sonar are in the report.
 
 No new A/B is run by this preparation. [morning-admission.json](morning-admission.json)
 keeps B physically gated pending new owner approval and fresh-A handling after

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -85,12 +86,30 @@ def test_offline_options_do_not_add_source_root_include_workaround():
 
     value = json.loads(check.MANIFEST.read_bytes())
     case = next(x for x in value["cases"] if x["id"] == "captured-rx")
-    from pathlib import Path
-
     args = check.options(value, case, Path("/capture/runtime"))
     assert "-I/capture/runtime/" in args
     assert "-I/source" not in args
     assert len([x for x in args if x.startswith("-I/source/")]) == 1
+
+
+def test_dependencies_use_explicit_path_and_sha256_not_filename_as_credential_key(tmp_path, monkeypatch):
+    from enodia.tt.bench import issue196_compile as check
+
+    monkeypatch.setattr(check.runtime, "CAPTURE", tmp_path)
+    header = tmp_path / "token-header.h"; header.write_bytes(b"synthetic header")
+    dep = tmp_path / "kernel.d"; dep.write_text("kernel.o: " + str(header) + "\n")
+    rows = check.dependency_hashes(dep)
+    assert rows == [{"path": str(header), "sha256": check.sha(header.read_bytes())}]
+
+
+def test_processor_metadata_cannot_escape_the_owned_compile_directory():
+    from enodia.tt.bench import issue196_compile as check
+
+    value = json.loads(check.MANIFEST.read_bytes())
+    check.validate_manifest(value)
+    value["cases"][0]["processor"] = "../../escape"
+    with pytest.raises(ValueError, match="processor"):
+        check.validate_manifest(value)
 
 
 def test_runtime_root_redirect_and_unknown_native_phase_are_refused(tmp_path, monkeypatch):
