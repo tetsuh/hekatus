@@ -18,12 +18,14 @@ from xml.etree.ElementTree import ParseError
 
 from defusedxml import ElementTree as ET
 
+from enodia.tt.bench import issue30_topology as topology
+
 IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
 ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v2.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v3.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
 LIBRARY_SHA256 = "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
@@ -45,7 +47,8 @@ MASKS = ["/sys", "/proc/bus", "/proc/driver", "/proc/acpi", "/proc/asound",
          "/proc/timer_list", "/proc/timer_stats", "/proc/sched_debug", "/proc/scsi"]
 PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CMakeLists.txt",
                  "tools/build_issue30.py", "tests/test_issue30.py", "tests/test_issue30_capture.py",
-                 "pyproject.toml", "uv.lock")
+                 "pyproject.toml", "uv.lock", "enodia/tt/bench/issue30_topology.py",
+                 "tests/test_issue30_topology.py", topology.POLICY_FILE)
 
 
 def digest(data: bytes) -> str:
@@ -209,6 +212,9 @@ def _cards(cards):
 
 
 def _links(env):
+    if "topology" in env:
+        topology.validate_input(env)
+        return
     links = env.get("links", [])
     keys = {(x["chip"], x["channel"]) for x in links}
     if not links or len(keys) != len(links) or keys & {tuple(x) for x in env.get("uncabled", [])}:
@@ -306,12 +312,14 @@ def _warning(env, body):
     except ValueError as exc:
         raise ValueError("diagnostic") from exc
     indices = {c["chip"]: c["pcie_index"] for c in env["cards"]}
-    if (not sep or parsed["state"] != DOWN or indices.get(chip) != pcie
-            or [chip, parsed["channel"]] not in env.get("uncabled", [])):
+    allowed = ([chip, parsed["channel"]] in env.get("uncabled", [])
+               or "topology" in env and parsed["channel"] in topology.CHANNEL_PORT)
+    if not sep or parsed["state"] != DOWN or indices.get(chip) != pcie or not allowed:
         raise ValueError("diagnostic")
+    return {"chip": chip} | parsed
 
 
-def _messages(env, raw):
+def _messages(env, raw, warnings=None):
     if len(raw) > 8 * 1024 * 1024:
         raise ValueError("diagnostic")
     try:
@@ -324,52 +332,66 @@ def _messages(env, raw):
         if re.search(r"\b(?:error|fatal|critical)\b", line, re.IGNORECASE):
             raise ValueError("diagnostic")
         if level == "warning":
-            _warning(env, body)
+            warning = _warning(env, body)
+            if warnings is not None:
+                warnings.append(warning)
         else:
             messages.append(body)
     return messages
 
 
-def _health_link(env, lines, index, chip):
+def _observed_link(lines, index, chip):
     data = _link(lines[index])
     if chip is None:
         raise ValueError("peer_links")
-    if data.pop("state") == DOWN:
-        if [chip, data["channel"]] not in env.get("uncabled", []):
-            raise ValueError("peer_links")
-        return None
-    if index + 1 >= len(lines) or lines[index + 1] != "Retrain count: 0":
-        raise ValueError("retrain")
+    if data["state"] == "UP":
+        if index + 1 >= len(lines) or lines[index + 1] != "Retrain count: 0":
+            raise ValueError("retrain")
+        data["retrain_count"] = 0
     return {"chip": chip} | data
 
 
-def _health_records(env, lines):
-    headers, found, chip = [], [], None
-    for index, body in enumerate(lines):
-        if body.startswith("Chip: "):
-            chip, pcie = _chip(body)
-            headers.append((chip, pcie))
-        elif body.startswith("eth channel "):
-            data = _health_link(env, lines, index, chip)
-            if data is not None:
-                found.append(data)
-    expected = {(c["chip"], c["pcie_index"]) for c in env["cards"]}
-    if len(headers) != 2 or set(headers) != expected:
-        raise ValueError("chip_identity")
+def _legacy_links(env, observed):
+    found = []
+    for data in observed:
+        if data["state"] == DOWN:
+            if [data["chip"], data["channel"]] not in env.get("uncabled", []):
+                raise ValueError("peer_links")
+        else:
+            found.append({k: v for k, v in data.items() if k not in ("state", "retrain_count")})
     canonical = lambda xs: sorted(json.dumps(x, sort_keys=True) for x in xs)
     if canonical(found) != canonical(env["links"]):
         raise ValueError("peer_links")
 
 
-def _health(env, raw):
-    lines = _messages(env, raw)
+def _health_records(env, lines, observed, warnings):
+    headers, chip = [], None
+    for index, body in enumerate(lines):
+        if body.startswith("Chip: "):
+            chip, pcie = _chip(body)
+            headers.append((chip, pcie))
+        elif body.startswith("eth channel "):
+            observed.append(_observed_link(lines, index, chip))
+    expected = {(c["chip"], c["pcie_index"]) for c in env["cards"]}
+    if len(headers) != 2 or set(headers) != expected:
+        raise ValueError("chip_identity")
+    if "topology" in env:
+        topology.check_warnings(observed, warnings)
+        return topology.classify(observed)
+    _legacy_links(env, observed)
+    return None
+
+
+def _health(env, raw, observed):
+    warnings = []
+    lines = _messages(env, raw, warnings)
     if [x for x in lines if x.startswith("Found ")] != ["Found 2 chips in cluster:"]:
         raise ValueError("chip_count")
     prefix = "Established firmware bundle version: "
     bundles = [x.removeprefix(prefix) for x in lines if x.startswith(prefix)]
     if bundles != [_bundle_report_name(env["cards"][0]["bundle"])]:
         raise ValueError("bundle")
-    _health_records(env, lines)
+    return _health_records(env, lines, observed, warnings)
 
 
 def baseline_digest(env):
@@ -401,26 +423,36 @@ def _transfer_binding(before, discovery, raw):
     if (not discovery or discovery.get("phase") != "A" or discovery.get("verdict") != ACCEPTED["A"]
             or discovery.get("baseline_sha256") != baseline_digest(before)):
         raise ValueError("discovery_binding")
+    if "topology" in before:
+        topology.require_accepted_discovery(discovery)
     if re.search(rb"\b(?:warning|error|fatal|critical)\b", raw, re.IGNORECASE):
         raise ValueError("diagnostic")
 
 
 def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, discovery=None):
-    reason = "accepted"
+    reason, decision, observed = "accepted", None, []
     try:
         _execution(execution)
         _xml(phase, xml)
         _post(before, after, identity)
         if phase == "A":
-            _health(before, stdout + b"\n" + stderr)
+            decision = _health(before, stdout + b"\n" + stderr, observed)
+            if decision is not None:
+                reason = decision["reason"]
         else:
             _transfer_binding(before, discovery, stdout + stderr)
     except (ValueError, KeyError, TypeError) as exc:
         reason = str(exc) if isinstance(exc, ValueError) else "environment"
-    return {"schema": "issue30-verdict-v1", "attempt": identity, "phase": phase,
-            "verdict": ACCEPTED[phase] if reason == "accepted" else "rejected", "reason": reason,
-            "scope": SCOPES[phase], "baseline_sha256": baseline_digest(before),
-            "evidence_sha256": {"xml": digest(xml), "stdout": digest(stdout), "stderr": digest(stderr)}}
+    result = {"schema": "issue30-verdict-v1", "attempt": identity, "phase": phase,
+              "verdict": ACCEPTED[phase] if reason == "accepted" else "rejected", "reason": reason,
+              "scope": SCOPES[phase], "baseline_sha256": baseline_digest(before),
+              "evidence_sha256": {"xml": digest(xml), "stdout": digest(stdout), "stderr": digest(stderr)}}
+    if "topology" in before:
+        result |= {"schema": "issue30-verdict-v2", "topology": decision, "observed_qsfp": observed}
+        if decision is not None and decision["reason"] == reason:
+            result["verdict"] = {"accepted": ACCEPTED[phase], "not_established": "link_not_established",
+                                 "unexpected": "unexpected_topology"}.get(decision["outcome"], "rejected")
+    return result
 
 
 def _api(method, path, body=None, timeout=5):
@@ -558,6 +590,7 @@ def _git(source, *args):
 
 def _authorize(phase, identity, inputs, output):
     env = _load(inputs / BEFORE_FILE)
+    topology.validate_input(env)
     receipt = _load(CURRENT_RECEIPT, ROOT)
     if _git(ROOT, "status", "--porcelain"):
         raise ValueError("hardware capture requires a clean committed tree")
@@ -571,6 +604,8 @@ def _authorize(phase, identity, inputs, output):
             raise ValueError("pinned source is stale or dirty")
     if receipt.get("source_commit") != SOURCE_COMMIT or receipt.get("runtime_library_sha256") != LIBRARY_SHA256:
         raise ValueError("receipt source/library pin mismatch")
+    if phase == "B":
+        _transfer_binding(env, _load(inputs / "discovery.json"), b"")
     payload = board_request(phase, identity, ASSETS, output, approval=_load(inputs / "approval.json"),
                             environment=env, receipt=receipt, head=_git(ROOT, "rev-parse", "HEAD"))
     return payload, env

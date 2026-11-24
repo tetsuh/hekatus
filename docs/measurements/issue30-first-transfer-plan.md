@@ -161,6 +161,73 @@ source-level preparation is not a successful G0 receipt. Standard GoogleTest
 XML is a result file, not the last-stdout-line transport rejected by ADR-0018.
 Existing Issue #120 JSON schemas/runners are unchanged and not repurposed.
 
+## Frozen A topology hypotheses (owner report, not a hardware observation)
+
+The machine-readable input is [issue30-a-topology.json](issue30-a-topology.json).
+It supersedes the earlier exact lane/core-table preparation requirement for A.
+No A approval has been issued and no health test or transfer has been run.
+
+**Owner statement:** two cables join physical card a port 1 to card b port 1,
+and a port 2 to b port 2, numbering 1..4 in increasing distance from the
+motherboard. The owner cannot identify physical a/b with serial ...411c/...4124;
+these symmetric same-number connections make that swap immaterial. Cable type
+has not been supplied.
+
+**Conversion, not owner testimony:** supplemental vendor documentation calls
+port 1 furthest from the motherboard and port 4 nearest. H1 therefore maps
+owner 1/2 to vendor 4/3. H2 instead assumes owner and vendor numbering agree.
+Pinned `tools/scaleout/board/board.cpp:330-350` supplies channel sets, not the
+physical observation or a lane-crossing rule.
+
+| Hypothesis | Same-vendor-port cables | Connected channels on each card | Uncabled channels |
+|---|---|---|---|
+| H1 (primary) | 4-to-4, 3-to-3 | {4,5,6,7} | {8,9,10,11} |
+| H2 (alternative) | 1-to-1, 2-to-2 | {8,9,10,11} | {4,5,6,7} |
+
+Uncertainties are frozen with the input: near/far guidance is outside the pinned
+release; riser/extension-board geometry may reverse the intended bracket order;
+exact channel/lane pairings are not source-established; two links per cable
+depends on the unconfirmed cable type. Fewer links therefore do not by themselves
+prove a firmware training defect. Neither hypothesis is called observed fact.
+
+**Invariants:** no lane identity such as 4-to-4 is assigned. Resolve the reported
+peer core against that peer card's observed channel/core table. Every UP endpoint
+must target the other card, have an exact reciprocal UP endpoint, and preserve
+the declared port pair (e.g. either 4-to-4 or 4-to-6 within vendor port 4 is
+allowed). All eight QSFP channel records per card must be present once, with
+unique local cores, to distinguish explicit DOWN from missing evidence.
+
+After all unchanged execution/XML/identity/firmware/heartbeat/Watcher/diagnostic
+gates pass, A's three connectivity outcomes are:
+
+1. **accepted_discovery:** exactly H1 or H2, four undirected links / eight UP
+   endpoints, reciprocal and port-consistent. Record which hypothesis and all
+   sixteen observed UP/DOWN records. This permits owner consideration of B,
+   never automatic B authority or a receiver-content/timing claim.
+2. **link_not_established:** zero peers, or a proper reciprocal subset of either
+   hypothesis. Preserve the observations and stop; B is withheld. This reaches
+   the planned discovery stop point corresponding to the open first-training
+   trigger question. It does not establish the cause or prove a host trigger
+   cannot exist, and cable type/orientation are still possible explanations.
+3. **unexpected_topology:** loopback, one-way/foreign/unknown peer, wrong port
+   pair, or connections outside both hypotheses. Preserve observations and
+   stop; no expectation rewrite, retry, MGD override or B release follows.
+
+Truncated/duplicate/malformed reports and unknown execution/health/firmware are
+**rejected evidence**, not a fourth physical connectivity inference. Raw streams
+are retained on every path. Only the source-shaped DOWN warning for a matching
+reported chip/PCI/channel/core is eligible for topology classification; unrelated
+warnings and nonzero retrains still refuse. B recomputes A's observed topology
+before device mappings and again at judgment, rather than trusting a label.
+
+The new input is `before.topology` equal to the full frozen JSON, with
+`links=[]` and `uncabled=[]` (hypothesis-dependent, not asserted absent). No exact
+core table is in that input. Hardware CLI admission requires this policy; old
+exact-table fixtures remain historical CPU compatibility tests only. The new
+experimental verdict is `issue30-verdict-v2`; its `topology` decision and
+`observed_qsfp` accompany immutable raw files and hashes. Production contracts,
+transport atomicity, separate owner approvals and the 40/50/60 s caps do not change.
+
 ## Separately approved hardware units
 
 ### A — discover / report, no MeshDevice workload
@@ -193,9 +260,11 @@ Existing Issue #120 JSON schemas/runners are unchanged and not repurposed.
   our watchdog to stop it before UMD's much longer wait. If status is settled
   but down, expect missing peer links even if the reporting test exits zero.
   This run is not asserted to initiate physical training.
-- **Stop/release:** timeout, any new warning/error, unhealthy/missing/mismatched
-  chip, unknown firmware version or no bidirectional connection => stop; B
-  withheld. Even a healthy A requires owner review and separate B approval.
+- **Stop/release:** use the frozen H1/H2 three-way connectivity rules above.
+  Timeout, unknown/invalid health or evidence, new non-topology diagnostics,
+  partial/no links or unexpected topology => stop; B withheld. Only matching
+  H1/H2 with all other gates can be accepted, still requiring owner review and
+  separate B approval.
   ReportSystemHealth is explicitly non-failing on health errors
   (`T:tests/tt_metal/tt_fabric/system_health/test_system_health.cpp:257-259`).
 - **Meaning:** establishes or localizes the discovery part of B1. It neither

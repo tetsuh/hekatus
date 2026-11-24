@@ -11,9 +11,11 @@ probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
 The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
 remain immutable evidence for their original head. Hardened admission selects
-[G0 receipt v2](receipt-v2.json) and [build receipt v2](build-receipt-v2.json),
-now populated from fresh private-scratch/fixed-layout verification. No hardware
-correctness, dispatch, link training or jitter result is claimed. All 49 local
+[G0 receipt v3](receipt-v3.json). Original v2 private-scratch/fixed-layout
+verification and [build receipt v2](build-receipt-v2.json) remain immutable.
+V3 rebinds only host input/judgment changes using CPU tests and an unchanged
+launch/watchdog AST proof; no native binary or container was rerun for v3. No hardware
+correctness, dispatch, link training or jitter result is claimed. All 73 local
 G0 unit cases pass; full-suite/CI/Sonar evidence is recorded in the PR/report.
 CodeRabbit CLI could not authenticate at review time; no review was completed.
 The [source study](../issue30-source-study.md) pins T/U and the runtime image.
@@ -84,7 +86,7 @@ There are **no arbitrary path CLI flags**. Assets are fixed at
 hardware outputs at `out/issue30/runs/<attempt>`. Owner inputs have fixed slots
 under `out/issue30/observations/<attempt>`: `before.json`, `after.json`,
 `approval.json`, `review.json`, and B's `discovery.json`. The selected G0 receipt is fixed
-at this document's `receipt-v2.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
+at this document's `receipt-v3.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
 program-owned roots; identity is validated before any file/process operation.
 
 `capture` defaults to device-free; **`--approved-board`** additionally requires
@@ -97,8 +99,11 @@ Canonical path, stale-receipt and daemon-ID mutations have negative tests.
 
 - `issue30-environment-v1`: attempt/boot/image/KMD/Watcher plus exactly the two
   serial/PCI identities, runtime chip-to-PCIe-index map, bundle, CMFW, base ERISC,
-  independently observed ERISC heartbeat health, AICLK, DRAM status, expected reciprocal link/core/channel table and explicitly
-  uncabled chip/channel pairs. Before/after stable values must match. Node paths
+  independently observed ERISC heartbeat health, AICLK and DRAM status. Current
+  hardware inputs also require `topology` equal to the precommitted
+  [two-hypothesis policy](../issue30-a-topology.json), with `links=[]` and
+  `uncabled=[]`: lane/core pairs are learned as observations, never predefined
+  expectations. Before/after stable values and the full policy must match. Node paths
   appear only in private execution inputs. Minimum source gates: KMD 2.8,
   bundle 18.5, ERISC 1.4.1; they are necessary, not sufficient for first training.
 - `issue30-owner-approval-v1`: exact attempt/phase/head/boot and SHA-256 of
@@ -112,23 +117,37 @@ Canonical path, stale-receipt and daemon-ID mutations have negative tests.
   hashes and Watcher-clean observation; never edit the execution file to add a
   health verdict. This is supplied observation, not automatically obtained
   telemetry. B additionally needs the accepted A verdict at the identical
-  baseline fingerprint/boot; B's smoke stdout is not a second health report.
-- `issue30-verdict-v1`: accepted_discovery / accepted_transfer or rejected with
-  a gate-specific reason, baseline and XML/raw-stream hashes. XML uses
+  baseline fingerprint/boot and a recomputed accepted H1/H2 topology; a changed
+  label on partial observations cannot release B. Smoke stdout is not a health report.
+- `issue30-verdict-v2`: accepted_discovery (record H1/H2), link_not_established
+  (zero/partial peers), unexpected_topology, or rejected for invalid evidence;
+  includes every parsed QSFP record in `observed_qsfp`, the `topology` decision,
+  baseline and XML/raw-stream hashes. B can only produce accepted_transfer after accepted
+  A, recomputed from its observations before B launch and at B judgment.
+  V1 remains for historical exact-table CPU fixtures, not hardware admission. XML uses
   defusedxml, is bounded, rejects declarations/entities and must contain exactly
   the expected executed, completed, non-skipped testcase and no errors/failures.
 
 A's bounded, token-based source-report parser avoids unbounded backtracking
 and strips the source logger's filename/line suffix before interpretation.
-It requires exactly two chip headers, expected
-PCIe indices, one matching firmware-bundle establishment, every declared UP
-link with its reverse peer/core and zero retrain counts. Unexpected DOWN or
-UP links fail. It rejects unknown warnings/errors/fatal/critical diagnostics. The sole
-warning exception is the source's exact DOWN/unconnected QSFP warning for a
-**predeclared uncabled** chip/channel. This is necessary because ReportSystemHealth
-warns for intentionally uncabled ports too (T system-health source:344-363).
-It never exempts a cabled/expected link or a firmware warning. Warning PCIe
-identity must match the chip mapping too. The parser uses source SemVer's
+It requires exactly two chip headers, expected PCIe indices, one matching
+firmware-bundle establishment and zero retrain counts. The H1/H2 policy requires
+all eight QSFP records per card, unique channels/cores, peer-to-other-card
+reciprocity and the declared same-port pairs, not a fixed lane permutation.
+H1 connects {4,5,6,7}; H2 connects {8,9,10,11}. Four undirected links matching
+either is accepted; a reciprocal proper subset or zero peers stops as
+link_not_established. One-way/loopback/foreign/wrong-port/mixed-hypothesis
+connections stop as unexpected_topology. Missing/duplicate records are invalid
+evidence, not inferred physical DOWN.
+
+Unknown warnings/errors/fatal/critical diagnostics still refuse. Only the
+source-shaped DOWN/unconnected summary for a matching observed chip/PCI/channel/
+core can participate in classification; it may describe an untrained expected
+channel and therefore lead to the no/partial-link stop, never a health pass.
+No firmware warning is exempt. Source: system-health source:344-363. See the
+[first-transfer plan](../issue30-first-transfer-plan.md#frozen-a-topology-hypotheses-owner-report-not-a-hardware-observation)
+for owner testimony versus conversion, riser/cable uncertainties and three-way
+outcome meaning. The parser uses source SemVer's
 three-component stable log form (U semver.hpp:57-61) and the `x-y` core strings
 from U `device/types/xy_pair.cpp:11`, preserving raw bundle observations
 separately. These source-format gates have explicit RED/GREEN tests.
@@ -171,9 +190,15 @@ QSFP-DD cable gives two links, and any port pair is valid for two cards. That
 current public guide is supplemental, not part of the runtime source pin.
 Its four-channel description does not override T's RELAXED MGD policy.
 
-1. Trace both cable ends and record serial + physical port (1 top/furthest, 4 bottom/nearest motherboard).
-2. Confirm passive QSFP-DD cable type/part, seating and no tension; do not recable while powered for this run.
-3. Translate the table to expected channels/cores and mark all other QSFP channels uncabled before approval.
+Owner now reports two same-number cables (1-to-1, 2-to-2), counting from nearest
+to furthest motherboard, without physical-to-serial identification. Record that
+statement separately from H1's vendor-number conversion and H2's alternative.
+The symmetric card swap is immaterial; riser orientation, cable type and exact
+lane correspondence remain uncertain. Frozen input: [policy](../issue30-a-topology.json).
+
+1. Confirm which near/far direction was meant on the risers; retain both H1/H2 until observed.
+2. Supply cable type/part and confirm two cables/seating; do not recable or infer two links merely from cable count.
+3. Review the H1/H2 sets and reciprocal same-port rule; no physical serial assignment or exact lane guess is required.
 
 ## Host prerequisites (read-only snapshot)
 
@@ -201,17 +226,19 @@ in this task. No increase is justified by the observed pool alone.
 ### A: `issue30-a-discovery-watcher-v1`
 
 - Gate: completed G0 receipt + clean/pushed approved head + current owner
-  two-card identity/firmware/host observation and cable-derived expected links.
+  two-card identity/firmware/host observation (independent ERISC version/heartbeat
+  still mandatory), plus the committed H1/H2 policy, not a guessed lane table.
 - Execute only Cluster.ReportSystemHealth, Watcher=1, fresh named container,
   binary/container/cleanup deadlines 40/50/60 s. Both cards are opened by UMD;
   second card serial 0000040331914124 / PCI 0000:09:00.0 is explicitly in scope.
 - Prediction on 19.6: no bundle-minimum rejection solely for that version;
   per-core firmware/heartbeat and physical training remain conditional.
   PORT_UNKNOWN may reach our cap; settled down may return no peers/exit 0.
-- Accept only the fixed A rules above, matching pre/post observations,
-  no unexpected diagnostics, zero retrains, known lifecycle/after-state.
-  Missing links, format ambiguity, identity/firmware/health drift or timeout
-  is a recorded stop, not permission to alter descriptors/cables/firmware.
+- Record accepted H1/H2 only for the full reciprocal four-link topology and all
+  other health/lifecycle gates. Zero or reciprocal partial peers stops as
+  link_not_established; other topology stops as unexpected_topology. Invalid
+  format/health/identity/watchdog evidence is rejected, never inferred DOWN.
+  Every raw stream and parsed observation is retained; no automatic B or retry.
 - Risk: both-device initialization and firmware waits; no payload or timing
   result. Reset 0/retry 0. Recovery needs separate owner scope/approval.
 - B1 discovery evidence only; B3/B4 unmeasured. Owner reviews A before B.
@@ -235,5 +262,5 @@ in this task. No increase is justified by the observed pool alone.
   it proves neither FPGA compatibility nor B3 jitter/B4 latency/B5/B6.
 
 Morning owner list: both-card identity/base firmware/health; passive cable
-endpoints/expected link table; loaded KMD/hugepage access; completed G0 receipt;
+type/orientation and frozen H1/H2 policy; loaded KMD/hugepage access; completed G0 receipt;
 then **separate A and B approvals**. No timing/new-kernel run is authorized.

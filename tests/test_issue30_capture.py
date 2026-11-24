@@ -30,7 +30,7 @@ def test_cli_defaults_to_the_receipted_assets(tmp_path, monkeypatch, capsys):
     assert m.main() == 0
     assert json.loads(capsys.readouterr().out)["Image"] == m.IMAGE
     assert observed == [m.ASSETS.as_posix()]
-    assert m.CURRENT_RECEIPT.name == "receipt-v2.json"
+    assert m.CURRENT_RECEIPT.name == "receipt-v3.json"
     assert m.CURRENT_RECEIPT.parent == m.ROOT / "docs/measurements/issue30-g0"
 
 
@@ -185,6 +185,40 @@ def test_cli_rejects_arbitrary_path_flags(monkeypatch):
     with pytest.raises(SystemExit) as error:
         m.main()
     assert error.value.code == 2
+
+
+def test_B_authorization_rechecks_A_before_preparing_device_mapping(tmp_path, monkeypatch):
+    from tests.test_issue30_topology import env, judge, records
+
+    before = env()
+    discovery = [judge(records())]
+    fake_receipt = {"source_commit": m.SOURCE_COMMIT, "runtime_library_sha256": m.LIBRARY_SHA256}
+    values = {m.BEFORE_FILE: before, m.CURRENT_RECEIPT.name: fake_receipt, "approval.json": {}}
+    monkeypatch.setattr(m, "_load", lambda path, *args: discovery[0] if path.name == "discovery.json" else values[path.name])
+    pins = {m.SOURCE_ROOT: m.SOURCE_COMMIT, m.SOURCE_ROOT / "tt_metal/third_party/umd": m.UMD_COMMIT}
+    monkeypatch.setattr(m, "_git", lambda path, cmd, *args: "" if cmd == "status" else pins.get(path, "synthetic-head"))
+    original = m.Path.read_text
+    def read_text(path, *args, **kwargs):
+        if str(path) == "/proc/sys/kernel/random/boot_id":
+            return before["boot"]
+        if str(path) == "/sys/module/tenstorrent/version":
+            return before["kmd"]
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(m.Path, "read_text", read_text)
+    monkeypatch.setattr(m.Path, "is_file", lambda path: True)
+    prepare = Mock(return_value={})
+    monkeypatch.setattr(m, "board_request", prepare)
+    m._authorize("B", "synthetic-a", tmp_path, tmp_path / "out")
+    prepare.assert_called_once()
+    prepare.reset_mock()
+    discovery[0] = judge(records(active={4, 6}))  # Only A connectivity changes.
+    with pytest.raises(ValueError, match="discovery_binding"):
+        m._authorize("B", "synthetic-a", tmp_path, tmp_path / "out")
+    prepare.assert_not_called()
+    values[m.BEFORE_FILE] = {k: v for k, v in before.items() if k != "topology"}
+    with pytest.raises(ValueError, match="topology_policy"):
+        m._authorize("A", "synthetic-a", tmp_path, tmp_path / "out")
+    prepare.assert_not_called()
 
 
 def test_daemon_id_is_not_a_path_or_option():
