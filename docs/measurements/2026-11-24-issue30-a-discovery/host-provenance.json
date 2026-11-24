@@ -1,0 +1,45 @@
+{
+  "binary_name": "test_system_health",
+  "binary_watchdog_seconds": 40,
+  "capabilities_dropped": [
+    "ALL"
+  ],
+  "cleanup_cap_seconds": 60,
+  "container_watchdog_seconds": 50,
+  "containers_before_after": 0,
+  "device_node_count": 2,
+  "free_after": 6,
+  "free_before": 8,
+  "harness_commit": "822aa21f97bf3d899b8378bdb7cbb7439018a14b",
+  "hugepages_1g_total": 8,
+  "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+  "immediate_host_idle_percent": 100,
+  "kernel": "6.8.0-149-generic",
+  "loaded_kmd": "2.12.0",
+  "native_source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+  "native_umd_commit": "bc77ac2f7382ffeb9fa5430055f0854d53979489",
+  "network": "none",
+  "no_local_test_or_build_during_A": true,
+  "no_new_privileges": true,
+  "note": "Role-normalized derivative. Raw originals are private and unmodified; no machine name or host-specific absolute path is included.",
+  "pinned_runtime_library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+  "private_raw_sha256": {
+    "after.json": "9ce886a1edaceac14e3f6b49946a9eb456754bc060903403da1b3d0961a56b65",
+    "approval.json": "8962522d409f341b5a9d2c16d83d5fb73f9293663fbdacb155029a51c336905c",
+    "authorized-payload.json": "df76eebbc2dc94cf650efa9d69f2d9c17b36a86bf26ea3cb8094e8f06522e872",
+    "before.json": "4266646ff19e225167a0f9a5bad9408a6307436ea752b111158d0bae1ece7ab0",
+    "docker-after-native.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "immediate-processes.stdout": "cd8b509d9cde8092520ba2f36d515d0162787a345e5ba2aa87f96f007e62fa6c",
+    "immediate-snapshot.stdout": "1c893f51bbfd03eee6dd40eadc054c328973fbc7703db3079b9cbe918e7c5c13",
+    "immediate-vmstat.stdout": "cc0a20d6b8c4f62dd635d6523fec7e367b5d637781dc8e94cabf9be025d2b686",
+    "review.json": "2773ae6950a23a4221eec01697221f6eeaf24f7979d728150fa4ad9fca2866b5"
+  },
+  "readonly_collection_utc": {
+    "after": "2026-11-24T14:18:30Z",
+    "before": "2026-11-24T14:15:25Z"
+  },
+  "rootfs_readonly": true,
+  "schema": "issue30-public-host-provenance-v1",
+  "test_filter": "Cluster.ReportSystemHealth",
+  "watcher_requested": "1"
+}

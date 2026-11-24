@@ -232,7 +232,12 @@ the toolchain moves the figures at all is measured rather than assumed.
 Ethernet is present but no link was up as delivered. TT-Topology explicitly
 excludes Blackhole PCIe cards. The pinned source shows runtime discovery
 waiting for firmware training status and application ERISC cooperation with
-base firmware; it does **not** establish a host call guaranteed to start first
+base firmware. A single official discovery on 2026-11-24 reported four reciprocal
+UP links on bundle 19.6 (channels 4-7 on each card, H1), but was not accepted due
+to NUMA/membind warnings and unverified Watcher output. No receiver content was
+tested; there is no evidence A caused first training. See the
+[A record](measurements/2026-11-24-issue30-a-discovery/README.md). The source
+still does **not** establish a host call guaranteed to start first
 training on these cards (Issue #30's [source study](measurements/issue30-source-study.md),
 section 2). Establishing an actual chip-to-chip transfer remains the first
 board step, not an assumption the receive-path work can start from.
@@ -312,7 +317,12 @@ file/line references, UMD/image pins and explicit open questions.
   requires separate owner approvals for both-card discovery and transfer.
   The [G0 follow-up](measurements/issue30-g0/README.md) supplies built official
   binaries, isolated loader/list/zero-chip refusal evidence and a tested wrapper;
-  none is evidence of a trained link or a successful device transfer.
+  none is evidence of a trained link or a successful device transfer. The later
+  [A discovery record](measurements/2026-11-24-issue30-a-discovery/README.md)
+  reports four reciprocal UP links on 19.6, matching H1; A was stopped/not
+  accepted for new NUMA warnings and unknown Watcher cleanliness. It is not a
+  content-verified transfer, FPGA proof, training-trigger attribution or B3/B4
+  timing result. Per-core firmware/ETH health remains unreported and B is withheld.
 
 **FPGA side remains open:** the source establishes software peer obligations,
 not a sufficient external sender specification. The legacy `erisc_info`
