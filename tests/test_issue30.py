@@ -74,7 +74,7 @@ def test_positive_controls():
 ])
 def test_one_execution_mutation(field, value, reason):
     assert verdict()["reason"] == "accepted"
-    assert verdict(**{field: value})["reason"] == reason
+    assert verdict("B" if field == "watcher_clean" else "A", **{field: value})["reason"] == reason
 
 
 @pytest.mark.parametrize(("old", "new", "reason"), [

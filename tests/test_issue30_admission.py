@@ -111,23 +111,19 @@ def test_firmware_warning_and_low_version_are_recorded_and_stop():
     assert warning.decode().strip() in value["firmware_observation"]["diagnostic_lines"]
 
 
-def test_B_unknown_is_refused_with_known_B_positive_control():
+def test_B_reasoned_unknown_requires_separate_owner_binding():
     known = env()
     m._environment(known, "synthetic-a", "B")
     unknown = discovery_env()
-    with pytest.raises(ValueError, match="discovery_only_unknown"):
-        m._environment(unknown, "synthetic-a", "B")
+    m._environment(unknown, "synthetic-a", "B")
+    with pytest.raises(ValueError, match="discovery_binding"):
+        m._transfer_binding(unknown, None, b"")
 
 
-def test_B_requires_A_output_not_just_known_input_or_accepted_topology():
-    from enodia.tt.bench import issue30_admission as a
-
+def test_old_accepted_A_output_or_inventory_cannot_replace_owner_decision():
     good = result()
-    # Explicitly synthetic complete per-core output inventory is the control;
-    # the current official report may never emit it, in which case B stays closed.
+    assert good["verdict"] == "accepted_discovery"
     good["firmware_observation"]["per_core_versions"] = [
         {"chip": r["chip"], "core": r["core"], "version": "1.4.1"} for r in good["observed_qsfp"]]
-    a.require_discovery_versions(good)
-    good["firmware_observation"]["per_core_versions"] = []
-    with pytest.raises(ValueError, match="discovery_health"):
-        a.require_discovery_versions(good)
+    with pytest.raises(ValueError, match="discovery_binding"):
+        m._transfer_binding(discovery_env(), good, b"")

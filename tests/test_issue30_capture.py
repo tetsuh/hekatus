@@ -30,7 +30,7 @@ def test_cli_defaults_to_the_receipted_assets(tmp_path, monkeypatch, capsys):
     assert m.main() == 0
     assert json.loads(capsys.readouterr().out)["Image"] == m.IMAGE
     assert observed == [m.ASSETS.as_posix()]
-    assert m.CURRENT_RECEIPT.name == "receipt-v5.json"
+    assert m.CURRENT_RECEIPT.name == "receipt-v6.json"
     assert m.CURRENT_RECEIPT.parent == m.ROOT / "docs/measurements/issue30-g0"
 
 
@@ -190,7 +190,8 @@ def test_B_authorization_rechecks_A_before_preparing_device_mapping(tmp_path, mo
     before = env()
     discovery = [certified(judge(records()))]
     fake_receipt = {"source_commit": m.SOURCE_COMMIT, "runtime_library_sha256": m.LIBRARY_SHA256}
-    values = {m.BEFORE_FILE: before, m.CURRENT_RECEIPT.name: fake_receipt, "approval.json": {}}
+    values = {m.BEFORE_FILE: before, m.CURRENT_RECEIPT.name: fake_receipt, "approval.json": {},
+              "accepted-a.json": discovery[0]}
     monkeypatch.setattr(m, "_load", lambda path, *args: discovery[0] if path.name == "discovery.json" else values[path.name])
     pins = {m.SOURCE_ROOT: m.SOURCE_COMMIT, m.SOURCE_ROOT / "tt_metal/third_party/umd": m.UMD_COMMIT}
     monkeypatch.setattr(m, "_git", lambda path, cmd, *args: "" if cmd == "status" else pins.get(path, "synthetic-head"))
@@ -209,7 +210,7 @@ def test_B_authorization_rechecks_A_before_preparing_device_mapping(tmp_path, mo
     prepare.assert_called_once()
     prepare.reset_mock()
     discovery[0] = judge(records(active={4, 6}))  # Only A connectivity changes.
-    with pytest.raises(ValueError, match="discovery_binding"):
+    with pytest.raises(ValueError, match="owner_acceptance_binding"):
         m._authorize("B", "synthetic-a", tmp_path, tmp_path / "out")
     prepare.assert_not_called()
     values[m.BEFORE_FILE] = {k: v for k, v in before.items() if k != "topology"}

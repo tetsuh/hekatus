@@ -1,0 +1,71 @@
+{
+  "A_stdout_sha256": "e3384400bd3fab9c6fea8619ffcee251a998d13b89fbc61d1aa7ea1e30988335",
+  "baseline_file": "docs/measurements/2026-11-14-p150a-issue120-p6-api-lock-semaphore-v3-baseline-verification.json",
+  "baseline_sha256": "6d246afc424a3fe5640dd0ae5c39cd7a3d40b5eda300cc542f6268d344ec877f",
+  "comparisons": [
+    {
+      "A_stdout_line": 13,
+      "matches": [
+        {
+          "baseline_text": "UMD | hwloc_set_area_membind(): failed for physical_device_id: 1 on NodeSet: [0] with errno: Operation not permitted (pid: 1 tid: 136557857326912) (cpuset_lib.cpp:440)",
+          "condition": "numa_membind",
+          "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+          "source_line": 8,
+          "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2"
+        }
+      ],
+      "normalized": "UMD | hwloc_set_area_membind(): failed for physical_device_id: <device> on NodeSet: [0] with errno: Operation not permitted (pid: <pid> tid: <tid>) (cpuset_lib.cpp:440)",
+      "original": "2026-11-24 14:17:41.318 | warning  |             UMD | hwloc_set_area_membind(): failed for physical_device_id: 1 on NodeSet: [0] with errno: Operation not permitted (pid: 7 tid: 136331659612416) (cpuset_lib.cpp:440)"
+    },
+    {
+      "A_stdout_line": 14,
+      "matches": [
+        {
+          "baseline_text": "UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 1 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)",
+          "condition": "numa_fallback_detail",
+          "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+          "source_line": 9,
+          "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2"
+        }
+      ],
+      "normalized": "UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: <device> ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)",
+      "original": "2026-11-24 14:17:41.318 | warning  |             UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 1 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)"
+    },
+    {
+      "A_stdout_line": 15,
+      "matches": [
+        {
+          "baseline_text": "UMD | hwloc_set_area_membind(): failed for physical_device_id: 1 on NodeSet: [0] with errno: Operation not permitted (pid: 1 tid: 136557857326912) (cpuset_lib.cpp:440)",
+          "condition": "numa_membind",
+          "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+          "source_line": 8,
+          "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2"
+        }
+      ],
+      "normalized": "UMD | hwloc_set_area_membind(): failed for physical_device_id: <device> on NodeSet: [0] with errno: Operation not permitted (pid: <pid> tid: <tid>) (cpuset_lib.cpp:440)",
+      "original": "2026-11-24 14:17:41.378 | warning  |             UMD | hwloc_set_area_membind(): failed for physical_device_id: 0 on NodeSet: [0] with errno: Operation not permitted (pid: 7 tid: 136331659612416) (cpuset_lib.cpp:440)"
+    },
+    {
+      "A_stdout_line": 16,
+      "matches": [
+        {
+          "baseline_text": "UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 1 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)",
+          "condition": "numa_fallback_detail",
+          "source": "docs/measurements/issue146-doppler-conformance/2026-10-21/runs/run1-c018/wrapper-stdout-issue146-long-run1-c018.txt",
+          "source_line": 9,
+          "source_sha256": "40865499d6e466c5108f8119a7848cce04c2de17651c339905029fd27c1f01d2"
+        }
+      ],
+      "normalized": "UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: <device> ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)",
+      "original": "2026-11-24 14:17:41.378 | warning  |             UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 0 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)"
+    }
+  ],
+  "decision_by": "owner",
+  "decision_date": "2026-11-24",
+  "method": "Same exact #120 logger/body/source-location comparison; ignore only timestamp, physical-device/chip ID, PID/TID and bus ID invocation fields. Chip ID normalization extends the one-card comparator to the two enumerated chips.",
+  "other_warning_types_accepted": false,
+  "precedent": "https://github.com/tetsuh/hekatus/issues/176#issuecomment-6702081648",
+  "precedent_date": "2026-11-07",
+  "schema": "issue30-baseline-match-v1",
+  "unmatched": []
+}

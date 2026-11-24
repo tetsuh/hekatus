@@ -19,6 +19,7 @@ from xml.etree.ElementTree import ParseError
 from defusedxml import ElementTree as ET
 
 from enodia.tt.bench import issue30_admission as admission
+from enodia.tt.bench import issue30_diagnostics as diagnostics
 from enodia.tt.bench import issue30_topology as topology
 
 IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
@@ -26,7 +27,8 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v5.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v6.json"
+OWNER_ACCEPTANCE = "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
 LIBRARY_SHA256 = "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
@@ -51,7 +53,13 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "pyproject.toml", "uv.lock", "enodia/tt/bench/issue30_topology.py",
                  "tests/test_issue30_topology.py", topology.POLICY_FILE,
                  "enodia/tt/bench/issue30_admission.py", "tests/test_issue30_admission.py",
-                 "docs/adr/0021-discovery-observability-gate.md")
+                 "docs/adr/0021-discovery-observability-gate.md", OWNER_ACCEPTANCE,
+                 "enodia/tt/bench/issue30_diagnostics.py", "tests/test_issue30_owner.py",
+                 "enodia/tt/bench/issue120_production/checks.py",
+                 "docs/measurements/2026-11-14-p150a-issue120-p6-api-lock-semaphore-v3-baseline-verification.json",
+                 "docs/measurements/2026-11-24-issue30-a-discovery/A-discovery.json",
+                 "docs/measurements/2026-11-24-issue30-a-discovery/A-native-evidence.tar.gz",
+                 "docs/measurements/2026-11-24-issue30-a-owner-acceptance/baseline-match.json")
 
 
 def digest(data: bytes) -> str:
@@ -151,11 +159,19 @@ def approval_record(phase, identity, env, receipt, head):
                    "owner_authorization": {"date": "2026-11-24", "logical_unit": "issue30-a-discovery-watcher-v1",
                                            "invocations": 1, "test": TESTS["A"], "watcher": "1",
                                            "cards": [list(c) for c in CARDS], "max_seconds": 60}}
+    if phase == "B":
+        record |= {"schema": "issue30-owner-approval-v3",
+                   "accepted_A_sha256": digest((ROOT / OWNER_ACCEPTANCE).read_bytes()),
+                   "owner_decision": {"date": "2026-11-24", "logical_unit": "issue30-b-fabric1d-smoke-watcher-v1",
+                                      "invocations": 1, "test": TESTS["B"], "watcher": "1",
+                                      "cards": [list(c) for c in CARDS], "max_seconds": 60,
+                                      "cabling_unchanged_since_A": True, "no_A_recheck": True}}
     return record
 
 
 def _approval(phase, identity, approval, env, receipt, head):
-    if approval != approval_record(phase, identity, env, receipt, head):
+    expected = approval_record(phase, identity, env, receipt, head)
+    if json.dumps(approval, sort_keys=True) != json.dumps(expected, sort_keys=True):
         raise ValueError("approval_binding")
     if receipt.get("schema") != "issue30-g0-v1" or receipt.get("all_passed") is not True:
         raise ValueError("g0_not_ready")
@@ -241,12 +257,13 @@ def _links(env):
 
 def _environment(env, identity, phase="B"):
     if (env.get("schema") != "issue30-environment-v1" or env.get("attempt") != identity
-            or not env.get("boot") or env.get("image") != IMAGE or env.get("watcher") != "1"):
+            or not isinstance(env.get("boot"), str) or not env["boot"]
+            or env.get("image") != IMAGE or env.get("watcher") != "1"):
         raise ValueError("environment")
     kmd = env.get("kmd", "")
     if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}", kmd, re.ASCII) or tuple(map(int, kmd.split("."))) < (2, 8, 0):
         raise ValueError("environment")
-    _cards(env.get("cards"), phase, phase == "A" and "topology" in env)
+    _cards(env.get("cards"), phase, "topology" in env)
     _links(env)
 
 
@@ -259,7 +276,8 @@ def _xml(phase, raw):
         raise ValueError("test_result") from exc
     cases = list(root.iter("testcase"))
     suite, name = TESTS[phase].split(".")
-    if (root.tag != "testsuites" or len(list(root.iter("testsuite"))) != 1 or len(cases) != 1):
+    if (root.tag != "testsuites" or root.get("tests") != "1"
+            or len(list(root.iter("testsuite"))) != 1 or len(cases) != 1):
         raise ValueError("test_result")
     if (cases[0].get("name") != name or cases[0].get("classname") != suite
             or cases[0].get("status") != "run" or cases[0].get("result") != "completed"):
@@ -336,22 +354,33 @@ def _warning(env, body):
     return {"chip": chip} | parsed
 
 
-def _messages(env, raw, warnings=None):
+def _diagnostic_lines(raw):
     if len(raw) > 8 * 1024 * 1024:
         raise ValueError("diagnostic")
     try:
         text = re.sub(r"\x1b\[[0-9;]*m", "", raw.decode("utf-8"))
     except UnicodeError as exc:
         raise ValueError("diagnostic") from exc
+    return text.splitlines()
+
+
+def _messages(env, raw, warnings=None, accepted=None):
     messages = []
-    for line in text.splitlines():
+    lines = _diagnostic_lines(raw)
+    for index, line in enumerate(lines):
+        if diagnostics.baseline_at(lines, index, env["cards"]):
+            continue
         level, body = _message(line)
-        if re.search(r"\b(?:error|fatal|critical)\b", line, re.IGNORECASE):
+        if diagnostics.SERIOUS.search(line):
             raise ValueError("diagnostic")
         if level == "warning":
             warning = _warning(env, body)
+            if accepted is not None:
+                topology.check_warnings(accepted, [warning])
             if warnings is not None:
                 warnings.append(warning)
+        elif diagnostics.ALARM.search(line):
+            raise ValueError("diagnostic")
         else:
             messages.append(body)
     return messages
@@ -415,7 +444,7 @@ def baseline_digest(env):
     return digest(json.dumps(admission.stable_environment(env), sort_keys=True).encode())
 
 
-def _execution(execution):
+def _execution(execution, phase="B"):
     if (type(execution.get("exit")) is not int or execution["exit"] != 0
             or execution.get("timed_out") is not False or execution.get("terminated") is not True
             or execution.get("started") is not True or execution.get("client_exit") != 0):
@@ -423,7 +452,7 @@ def _execution(execution):
     elapsed = execution.get("elapsed_seconds")
     if type(elapsed) not in (int, float) or not 0 <= elapsed <= 60:
         raise ValueError("execution")
-    if execution.get("watcher_clean") is not True:
+    if phase == "B" and execution.get("watcher_clean") is not True:
         raise ValueError("watcher")
     if execution.get("containers_clean") is not True:
         raise ValueError("containers")
@@ -437,30 +466,58 @@ def _post(env, after, identity, phase):
 
 
 def _transfer_binding(before, discovery, raw):
-    if (not discovery or discovery.get("phase") != "A" or discovery.get("verdict") != ACCEPTED["A"]
-            or discovery.get("baseline_sha256") != baseline_digest(before)):
+    if not discovery:
         raise ValueError("discovery_binding")
     if "topology" in before:
-        topology.require_accepted_discovery(discovery)
-        admission.require_discovery_versions(discovery)
-    if re.search(rb"\b(?:warning|error|fatal|critical)\b", raw, re.IGNORECASE):
-        raise ValueError("diagnostic")
+        admission.owner_links(discovery, baseline_digest(before), digest(before["boot"].encode()),
+                              digest(json.dumps(before["topology"], sort_keys=True).encode()))
+        _messages(before, raw, accepted=discovery["observed_qsfp"])
+    else:  # Historical CPU fixtures; hardware CLI always requires the frozen topology.
+        if (discovery.get("phase") != "A" or discovery.get("verdict") != ACCEPTED["A"]
+                or discovery.get("baseline_sha256") != baseline_digest(before)):
+            raise ValueError("discovery_binding")
+        _messages(before, raw)
+
+
+def _packet_observation(before, raw):
+    if "topology" not in before:
+        return None
+    text = raw.decode("utf-8")
+    required = ("[ RUN      ] " + TESTS["B"],
+                "Running fabric api tests with fast dispatch",
+                "Fabric Reliability Mode: STRICT_SYSTEM_HEALTH_SETUP_MODE", "[  PASSED  ] 1 test.")
+    completed = re.search(r"^\[       OK \] " + re.escape(TESTS["B"]) + r" \(\d+ ms\)$", text, re.MULTILINE)
+    if not completed or any(item not in text for item in required):
+        raise ValueError("packet_evidence")
+    return {"expected_packets_from_pinned_source": 5,
+            "basis": "source_bound_official_receiver_assertions",
+            "payload_bytes_or_status_words_printed": False,
+            "scope": "nonbenchmark five-packet PRNG receiver checks and sender/receiver status/byte equality; not timing"}
+
+
+def _bound_discovery(inputs):
+    record = _load(inputs / "discovery.json")
+    expected = _load(ROOT / OWNER_ACCEPTANCE, ROOT)
+    if json.dumps(record, sort_keys=True) != json.dumps(expected, sort_keys=True):
+        raise ValueError("owner_acceptance_binding")
+    return record
 
 
 def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, discovery=None):
-    reason, decision, observed = "accepted", None, []
+    reason, decision, observed, packets = "accepted", None, [], None
     firmware = admission.observe_firmware(stdout + b"\n" + stderr)
     try:
-        _execution(execution)
+        _execution(execution, phase)
         _xml(phase, xml)
         _post(before, after, identity, phase)
         if phase == "A":
             decision = _health(before, stdout + b"\n" + stderr, observed)
-            admission.check_reported_versions(firmware)
             if decision is not None:
                 reason = decision["reason"]
         else:
-            _transfer_binding(before, discovery, stdout + stderr)
+            _transfer_binding(before, discovery, stdout + b"\n" + stderr)
+            packets = _packet_observation(before, stdout)
+        admission.check_reported_versions(firmware)
     except (ValueError, KeyError, TypeError) as exc:
         reason = str(exc) if isinstance(exc, ValueError) else "environment"
     result = {"schema": "issue30-verdict-v1", "attempt": identity, "phase": phase,
@@ -469,7 +526,7 @@ def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, dis
               "evidence_sha256": {"xml": digest(xml), "stdout": digest(stdout), "stderr": digest(stderr)}}
     if "topology" in before:
         result |= {"schema": "issue30-verdict-v3", "topology": decision, "observed_qsfp": observed,
-                   "firmware_observation": firmware}
+                   "firmware_observation": firmware, "packet_observation": packets}
         if decision is not None and decision["reason"] == reason:
             result["verdict"] = {"accepted": ACCEPTED[phase], "not_established": "link_not_established",
                                  "unexpected": "unexpected_topology"}.get(decision["outcome"], "rejected")
@@ -627,7 +684,7 @@ def _authorize(phase, identity, inputs, output):
     if receipt.get("source_commit") != SOURCE_COMMIT or receipt.get("runtime_library_sha256") != LIBRARY_SHA256:
         raise ValueError("receipt source/library pin mismatch")
     if phase == "B":
-        _transfer_binding(env, _load(inputs / "discovery.json"), b"")
+        _transfer_binding(env, _bound_discovery(inputs), b"")
     payload = board_request(phase, identity, ASSETS, output, approval=_load(inputs / "approval.json"),
                             environment=env, receipt=receipt, head=_git(ROOT, "rev-parse", "HEAD"))
     return payload, env
@@ -645,11 +702,17 @@ def _review(phase, identity, output, inputs):
         raise ValueError("device-free capture cannot qualify as board evidence")
     if _load(output / "observations-before.json") != _load(inputs / BEFORE_FILE):
         raise ValueError("captured before observation mismatch")
+    clean = review.get("watcher_clean")
     if phase == "B":
+        clean = False
         watcher = output / "logs/generated/watcher/watcher.log"
-        if not _read(watcher) or review.get("watcher_sha256") != artifact(watcher, output)["sha256"]:
-            raise ValueError("B requires a captured reviewed Watcher log")
-    return execution | {"watcher_clean": review.get("watcher_clean")}, review
+        if watcher.is_file():
+            raw = _read(watcher, limit=diagnostics.checks.MAX_WATCHER_BYTES)
+            entry = artifact(watcher, output)
+            scan = diagnostics.watcher_observation(raw)
+            clean = (review.get("watcher_clean") is True and entry in execution.get("artifacts", [])
+                     and review.get("watcher_sha256") == entry["sha256"] and scan["scan_passed"])
+    return execution | {"watcher_clean": clean}, review
 
 
 def _judge(phase, identity, output, inputs):
@@ -657,7 +720,7 @@ def _judge(phase, identity, output, inputs):
     for field in ("before", "after"):
         if review.get(field + "_sha256") != digest(_read(inputs / (field + ".json"))):
             raise ValueError("review observation fingerprint mismatch")
-    discovery = _load(inputs / "discovery.json") if phase == "B" else None
+    discovery = _bound_discovery(inputs) if phase == "B" else None
     xml_path = output / "native/gtest.xml"
     xml = _read(xml_path) if xml_path.exists() else b""
     result = evaluate(phase, identity, _load(inputs / BEFORE_FILE), _load(inputs / "after.json"),

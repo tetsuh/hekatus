@@ -1,4 +1,4 @@
-# ADR-0021: admit unobservable Ethernet health for discovery only
+# ADR-0021: reasoned unobservable Ethernet health and owner-bound link evidence
 
 - Status: **Accepted** — 2026-11-24
 - Date: 2026-11-24
@@ -40,7 +40,8 @@ that owner scope.
 3. A retains every reported firmware version/diagnostic; absent output remains
    unknown, never healthy. Firmware warnings/errors/refusals stop the attempt.
    H1/H2 connectivity decisions do not turn unknown firmware into a B admission.
-4. B does not inherit this exception. B requires known acceptable health inputs
+4. **Initial operator rule, replaced by the late-night owner amendment below:**
+   B does not inherit this exception. B requires known acceptable health inputs
    and accepted A output confirming per-core ERISC versions and reciprocal links.
    First-core/global version text is partial evidence, not a per-core inventory.
    Unknown A fields keep B closed and require an owner decision.
@@ -51,12 +52,55 @@ that owner scope.
    unchanged native launch/watchdog proof. A is still executed only after clean,
    pushed/tested head, all CI and public Sonar 0/0/OK.
 
+### Late-night owner amendment — 2026-11-24 (same unmerged PR)
+
+The owner accepts A's **observations**, separately from its original rejected /
+watcher verdict. The four NUMA warning lines match the #176/#120 baseline
+exactly modulo invocation variables, with source line/hash proof in the
+[new owner record](../measurements/2026-11-24-issue30-a-owner-acceptance/README.md).
+Cluster-only A dispatches no application kernel, so Watcher output is not
+applicable. Its original verdict, null cleanliness and native evidence are not
+rewritten or reissued. The owner, not the agent, approves the following revision:
+
+6. B admission binds the canonical owner-accepted A file, original evidence
+   fingerprints, identical boot/stable environment, unchanged owner cabling,
+   full reciprocal H1 channels4-7 and zero retrains. A is not rerun to refresh
+   links. Boot drift refuses before device mapping. Missing per-core inventory
+   is not a prerequisite: reasoned pre-19.9 ERISC/ETH unknowns remain unknown,
+   never healthy. Bare null/incorrect reasons, observed low versions/heartbeat
+   failure and every other environment gate still refuse. This replaces rule4,
+   not a general removal of health/identity checks.
+7. Permit only exact #176 baseline logger/body/source-location comparisons,
+   as in #120: NUMA membind plus adjacent same-device fallback, the known board's
+   bus-ID fallback, and dispatch telemetry SMC unavailable. Invocation device/
+   chip IDs, PID/TID and bus IDs may vary within the two-card mapping. The eight
+   DOWN summaries may match only A's accepted DOWN chip/PCI/channel/core rows.
+   Every other warning/error/fatal/critical condition stops. No generic warning
+   suppression or source-location/board-name wildcard is allowed.
+8. A's future rule is Watcher-not-applicable for this cluster-only diagnostic;
+   B requires captured, fresh nonempty Watcher dumps, clean content, capture
+   manifest fingerprint and explicit hash-bound manual review. Missing B output
+   is rejected, including timeout before Watcher attachment, not a fabricated
+   empty clean log. The original A result remains rejected under its old rule.
+9. Owner authority is exactly one official B smoke, both named cards, Watcher,
+   named container,40/50/60s; no second A, retry/fallback, extension, reset,
+   firmware/cable/host-setting operation. B approval-v3 binds accepted-A digest,
+   no A recheck and unchanged cabling separately from the initial operator
+   correction. Clean pushed/tested head, all CI/Sonar0/0/OK and fresh same-boot
+   preflight precede it. Hugepage files are inspected read-only, never removed.
+10. A new receipt-v6 binds host-only rule/owner evidence changes; unchanged
+    binaries/native watchdogs reuse immutable G0 qualifications. Original
+    records/receipts/native evidence remain byte-exact. No production data-plane
+    contract or application architecture is changed.
+
 ## Consequences
 
 Discovery can observe what was unavailable before opening without fabricating
 health. The official source may emit only an unscoped first-core version, or no
 version at the selected log level; B can remain blocked even if A discovers
-four reciprocal links. The diagnostic itself, not unknown telemetry, identifies
+four reciprocal links under the initial rule. The owner amendment replaces that
+circular B inventory prerequisite with scoped accepted-link evidence, without
+claiming previously unknown firmware health. The diagnostic itself, not unknown telemetry, identifies
 any minimum-version mismatch. Known failures and missing evidence never become
 success. The production data plane and ADR-0018 atomic result transport are
 unchanged. Owner authority remains once-only, bounded and non-transitive.
@@ -66,3 +110,6 @@ unchanged. Owner authority remains once-only, bounded and non-transitive.
 - 2026-11-24: Operator-directed correction for Issue #30, recorded in PR #195.
   Accepted records the carrying PR decision and takes effect at owner merge;
   it does not claim the owner independently designed this gate correction.
+- 2026-11-24 late night: Owner accepts A observations and authorizes one B;
+  amends the still-unmerged record's B admission, exact baseline warning and
+  phase-appropriate Watcher rules. Original A verdict and observations are immutable.

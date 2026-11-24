@@ -22,10 +22,11 @@ def env():
 
 
 def certified(discovery):
-    # Synthetic B-positive output inventory, never produced by a physical run.
-    discovery["firmware_observation"]["per_core_versions"] = [
-        {"chip": r["chip"], "core": r["core"], "version": "1.4.1"} for r in discovery["observed_qsfp"]]
-    return discovery
+    from tests.test_issue30_owner import accepted
+
+    # Synthetic owner decision, never a physical approval or per-core inventory.
+    return accepted(env()) | {"observed_qsfp": discovery["observed_qsfp"],
+                              "topology": discovery["topology"]}
 
 
 def core(chip, channel):
@@ -206,7 +207,10 @@ def test_B_recomputes_A_topology_instead_of_trusting_verdict_label():
     before = env()
     good = certified(judge(records()))
     def transfer(discovery):
-        return m.evaluate("B", "synthetic-a", before, before, xml("B"), b"", b"", m.GOOD_EXECUTION, discovery)
+        from tests.test_issue30_owner import smoke_stdout
+
+        return m.evaluate("B", "synthetic-a", before, before, xml("B"), smoke_stdout(), b"",
+                          m.GOOD_EXECUTION, discovery)
     assert transfer(good)["verdict"] == "accepted_transfer"
     partial = judge(records(active={4, 6}))
     assert transfer(partial)["reason"] == "discovery_binding"

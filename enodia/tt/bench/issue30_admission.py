@@ -1,7 +1,9 @@
-"""Discovery-only observability exception; no device or runtime imports."""
+"""Reasoned unknown health and owner-accepted link evidence; no device IO."""
 from __future__ import annotations
 
 import re
+
+from enodia.tt.bench import issue30_topology as topology
 
 REASON = {"reason": "blackhole_pre_19_9_telemetry_unavailable", "sources": [
     "umd/device/firmware/firmware_info_provider.cpp:217-229",
@@ -19,8 +21,8 @@ def version(value):
 
 
 def _unknown(card, field, phase):
-    if phase != "A":
-        raise ValueError("discovery_only_unknown")
+    if phase not in ("A", "B"):
+        raise ValueError("environment")
     bundle = tuple(map(int, card["bundle"].split(".")[:3]))
     reasons = card.get("unobservable")
     if bundle >= (19, 9, 0) or not isinstance(reasons, dict) or reasons.get(field) != REASON:
@@ -84,13 +86,20 @@ def check_reported_versions(observation):
         raise ValueError("erisc_version")
 
 
-def require_discovery_versions(discovery):
-    try:
-        expected = {(r["chip"], r["core"]) for r in discovery["observed_qsfp"]}
-        rows = discovery["firmware_observation"]["per_core_versions"]
-        observed = {(r["chip"], r["core"]) for r in rows}
-        if (not expected or observed != expected or len(rows) != len(expected)
-                or any(version(r["version"]) < (1, 4, 1) for r in rows)):
-            raise ValueError("discovery_health")
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("discovery_health") from exc
+def owner_links(record, baseline_sha, boot_sha, cabling_sha):
+    if record.get("schema") != "issue30-owner-accepted-A-v1":
+        raise ValueError("discovery_binding")
+    if record.get("boot_sha256") != boot_sha:
+        raise ValueError("owner_boot")
+    required = {"schema": "issue30-owner-accepted-A-v1", "decision_by": "owner",
+                "decision_date": "2026-11-24", "logical_unit": "issue30-a-discovery-watcher-v1",
+                "not_a_rejudgment": True, "allows_B_consideration": True,
+                "baseline_sha256": baseline_sha, "cabling_policy_sha256": cabling_sha,
+                "bundle": "19.6.0.0"}
+    original = record.get("original_verdict", {})
+    decision = topology.classify(record.get("observed_qsfp"))
+    if (any(record.get(k) != v for k, v in required.items())
+            or original.get("phase") != "A" or original.get("verdict") != "rejected"
+            or original.get("reason") != "watcher" or decision["outcome"] != "accepted"
+            or decision["hypothesis"] != "H1" or record.get("topology") != decision):
+        raise ValueError("discovery_binding")

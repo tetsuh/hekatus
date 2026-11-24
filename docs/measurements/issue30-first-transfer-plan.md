@@ -1,6 +1,9 @@
 # Issue #30: first chip-to-chip transfer proposal
 
-**Status: board-free plan only; no board action is authorized or executed.**
+**Current status (2026-11-24 late night): A observations owner-accepted; one B
+is separately authorized, pending the corrected gates, verification and fresh
+same-boot preflight. Original proposals remain below; the final owner-decision
+section supersedes the earlier admission/Watcher/baseline rules only as stated.**
 
 The G0 follow-up's [receipt, fixed judgment rules and final one-screen A/B
 approval units](issue30-g0/README.md) supersede this document's original
@@ -178,8 +181,9 @@ hashes, boot, quiet host/zero containers and owner binding remain mandatory.
 
 A retains reported firmware/version diagnostics; missing or first-core-only
 output does not certify all cores or heartbeat health. Warnings/refusals stop.
-B requires known health inputs AND per-core version inventory/reciprocal links
-confirmed by accepted A output. The unchanged official report may expose no
+The initial B rule required known health inputs AND per-core inventory/reciprocal
+links from A; the late-night owner decision below replaces that circular rule.
+Historically it demanded inventory confirmed by accepted A output. The unchanged official report may expose no
 per-core inventory: B then remains closed for an owner decision, even when H1/H2
 connectivity is accepted. No lack-of-warning inference fills unknown fields.
 
@@ -193,7 +197,9 @@ and native binaries remain unchanged; receipt-v5 requalifies only host changes.
 
 The machine-readable input is [issue30-a-topology.json](issue30-a-topology.json).
 It supersedes the earlier exact lane/core-table preparation requirement for A.
-No A approval has been issued and no health test or transfer has been run.
+These were frozen before A approval/execution. A later reported H1 and the owner
+accepted its observations separately; see the final section. No transfer follows
+from that observation alone.
 
 **Owner statement:** two cables join physical card a port 1 to card b port 1,
 and a port 2 to b port 2, numbering 1..4 in increasing distance from the
@@ -246,7 +252,8 @@ gates pass, A's three connectivity outcomes are:
 Truncated/duplicate/malformed reports and unknown execution/otherwise-required
 health are **rejected evidence**, not a fourth physical connectivity inference.
 Reasoned unobservable ERISC/ETH values are the A-only exception above; missing
-A output remains unknown and withholds B rather than certifying healthy firmware. Raw streams
+A output remains unknown, not healthy. Under the later owner decision, B binds
+accepted A link observations rather than a missing firmware inventory. Raw streams
 are retained on every path. Only the source-shaped DOWN warning for a matching
 reported chip/PCI/channel/core is eligible for topology classification; unrelated
 warnings and nonzero retrains still refuse. B recomputes A's observed topology
@@ -414,3 +421,98 @@ A (<=60 s plus evidence review) -> approval B (<=60 s plus evidence review), or
 stop after A. Preparation and review durations are not board timing estimates.
 No board operation, health command, reset or device-open container was run in
 preparing this plan.
+
+
+## Owner decision and single B procedure (2026-11-24 late night)
+
+This is the current precommitted authority/rule revision. The owner accepts only
+[A observations](2026-11-24-issue30-a-owner-acceptance/README.md), preserving the
+original rejected/watcher result, and separately authorizes one unchanged B.
+[A NUMA lines13-16](2026-11-24-issue30-a-owner-acceptance/baseline-match.json)
+match the #176/#120 known source text/locations; no unmatched line is accepted.
+Cluster-only A has no application Watcher output requirement. B does.
+
+### Frozen invariants and admission
+
+- No second A or fresh link probe. Bind the canonical accepted-a.json (and
+  original evidence fingerprints), same boot/stable environment, unchanged
+  symmetric cabling, full reciprocal H1 channels4-7 and retrain0. Channels8-11
+  remain explicitly DOWN. Recompute that frozen graph, not a verdict label;
+  do not represent those historical links as newly observed before B. Boot
+  drift refuses before device mapping. B approval-v3 binds this accepted-A hash
+  and the one-use physical scope separately from the initial operator fix.
+- Reasoned pre-19.9 ERISC/ETH unknowns stay unknown, not healthy. No per-core
+  inventory is invented or required from this diagnostic. Known low versions,
+  known failed heartbeat, bare null or wrong reason still refuse. All identity,
+  ARC progression,800MHz,DRAM,KMD,pages,source/image/binary pins/quiet/container
+  gates remain. Fresh telemetry is allowed, not native discovery repetition.
+- Exact #176 conditions only: NUMA membind and adjacent same-device fallback,
+  known-motherboard bus fallback, dispatch telemetry SMC unavailable. Same #120
+  literal/logger/source-location matching; only enumerated device/chip,PID/TID,
+  bus and timestamp values vary. NodeSet/channel/board/error/location do not.
+  The eight A DOWN summaries may appear only for A's exact DOWN chip/PCI/channel/
+  core. Any other warning,error,fatal,critical,assert or traceback stops.
+- B must produce nonempty fresh Watcher dumps in its new capture directory,
+  included in execution's artifact manifest, exact review hash and clean manual/
+  bounded scan. Missing/uncaptured/changed-after-capture/unreviewed/abnormal output
+  refuses. Capture has no permission to create a clean-log surrogate.
+- Keep current pinned source/image, official binary and runtime kernel sources
+  byte-exact; no BENCHMARK_MODE, custom MGD, reliability/dispatch override or
+  legacy/2D fallback. One binary40s, named-container50s, cleanup60s, no extension.
+
+### Prediction and evidence checkpoints (before B)
+
+Prediction: strict1D fabric setup creates the logical mapping/routing planes,
+credit/buffer structures and EDM handshake, worker kernels are JIT-built, receiver
+starts before sender, five PRNG packets pass receiver content checks, sender and
+receiver status PASS/byte counts agree, all programs finish and devices close.
+Cold JIT can consume the entire40s binary budget before transfer: do not extend
+or retry, record the furthest observed checkpoint and missing evidence.
+
+| Checkpoint | Available observation / limit |
+|---|---|
+| Driver/topology/fixture entry | UMD constructor/discovery/starting-devices log lines; `Running fabric api tests with fast dispatch`; `Fabric Reliability Mode: STRICT_SYSTEM_HEALTH_SETUP_MODE` before mesh creation. These alone do not prove routers/handshake finished. |
+| Physical/logical fabric configuration | Topology/mesh/route informational lines actually emitted; retain original warnings. No added debug workload or descriptor is used. Absence of detailed output leaves substage unknown. |
+| JIT / kernel attachment | BuildKernels firmware/cache/compile telemetry when emitted; Watcher attached-kernel listings and dump waypoints. JIT cache summary at close is retrospective, not a start timestamp. No compulsory fabricated JIT milestone. |
+| RX/TX / packet content | Exact `[ RUN ]` / `[ OK ]` / one-test PASS plus non-skipped failure-free XML at the bound official selector; source `test_basic_fabric_smoke.cpp:74-168` fixes five packets, RX-before-TX, reads both status arrays and checks status PASS/equal byte counts; `tt_fabric_1d_rx.cpp:49-71,101-114` polls PRNG data, checks each packet, then writes status. Watcher FPW/FPD or other actual waypoints are retained if present. |
+| Close / process/container | Fixture close happens in suite teardown; actual close/destructor log lines, direct process/client exit, termination and zero remaining containers within60s. XML test-body duration is not whole-capture time. |
+
+The unmodified official host test does **not** print per-packet bytes, PRNG seed,
+status words or byte counters on success. Do not invent those values. Conditional
+content acceptance is source-bound official receiver/status assertions plus exact
+completed XML, frozen nonbenchmark kernel/build provenance, fresh clean Watcher,
+warning classification, normal lifecycle and unchanged post-state—not a bare
+PASS string or exit0. A failure/timeout may never reach packet assertions; record
+content as unverified, even if preceding fabric logs look normal.
+
+### Exactly one B — approved identity and operational order
+
+1. Complete board-free changes, RED/GREEN, pushed clean head, full tests/ruff,
+   exact-head all CI and public Sonar0/0/OK. No finding acceptance/muting.
+2. Fresh same-boot telemetry for both serial/BDF pairs, bundle19.6.0.0, advancing
+   ARC,800MHz,DRAM/temperature,loaded KMD2.12.0,1GiB pool/free>=2 and mount,
+   exact image/binary/source hashes, zero containers and quiet host. Inspect
+   existing hugetlbfs file metadata/allocation read-only to explain A's8->6 free
+   pages; never map/read file payload, delete files or configure/reclaim pages.
+   Stop without B if any prerequisite fails, especially boot drift or space.
+3. Bind approval-v3 to one attempt derived from
+   `issue30-b-fabric1d-smoke-watcher-v1`, current head/boot/environment/receipt,
+   owner2026-11-24 one B, accepted-A digest and unchanged cabling. No new A.
+   Recheck quiet host/containers/counters/clock immediately before launch.
+4. Execute only Fabric1DFixture.TestUnicastConnAPI1DSmoke in the named container,
+   both approved mappings/BDF visibility, Watcher1 and40/50/60s. Do no heavy host
+   test/build while it runs. No fallback/retry/reset/firmware/cable action.
+5. Verify container termination/absence, then both-card telemetry. If a card
+   fails to respond, telemetry is unavailable, or cleanup is uncertain: preserve
+   received evidence, perform no reset/additional intervention, stop and report.
+   Never continue trying alternative health/device commands after that failure.
+6. Use committed rules and immutable stdout/stderr/XML/Watcher/artifact hashes.
+   Stop on skip/failure/mismatch/nonbaseline diagnostics/timeout/uncertainty or
+   abnormal card state. Commit/push the outcome, exact-head CI/Sonar; update
+   design/open-issues only for actual B facts. No timing/loopback authority.
+
+B1 may gain a content-checked official transfer or a precise bounded stop point.
+B3 routing-call jitter, B4 physical latency, #13 loopback and #105 stage3 remain
+separate experiments; none is licensed by B success. #105 still requires B5/B6
+resolution and prewritten stage3 acceptance criteria. FPGA peer compatibility is
+not established by TT-to-TT traffic.

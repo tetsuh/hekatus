@@ -233,9 +233,14 @@ Ethernet is present but no link was up as delivered. TT-Topology explicitly
 excludes Blackhole PCIe cards. The pinned source shows runtime discovery
 waiting for firmware training status and application ERISC cooperation with
 base firmware. A single official discovery on 2026-11-24 reported four reciprocal
-UP links on bundle 19.6 (channels 4-7 on each card, H1), but was not accepted due
-to NUMA/membind warnings and unverified Watcher output. No receiver content was
-tested; there is no evidence A caused first training. See the
+UP links on bundle 19.6.0.0 (channels 4-7 on each card, H1), zero retrains and
+channels 8-11 unconnected, with stable before/after card identity, clock and DRAM.
+The owner subsequently [accepted these observations](measurements/2026-11-24-issue30-a-owner-acceptance/README.md):
+NUMA lines match the #176 baseline and Watcher is not applicable to cluster-only A.
+Its original rejected verdict is unchanged. Links were up on the runtime/firmware
+side without an added host-directed training command in this configuration;
+why/when they first became UP is unknown. No receiver content was tested and
+there is no evidence A caused first training. See the original
 [A record](measurements/2026-11-24-issue30-a-discovery/README.md). The source
 still does **not** establish a host call guaranteed to start first
 training on these cards (Issue #30's [source study](measurements/issue30-source-study.md),
@@ -319,10 +324,15 @@ file/line references, UMD/image pins and explicit open questions.
   binaries, isolated loader/list/zero-chip refusal evidence and a tested wrapper;
   none is evidence of a trained link or a successful device transfer. The later
   [A discovery record](measurements/2026-11-24-issue30-a-discovery/README.md)
-  reports four reciprocal UP links on 19.6, matching H1; A was stopped/not
-  accepted for new NUMA warnings and unknown Watcher cleanliness. It is not a
+  reports four reciprocal UP links on 19.6.0.0, matching H1, zero retrains and
+  channels8-11 unconnected. The [owner acceptance](measurements/2026-11-24-issue30-a-owner-acceptance/README.md)
+  preserves the original rejected verdict, recognizes #176 NUMA baseline and
+  A Watcher non-applicability, and approves one B at unchanged boot/cabling.
+  No added host-directed training was needed; the runtime/firmware-side links
+  were already reported UP, with first cause/time unknown. A is not a
   content-verified transfer, FPGA proof, training-trigger attribution or B3/B4
-  timing result. Per-core firmware/ETH health remains unreported and B is withheld.
+  timing result. Per-core firmware/ETH health remains unknown, not healthy.
+  B requires the separately bound owner scope and all execution/evidence gates.
 
 **FPGA side remains open:** the source establishes software peer obligations,
 not a sufficient external sender specification. The legacy `erisc_info`
