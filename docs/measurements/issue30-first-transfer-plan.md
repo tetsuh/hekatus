@@ -210,7 +210,9 @@ gates pass, A's three connectivity outcomes are:
    trigger question. It does not establish the cause or prove a host trigger
    cannot exist, and cable type/orientation are still possible explanations.
 3. **unexpected_topology:** loopback, one-way/foreign/unknown peer, wrong port
-   pair, or connections outside both hypotheses. Preserve observations and
+   pair, or connections outside both hypotheses. The source's `connected to
+   Unique ID: ...` form is retained as an unresolved peer identity, not guessed
+   to be a local chip ID or rejected as an unknown text format. Preserve observations and
    stop; no expectation rewrite, retry, MGD override or B release follows.
 
 Truncated/duplicate/malformed reports and unknown execution/health/firmware are

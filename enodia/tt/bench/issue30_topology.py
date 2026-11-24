@@ -26,10 +26,20 @@ def _check_record(record):
     if not re.fullmatch(r"\d{1,3}-\d{1,3}", record["core"], re.ASCII):
         raise ValueError("invalid_observation")
     if record["state"] == "UP":
-        if type(record.get("peer")) is not int or not isinstance(record.get("peer_core"), str):
-            raise ValueError("invalid_observation")
+        _check_peer(record)
         if type(record.get("retrain_count")) is not int or record["retrain_count"] != 0:
             raise ValueError("retrain")
+
+
+def _check_peer(record):
+    if not isinstance(record.get("peer_core"), str):
+        raise TypeError("invalid_observation")
+    if "peer_unique_id" in record:
+        uid = record["peer_unique_id"]
+        if "peer" in record or not isinstance(uid, str) or not re.fullmatch(r"[a-f0-9]{1,16}", uid):
+            raise ValueError("invalid_observation")
+    elif type(record.get("peer")) is not int:
+        raise ValueError("invalid_observation")
 
 
 def _index(records):
@@ -47,6 +57,8 @@ def _index(records):
 
 
 def _peer_reason(record, indexed):
+    if "peer_unique_id" in record:
+        return "unresolved_peer_identity"
     if record["peer"] == record["chip"]:
         return "loopback"
     if record["peer"] != 1 - record["chip"]:

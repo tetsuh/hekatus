@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v3.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v4.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
 LIBRARY_SHA256 = "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
@@ -297,11 +297,15 @@ def _link(text):
     data = {"channel": _number(t[2]), "core": t[4], "state": t[6]}
     if t[6:] == [DOWN, "(QSFP)"]:
         return data
-    if len(t) < 14 or t[6:11] != ["UP", "(QSFP),", "connected", "to", "Chip"] or t[-2] != "core":
+    if len(t) < 14 or t[6:10] != ["UP", "(QSFP),", "connected", "to"] or t[-2] != "core":
         raise ValueError("peer_links")
     if not re.fullmatch(r"\d{1,3}-\d{1,3}", t[-1], re.ASCII):
         raise ValueError("peer_links")
-    return data | {"peer": _number(t[11]), "peer_core": t[-1]}
+    if t[10] == "Chip":
+        return data | {"peer": _number(t[11]), "peer_core": t[-1]}
+    if t[10:12] == ["Unique", "ID:"] and re.fullmatch(r"[a-f0-9]{1,16}", t[12]):
+        return data | {"peer_unique_id": t[12], "peer_core": t[-1]}
+    raise ValueError("peer_links")
 
 
 def _warning(env, body):

@@ -112,6 +112,16 @@ def test_single_peer_field_mutation_is_unexpected(field, value, reason):
     assert result["observed_qsfp"] == rows
 
 
+def test_source_remote_unique_id_is_retained_as_unresolved_topology():
+    assert judge(records())["verdict"] == "accepted_discovery"
+    raw = report(records()).replace(b"connected to Chip 1 core 2-24",
+                                   b"connected to Unique ID: abcd core 2-24", 1)
+    result = m.evaluate("A", "synthetic-a", env(), env(), xml(), raw, b"", m.GOOD_EXECUTION)
+    assert result["verdict"] == "unexpected_topology"
+    assert result["reason"] == "unresolved_peer_identity"
+    assert result["observed_qsfp"][0]["peer_unique_id"] == "abcd"
+
+
 def test_one_way_link_is_unexpected_not_partial():
     assert judge(records())["verdict"] == "accepted_discovery"
     rows = records(); rows[8] = {k: v for k, v in rows[8].items() if k not in ("peer", "peer_core", "retrain_count")}
