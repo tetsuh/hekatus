@@ -333,6 +333,14 @@ file/line references, UMD/image pins and explicit open questions.
   content-verified transfer, FPGA proof, training-trigger attribution or B3/B4
   timing result. Per-core firmware/ETH health remains unknown, not healthy.
   B requires the separately bound owner scope and all execution/evidence gates.
+  The [single B record](measurements/2026-11-24-issue30-b-smoke/README.md) then
+  reported strict FABRIC_1D initialized on both devices under bundle19.6.0.0,
+  with four Watcher dumps, but RX BRISC JIT failed resolving a source-relative
+  test header before packet checks. Two readonly diagnostic-export warnings
+  also fell outside the baseline. Native exit1, clean close/container cleanup,
+  responsive after-state800MHz/DRAM true; no retry. This is a bounded runtime-
+  layout stop, not a content mismatch or verified transfer. Follow-up #196 is
+  board-free; per-core firmware/ETH health and B3/B4 remain unmeasured/unknown.
 
 **FPGA side remains open:** the source establishes software peer obligations,
 not a sufficient external sender specification. The legacy `erisc_info`

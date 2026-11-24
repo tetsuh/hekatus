@@ -1,0 +1,594 @@
+{
+  "A_rechecks_retry_fallback_reset_flash_cable_or_host_config_actions": false,
+  "B_invocations": 1,
+  "archive": {
+    "file": "B-native-evidence.tar.gz",
+    "members": {
+      "logs/generated/inspector/kernels.yaml": {
+        "bytes": 6357,
+        "sha256": "4eea19744c935e75a464d60e713416965be8d3eb1559ebd38f72c57b8d247473"
+      },
+      "logs/generated/inspector/mesh_devices_log.yaml": {
+        "bytes": 774,
+        "sha256": "982f63ec90c84220a4d8b12042c4835fff6bd15bf6144715de0501ec95f0db3a"
+      },
+      "logs/generated/inspector/mesh_workloads_log.yaml": {
+        "bytes": 317,
+        "sha256": "d8e1c520e06659bf1f54914f29587886857cf481f0a3501ffbfde42b3412f3fb"
+      },
+      "logs/generated/inspector/programs_log.yaml": {
+        "bytes": 9950,
+        "sha256": "d88fb60b45cc914ede322bd6bee6f568f47761a989e787eac6d60f2e60054958"
+      },
+      "logs/generated/inspector/startup.yaml": {
+        "bytes": 144,
+        "sha256": "f0c148a10031f5dea11de27580f4c56d8d08065bf83de579b26417219652d132"
+      },
+      "logs/generated/watcher/kernel_elf_paths.txt": {
+        "bytes": 3774,
+        "sha256": "ee4ebfb3b0e0a73bd31da7b2bddf177f255f0b71b6841b3519ff571ba2dfe5c4"
+      },
+      "logs/generated/watcher/kernel_names.txt": {
+        "bytes": 1728,
+        "sha256": "596079cc54d8f83f28485de82c7ab26f8af66a24255d44dbc464733a9881fe20"
+      },
+      "logs/generated/watcher/watcher.log": {
+        "bytes": 146731,
+        "sha256": "44500903fdd23a33bc6c81833ef0c3828ba747529a8a48cbba0a49509e4d4b7b"
+      },
+      "native/gtest.xml": {
+        "bytes": 8799,
+        "sha256": "8611203891f3b0f744e5ca9bc93d6583705cefeeb8365421e480164aa58d32da"
+      },
+      "result.json": {
+        "bytes": 4796,
+        "sha256": "f639b521bec16814fee799c402cf9b44d87d7631cd01d1efdb5766af8cda5d4a"
+      },
+      "stderr.bin": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout.bin": {
+        "bytes": 19809,
+        "sha256": "aa4f36643ebcd7b3fe1a8688ec437c20018f2d2828f71d53b55adf4e50f5a20b"
+      }
+    },
+    "privacy": "Byte-exact originals; any absolute paths in native logs/XML are fixed container/runtime/compile-time roles, never local host paths or machine names.",
+    "sha256": "58d6aea3c61716d951aac24d90ea271604fd4401d8b7fc5247e5b4b11144a0bd"
+  },
+  "attempt": "issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba",
+  "binary_sha256": "dbdda98ffbd566f845ead7a2bbf759545dc07fbe2d8aa000f55ce47f77cb5cf5",
+  "boot_sha256": "a44024442c3f13ca366666bc2616353e8b7fd5f16fd9740c754951ae3f275c13",
+  "deadline_extra_guard": {
+    "boundary_tests": "01:21:59.999999 allowed;01:22:00 and later refused; CPU only",
+    "scope": "External owner-required wall-clock deny-only gate immediately before unchanged container-create API; no repo/native/command/watchdog modification",
+    "script_sha256": "00c3d0a286c24d3ebc588e8568d9b842cf28871eb22dff9e4624e68d890335fc"
+  },
+  "diagnostics": {
+    "all_raw_preserved": true,
+    "known_baseline": [
+      {
+        "line": 13,
+        "original": "2026-11-24 16:21:04.490 | warning  |             UMD | hwloc_set_area_membind(): failed for physical_device_id: 1 on NodeSet: [0] with errno: Operation not permitted (pid: 7 tid: 126772568953088) (cpuset_lib.cpp:440)"
+      },
+      {
+        "line": 14,
+        "original": "2026-11-24 16:21:04.490 | warning  |             UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 1 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)"
+      },
+      {
+        "line": 15,
+        "original": "2026-11-24 16:21:04.491 | warning  |             UMD | hwloc_set_area_membind(): failed for physical_device_id: 0 on NodeSet: [0] with errno: Operation not permitted (pid: 7 tid: 126772568953088) (cpuset_lib.cpp:440)"
+      },
+      {
+        "line": 16,
+        "original": "2026-11-24 16:21:04.491 | warning  |             UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 0 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)"
+      },
+      {
+        "line": 30,
+        "original": "2026-11-24 16:21:04.669 | warning  |          Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=1 (bus_id=0x9) \u2014 falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)"
+      },
+      {
+        "line": 31,
+        "original": "2026-11-24 16:21:04.669 | warning  |          Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=0 (bus_id=0x6) \u2014 falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)"
+      },
+      {
+        "line": 32,
+        "original": "2026-11-24 16:21:04.669 | warning  |          Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=1 (bus_id=0x9) \u2014 falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)"
+      },
+      {
+        "line": 33,
+        "original": "2026-11-24 16:21:04.670 | warning  |          Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=0 (bus_id=0x6) \u2014 falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)"
+      },
+      {
+        "line": 43,
+        "original": "2026-11-24 16:21:05.269 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+      },
+      {
+        "line": 44,
+        "original": "2026-11-24 16:21:05.270 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+      },
+      {
+        "line": 45,
+        "original": "2026-11-24 16:21:05.276 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+      },
+      {
+        "line": 47,
+        "original": "2026-11-24 16:21:05.279 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+      },
+      {
+        "line": 143,
+        "original": "2026-11-24 16:21:08.777 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+      },
+      {
+        "line": 144,
+        "original": "2026-11-24 16:21:08.777 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)"
+      }
+    ],
+    "nonbaseline": [
+      {
+        "line": 36,
+        "original": "2026-11-24 16:21:04.671 | warning  |          Fabric | Failed to export physical chip mesh coordinate mapping: filesystem error: cannot create directories: Read-only file system [/opt/venv/lib/python3.12/site-packages/ttnn/generated/fabric] (control_plane.cpp:605)"
+      },
+      {
+        "line": 37,
+        "original": "2026-11-24 16:21:04.671 | warning  |          Fabric | Failed to export ASIC to Fabric node ID mapping: filesystem error: cannot create directories: Read-only file system [/opt/venv/lib/python3.12/site-packages/ttnn/generated/fabric] (control_plane.cpp:614)"
+      }
+    ]
+  },
+  "environment": {
+    "bundle": "19.6.0.0",
+    "cards_before_after": [
+      {
+        "aiclk_mhz": 800,
+        "arc_heartbeat": {
+          "first": 172095,
+          "second": 172110
+        },
+        "bundle": "19.6.0.0",
+        "chip": 0,
+        "cmfw": "0.28.0.0",
+        "dram_healthy": true,
+        "erisc": null,
+        "eth_heartbeat_healthy": null,
+        "pci": "0000:06:00.0",
+        "serial": "000004033191411c",
+        "stage": "before",
+        "temperature_c": 56.0,
+        "unobservable": {
+          "erisc": {
+            "reason": "blackhole_pre_19_9_telemetry_unavailable",
+            "sources": [
+              "umd/device/firmware/firmware_info_provider.cpp:217-229",
+              "umd/device/firmware/firmware_utils.cpp:80-99",
+              "umd/device/topology/topology_discovery.cpp:302-306"
+            ]
+          },
+          "eth_heartbeat_healthy": {
+            "reason": "blackhole_pre_19_9_telemetry_unavailable",
+            "sources": [
+              "umd/device/firmware/firmware_info_provider.cpp:217-229",
+              "umd/device/firmware/firmware_utils.cpp:80-99",
+              "umd/device/topology/topology_discovery.cpp:302-306"
+            ]
+          }
+        }
+      },
+      {
+        "aiclk_mhz": 800,
+        "arc_heartbeat": {
+          "first": 172105,
+          "second": 172121
+        },
+        "bundle": "19.6.0.0",
+        "chip": 1,
+        "cmfw": "0.28.0.0",
+        "dram_healthy": true,
+        "erisc": null,
+        "eth_heartbeat_healthy": null,
+        "pci": "0000:09:00.0",
+        "serial": "0000040331914124",
+        "stage": "before",
+        "temperature_c": 59.6,
+        "unobservable": {
+          "erisc": {
+            "reason": "blackhole_pre_19_9_telemetry_unavailable",
+            "sources": [
+              "umd/device/firmware/firmware_info_provider.cpp:217-229",
+              "umd/device/firmware/firmware_utils.cpp:80-99",
+              "umd/device/topology/topology_discovery.cpp:302-306"
+            ]
+          },
+          "eth_heartbeat_healthy": {
+            "reason": "blackhole_pre_19_9_telemetry_unavailable",
+            "sources": [
+              "umd/device/firmware/firmware_info_provider.cpp:217-229",
+              "umd/device/firmware/firmware_utils.cpp:80-99",
+              "umd/device/topology/topology_discovery.cpp:302-306"
+            ]
+          }
+        }
+      },
+      {
+        "aiclk_mhz": 800,
+        "arc_heartbeat": {
+          "first": 172677,
+          "second": 172692
+        },
+        "bundle": "19.6.0.0",
+        "chip": 0,
+        "cmfw": "0.28.0.0",
+        "dram_healthy": true,
+        "erisc": null,
+        "eth_heartbeat_healthy": null,
+        "pci": "0000:06:00.0",
+        "serial": "000004033191411c",
+        "stage": "after",
+        "temperature_c": 57.5,
+        "unobservable": {
+          "erisc": {
+            "reason": "blackhole_pre_19_9_telemetry_unavailable",
+            "sources": [
+              "umd/device/firmware/firmware_info_provider.cpp:217-229",
+              "umd/device/firmware/firmware_utils.cpp:80-99",
+              "umd/device/topology/topology_discovery.cpp:302-306"
+            ]
+          },
+          "eth_heartbeat_healthy": {
+            "reason": "blackhole_pre_19_9_telemetry_unavailable",
+            "sources": [
+              "umd/device/firmware/firmware_info_provider.cpp:217-229",
+              "umd/device/firmware/firmware_utils.cpp:80-99",
+              "umd/device/topology/topology_discovery.cpp:302-306"
+            ]
+          }
+        }
+      },
+      {
+        "aiclk_mhz": 800,
+        "arc_heartbeat": {
+          "first": 172687,
+          "second": 172703
+        },
+        "bundle": "19.6.0.0",
+        "chip": 1,
+        "cmfw": "0.28.0.0",
+        "dram_healthy": true,
+        "erisc": null,
+        "eth_heartbeat_healthy": null,
+        "pci": "0000:09:00.0",
+        "serial": "0000040331914124",
+        "stage": "after",
+        "temperature_c": 60.5,
+        "unobservable": {
+          "erisc": {
+            "reason": "blackhole_pre_19_9_telemetry_unavailable",
+            "sources": [
+              "umd/device/firmware/firmware_info_provider.cpp:217-229",
+              "umd/device/firmware/firmware_utils.cpp:80-99",
+              "umd/device/topology/topology_discovery.cpp:302-306"
+            ]
+          },
+          "eth_heartbeat_healthy": {
+            "reason": "blackhole_pre_19_9_telemetry_unavailable",
+            "sources": [
+              "umd/device/firmware/firmware_info_provider.cpp:217-229",
+              "umd/device/firmware/firmware_utils.cpp:80-99",
+              "umd/device/topology/topology_discovery.cpp:302-306"
+            ]
+          }
+        }
+      }
+    ],
+    "cmfw": "0.28.0.0",
+    "erisc_version": "unknown",
+    "independent_eth_heartbeat_health": "unknown",
+    "kernel": "6.8.0-149-generic",
+    "loaded_kmd": "2.12.0"
+  },
+  "followup_issue": "https://github.com/tetsuh/hekatus/issues/196",
+  "formal_judgment": {
+    "attempt": "issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba",
+    "baseline_sha256": "f335c895ee6a0d511a35909bdbcb7edb75064eed8beb4efd79d9ed28dcb96395",
+    "evidence_sha256": {
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "aa4f36643ebcd7b3fe1a8688ec437c20018f2d2828f71d53b55adf4e50f5a20b",
+      "xml": "8611203891f3b0f744e5ca9bc93d6583705cefeeb8365421e480164aa58d32da"
+    },
+    "firmware_observation": {
+      "diagnostic_lines": [
+        "2026-11-24 16:21:04.437 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)",
+        "2026-11-24 16:21:04.668 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)",
+        "2026-11-24 16:21:05.279 | info     |           Metal | Initializing Fabric (fabric_firmware_initializer.cpp:296)",
+        "2026-11-24 16:21:07.214 | info     |           Metal | Fabric initialized on 2 devices (fabric_firmware_initializer.cpp:444)",
+        "2026-11-24 16:21:07.214 | info     |           Metal | Fabric Initialized with config FabricConfig::FABRIC_1D (fabric_firmware_initializer.cpp:313)",
+        "2026-11-24 16:21:08.753 | error    |    BuildKernels | brisc compile failure -- cmd: cd /capture/cache/tt-metal-cache7394061245831188638/kernels/tt_fabric_1d_rx/3658874950948952483/brisc/ && /opt/tenstorrent/sfpi/compiler/bin/riscv-tt-elf-g++ -O2 -std=c++17 -ftt-nttp -ftt-constinit -ftt-consteval -ftt-no-dyninit -flto=auto -ffast-math -fno-exceptions -fno-rtti -fno-use-cxa-atexit -g -MMD -Wall -Werror -Wno-error=deprecated-declarations -Wno-error=multistatement-macros -Wno-error=parentheses -Wno-error=unused-but-set-variable -Wno-unused-variable -Wno-unused-function -mcpu=tt-bh -fno-tree-loop-distribute-patterns -I. -I.. -I/opt/venv/lib/python3.12/site-packages/ttnn/ -I/opt/venv/lib/python3.12/site-packages/ttnn/ttnn -I/opt/venv/lib/python3.12/site-packages/ttnn/ttnn/cpp -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/tt-llk/common -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hostdevcommon/api -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/api/ -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/ckernels/blackhole/metal/common -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/ckernels/blackhole/metal/llk_io -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx/blackhole -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx/blackhole/blackhole_defines -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx/blackhole/noc -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/tt-llk/tt_llk_blackhole/common/inc -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/tt-llk/tt_llk_blackhole/llk_lib -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx -I/source/tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels -c -o /capture/cache/tt-metal-cache7394061245831188638/kernels/tt_fabric_1d_rx/3658874950948952483/brisc/brisck.13294112511606232566.o /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx/brisck.cc -MF /capture/cache/tt-metal-cache7394061245831188638/kernels/tt_fabric_1d_rx/3658874950948952483/brisc/brisck.13294112511606232566.d -DIS_NOT_POW2_NUM_L1_BANKS=1 -DLOG_BASE_2_OF_NUM_DRAM_BANKS=3 -DNUM_DRAM_BANKS=8 -DNUM_L1_BANKS=110 -DPCIE_NOC_X=19 -DPCIE_NOC_Y=24 -DTENSIX_FIRMWARE -DLOCAL_MEM_EN=0 -DWATCHER_ENABLED -DPROCESSOR_INDEX=0 -DCOMPILE_FOR_BRISC -DARCH_BLACKHOLE -DDISPATCH_MESSAGE_ADDR=4290184248 -DKERNEL_BUILD -DFULL_KERNEL_NAME=\"\\\"tt_fabric_1d_rx/3658874950948952483/\\\"\" -DFABRIC_1D_PKT_HDR_EXTENSION_WORDS='0' -DROUTING_MODE='137' -DNOC_INDEX='0' -DNOC_MODE='0' -DKERNEL_COMPILE_TIME_ARGS=1008384,128,156416,0,0,0,0  (build.cpp:61)",
+        "                 from /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx/brisck.cc:21:",
+        "                 from /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx/brisck.cc:21:",
+        "                 from /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx/brisck.cc:21:"
+      ],
+      "erisc_health": "unknown",
+      "eth_heartbeat_health": "unknown",
+      "per_core_versions": [],
+      "reported_versions": [],
+      "truncated": false
+    },
+    "observed_qsfp": [],
+    "packet_observation": null,
+    "phase": "B",
+    "reason": "execution",
+    "schema": "issue30-verdict-v3",
+    "scope": "five checked packets; no timing claim",
+    "topology": null,
+    "verdict": "rejected",
+    "xml_present": true
+  },
+  "gtest": {
+    "body_seconds": 0.047,
+    "errors": 0,
+    "executed": 1,
+    "failures": 1,
+    "skipped": 0,
+    "suite_total_seconds": 4.355
+  },
+  "harness_commit": "ebf5a82aefca654d044eed517d7e10d9c263ca88",
+  "hugepages": {
+    "backing_files_after": [
+      {
+        "allocated_bytes": 1073741824,
+        "bytes": 1073741824,
+        "ctime_ns": 1795529861259020802,
+        "gid": 1000,
+        "mode": 33206,
+        "mtime_ns": 1795529861259020802,
+        "name": "device_1_tenstorrent",
+        "nlink": 1,
+        "uid": 1000
+      },
+      {
+        "allocated_bytes": 0,
+        "bytes": 0,
+        "ctime_ns": 1795520075068998873,
+        "gid": 0,
+        "mode": 16877,
+        "mtime_ns": 1795520075068998873,
+        "name": "libvirt",
+        "nlink": 3,
+        "uid": 0
+      },
+      {
+        "allocated_bytes": 1073741824,
+        "bytes": 1073741824,
+        "ctime_ns": 1795529861318021342,
+        "gid": 1000,
+        "mode": 33206,
+        "mtime_ns": 1795529861318021342,
+        "name": "tenstorrent",
+        "nlink": 1,
+        "uid": 1000
+      }
+    ],
+    "backing_files_before": [
+      {
+        "allocated_bytes": 1073741824,
+        "bytes": 1073741824,
+        "ctime_ns": 1795529861259020802,
+        "gid": 1000,
+        "mode": 33206,
+        "mtime_ns": 1795529861259020802,
+        "name": "device_1_tenstorrent",
+        "nlink": 1,
+        "uid": 1000
+      },
+      {
+        "allocated_bytes": 0,
+        "bytes": 0,
+        "ctime_ns": 1795520075068998873,
+        "gid": 0,
+        "mode": 16877,
+        "mtime_ns": 1795520075068998873,
+        "name": "libvirt",
+        "nlink": 3,
+        "uid": 0
+      },
+      {
+        "allocated_bytes": 1073741824,
+        "bytes": 1073741824,
+        "ctime_ns": 1795529861318021342,
+        "gid": 1000,
+        "mode": 33206,
+        "mtime_ns": 1795529861318021342,
+        "name": "tenstorrent",
+        "nlink": 1,
+        "uid": 1000
+      }
+    ],
+    "explanation": "Two regular UMD backing files each1GiB allocated, total2GiB exactly accounts for A free8->6; before-B mtimes are in A native interval. Directory has0 allocated bytes. Only metadata/stat read; no payload access, deletion or pool change.",
+    "free_after": 6,
+    "free_before": 6,
+    "pool_total": 8
+  },
+  "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+  "logical_unit": "issue30-b-fabric1d-smoke-watcher-v1",
+  "milestones": [
+    {
+      "line": 6,
+      "original": "2026-11-24 16:21:04.429 | info     |            Test | Running fabric api tests with fast dispatch (fabric_fixture.hpp:87)"
+    },
+    {
+      "line": 11,
+      "original": "2026-11-24 16:21:04.437 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)"
+    },
+    {
+      "line": 23,
+      "original": "2026-11-24 16:21:04.665 | info     |            Test | Fabric Reliability Mode: STRICT_SYSTEM_HEALTH_SETUP_MODE (fabric_fixture.hpp:100)"
+    },
+    {
+      "line": 26,
+      "original": "2026-11-24 16:21:04.668 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)"
+    },
+    {
+      "line": 28,
+      "original": "2026-11-24 16:21:04.669 | info     |     Distributed | Using auto discovery to generate mesh graph. (metal_env.cpp:405)"
+    },
+    {
+      "line": 29,
+      "original": "2026-11-24 16:21:04.669 | info     |     Distributed | Constructing control plane using auto-discovery (no mesh graph descriptor). (metal_env.cpp:467)"
+    },
+    {
+      "line": 51,
+      "original": "2026-11-24 16:21:07.213 | info     |           Metal | Fabric initialized on Device 0 (device.cpp:548)"
+    },
+    {
+      "line": 52,
+      "original": "2026-11-24 16:21:07.214 | info     |           Metal | Fabric initialized on Device 1 (device.cpp:548)"
+    },
+    {
+      "line": 53,
+      "original": "2026-11-24 16:21:07.214 | info     |           Metal | Fabric initialized on 2 devices (fabric_firmware_initializer.cpp:444)"
+    },
+    {
+      "line": 54,
+      "original": "2026-11-24 16:21:07.214 | info     |           Metal | Fabric Initialized with config FabricConfig::FABRIC_1D (fabric_firmware_initializer.cpp:313)"
+    },
+    {
+      "line": 59,
+      "original": "[ RUN      ] Fabric1DFixture.TestUnicastConnAPI1DSmoke"
+    },
+    {
+      "line": 60,
+      "original": "2026-11-24 16:21:08.753 | error    |    BuildKernels | brisc compile failure -- cmd: cd /capture/cache/tt-metal-cache7394061245831188638/kernels/tt_fabric_1d_rx/3658874950948952483/brisc/ && /opt/tenstorrent/sfpi/compiler/bin/riscv-tt-elf-g++ -O2 -std=c++17 -ftt-nttp -ftt-constinit -ftt-consteval -ftt-no-dyninit -flto=auto -ffast-math -fno-exceptions -fno-rtti -fno-use-cxa-atexit -g -MMD -Wall -Werror -Wno-error=deprecated-declarations -Wno-error=multistatement-macros -Wno-error=parentheses -Wno-error=unused-but-set-variable -Wno-unused-variable -Wno-unused-function -mcpu=tt-bh -fno-tree-loop-distribute-patterns -I. -I.. -I/opt/venv/lib/python3.12/site-packages/ttnn/ -I/opt/venv/lib/python3.12/site-packages/ttnn/ttnn -I/opt/venv/lib/python3.12/site-packages/ttnn/ttnn/cpp -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/tt-llk/common -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hostdevcommon/api -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/api/ -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/ckernels/blackhole/metal/common -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/ckernels/blackhole/metal/llk_io -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx/blackhole -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx/blackhole/blackhole_defines -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/inc/internal/tt-1xx/blackhole/noc -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/tt-llk/tt_llk_blackhole/common/inc -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/tt-llk/tt_llk_blackhole/llk_lib -I/opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx -I/source/tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels -c -o /capture/cache/tt-metal-cache7394061245831188638/kernels/tt_fabric_1d_rx/3658874950948952483/brisc/brisck.13294112511606232566.o /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/hw/firmware/src/tt-1xx/brisck.cc -MF /capture/cache/tt-metal-cache7394061245831188638/kernels/tt_fabric_1d_rx/3658874950948952483/brisc/brisck.13294112511606232566.d -DIS_NOT_POW2_NUM_L1_BANKS=1 -DLOG_BASE_2_OF_NUM_DRAM_BANKS=3 -DNUM_DRAM_BANKS=8 -DNUM_L1_BANKS=110 -DPCIE_NOC_X=19 -DPCIE_NOC_Y=24 -DTENSIX_FIRMWARE -DLOCAL_MEM_EN=0 -DWATCHER_ENABLED -DPROCESSOR_INDEX=0 -DCOMPILE_FOR_BRISC -DARCH_BLACKHOLE -DDISPATCH_MESSAGE_ADDR=4290184248 -DKERNEL_BUILD -DFULL_KERNEL_NAME=\"\\\"tt_fabric_1d_rx/3658874950948952483/\\\"\" -DFABRIC_1D_PKT_HDR_EXTENSION_WORDS='0' -DROUTING_MODE='137' -DNOC_INDEX='0' -DNOC_MODE='0' -DKERNEL_COMPILE_TIME_ARGS=1008384,128,156416,0,0,0,0  (build.cpp:61)"
+    },
+    {
+      "line": 63,
+      "original": "/source/tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_1d_rx.cpp:8:10: fatal error: tests/tt_metal/tt_metal/perf_microbenchmark/common/kernel_utils.hpp: No such file or directory"
+    },
+    {
+      "line": 72,
+      "original": "/source/tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_1d_rx.cpp:8:10: fatal error: tests/tt_metal/tt_metal/perf_microbenchmark/common/kernel_utils.hpp: No such file or directory"
+    },
+    {
+      "line": 101,
+      "original": "/source/tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_1d_rx.cpp:8:10: fatal error: tests/tt_metal/tt_metal/perf_microbenchmark/common/kernel_utils.hpp: No such file or directory"
+    },
+    {
+      "line": 142,
+      "original": "[  FAILED  ] Fabric1DFixture.TestUnicastConnAPI1DSmoke (47 ms)"
+    },
+    {
+      "line": 150,
+      "original": "[  FAILED  ] 1 test, listed below:"
+    },
+    {
+      "line": 151,
+      "original": "[  FAILED  ] Fabric1DFixture.TestUnicastConnAPI1DSmoke"
+    },
+    {
+      "line": 154,
+      "original": "2026-11-24 16:21:08.785 | info     |    BuildKernels | JIT cache stats: 0/32 hits (0.0%) [0 cached, 5 build-once dedup, 0 merged artifacts, 0 merged genfiles] (build_cache_telemetry.cpp:207)"
+    },
+    {
+      "line": 156,
+      "original": "2026-11-24 16:21:08.785 | info     |       LLRuntime | Watcher thread stopped watching... (watcher_server.cpp:604)"
+    },
+    {
+      "line": 157,
+      "original": "2026-11-24 16:21:08.785 | info     |       LLRuntime | Watcher detached device 0 (watcher_server.cpp:190)"
+    },
+    {
+      "line": 158,
+      "original": "2026-11-24 16:21:08.785 | info     |       LLRuntime | Watcher detached device 1 (watcher_server.cpp:190)"
+    },
+    {
+      "line": 160,
+      "original": "2026-11-24 16:21:08.792 | info     |             UMD | Closing devices in cluster (cluster.cpp:1061)"
+    },
+    {
+      "line": 161,
+      "original": "2026-11-24 16:21:09.014 | info     |             UMD | Closing devices in cluster completed. (cluster.cpp:1070)"
+    },
+    {
+      "line": 163,
+      "original": "2026-11-24 16:21:09.014 | info     |             UMD | Cluster destructor completed. (cluster.cpp:781)"
+    }
+  ],
+  "native_execution": {
+    "client_exit": 1,
+    "containers_clean": true,
+    "elapsed_seconds": 4.784315770997637,
+    "exit": 1,
+    "inner_deadline_status": "not_indicated",
+    "started": true,
+    "terminated": true,
+    "timed_out": false
+  },
+  "no_content_or_timing_success_claim": true,
+  "overall": "rejected",
+  "owner_accepted_A": "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json",
+  "owner_accepted_A_sha256": "8e096593772321077530621669d7c347084a6e2d2ad149ea88d8a13ae6f5703e",
+  "owner_date": "2026-11-24",
+  "packet_observation": {
+    "checked_packets_observed": null,
+    "expected_packets_from_pinned_source": 5,
+    "reason": "RX worker kernel compile failed before receiver enqueue completed; TX dispatch and packet assertions not reached in source control flow. No independent wire-packet count is inferred.",
+    "receiver_payload_result": "not_reached",
+    "sender_receiver_status_words_or_byte_counts": null
+  },
+  "post_state_complete": true,
+  "power_off_permission_issued_after_post_state": true,
+  "private_input_sha256": {
+    "after.json": "1c769ca1a956729c786e1dc369cca9a51637d4c901b7eb34af4bc98565dea594",
+    "approval.json": "9c3a7bc1a42ab534b40beb7a19c38789fd604f632523c2b0755ad696f7586958",
+    "before.json": "ee084b919fc32b320b79ab2929225c1bd2ebcdd11a8b1814fa8f1a19159ea22e",
+    "container-request.json": "4d271caccf8e2bb8ba3306042bedd69e04c3deaf3c756f44850a5400f3f930ae",
+    "docker-after-native.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "immediate-processes.stdout": "6382aa29142c7dffc8222c0061b28f3bf2d8ec80167c10432ac2509b86f38a37",
+    "immediate-snapshot.stdout": "e4f55ce2538af5eb74ae12d885fc4eb22591b83710c960986b3a0daa159727f1",
+    "immediate-vmstat.stdout": "e00c3ecf69b9800409c3497a0415caf95898fe00475f0dbe916a68b88aed1d2a",
+    "review.json": "392b6cc2f3b07f46f306c4622f8e5621fef38d77546f7a12ef5a3699885dd6b1"
+  },
+  "remaining_containers": 0,
+  "schema": "issue30-B-measurement-v1",
+  "source_receipt": "docs/measurements/issue30-g0/receipt-v7.json",
+  "source_receipt_sha256": "b81f21f116c2e1f18bf0bc88480269fdfcbf39888b738d8cca8c5d638946ff1f",
+  "stage": "reported FABRIC_1D initialized on2 devices; test body stopped in RX BRISC JIT",
+  "start_admission": {
+    "allowed": true,
+    "at": "2026-11-25T01:21:04.333835+09:00",
+    "attempt": "issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba",
+    "deadline": "2026-11-25T01:22:00+09:00"
+  },
+  "stop_reasons": [
+    "native/client exit1 and XML failure",
+    "two nonbaseline read-only diagnostic-export warnings",
+    "RX BRISC JIT cannot resolve source-relative kernel_utils.hpp include"
+  ],
+  "subsequent_board_access": false,
+  "telemetry_collection_utc": {
+    "after": "2026-11-24T16:21:22Z",
+    "before": "2026-11-24T16:20:24Z"
+  },
+  "watcher": {
+    "artifact": "logs/generated/watcher/watcher.log",
+    "attached_devices": [
+      0,
+      1
+    ],
+    "bytes": 146731,
+    "detached_at_seconds": 4.356,
+    "dump_times_seconds": [
+      0.84,
+      1.862,
+      2.878,
+      3.893
+    ],
+    "manual_scope": "Reviewed all dump boundaries/alarm scan and representative worker/ERISC rows; four captured dumps, no anomaly match, not base firmware health proof. Registered TX/RX kernel names do not prove dispatch.",
+    "notes": "Worker GW/W and ERISC K/NWID samples with router kernel IDs; registered TX/RX names are not dispatch proof. No inferred base firmware/ETH heartbeat health.",
+    "observation": {
+      "dump_count": 4,
+      "fresh": true,
+      "scan_passed": true,
+      "scope": "fresh suffix or rewritten file after execution start; owner inspection still required"
+    },
+    "sha256": "44500903fdd23a33bc6c81833ef0c3828ba747529a8a48cbba0a49509e4d4b7b"
+  }
+}
