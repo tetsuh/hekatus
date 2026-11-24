@@ -125,5 +125,6 @@ def test_old_accepted_A_output_or_inventory_cannot_replace_owner_decision():
     assert good["verdict"] == "accepted_discovery"
     good["firmware_observation"]["per_core_versions"] = [
         {"chip": r["chip"], "core": r["core"], "version": "1.4.1"} for r in good["observed_qsfp"]]
+    before = discovery_env()
     with pytest.raises(ValueError, match="discovery_binding"):
-        m._transfer_binding(discovery_env(), good, b"")
+        m._transfer_binding(before, good, b"")

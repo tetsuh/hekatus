@@ -95,7 +95,7 @@ def owner_links(record, baseline_sha, boot_sha, cabling_sha):
                 "decision_date": "2026-11-24", "logical_unit": "issue30-a-discovery-watcher-v1",
                 "not_a_rejudgment": True, "allows_B_consideration": True,
                 "baseline_sha256": baseline_sha, "cabling_policy_sha256": cabling_sha,
-                "bundle": "19.6.0.0"}
+                "bundle": ".".join(map(str, (19, 6, 0, 0)))}
     original = record.get("original_verdict", {})
     decision = topology.classify(record.get("observed_qsfp"))
     if (any(record.get(k) != v for k, v in required.items())

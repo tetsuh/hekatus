@@ -62,7 +62,8 @@ def test_owner_A_observation_does_not_rewrite_original_verdict():
     owner = accepted()
     snapshot = copy.deepcopy(owner)
     assert transfer(owner=owner)["verdict"] == "accepted_transfer"
-    assert owner == snapshot and owner["original_verdict"]["verdict"] == "rejected"
+    assert owner == snapshot
+    assert owner["original_verdict"]["verdict"] == "rejected"
 
 
 @pytest.mark.parametrize(("field", "value", "reason"), [
