@@ -30,7 +30,7 @@ def test_cli_defaults_to_the_receipted_assets(tmp_path, monkeypatch, capsys):
     assert m.main() == 0
     assert json.loads(capsys.readouterr().out)["Image"] == m.IMAGE
     assert observed == [m.ASSETS.as_posix()]
-    assert m.CURRENT_RECEIPT.name == "receipt-v4.json"
+    assert m.CURRENT_RECEIPT.name == "receipt-v5.json"
     assert m.CURRENT_RECEIPT.parent == m.ROOT / "docs/measurements/issue30-g0"
 
 
@@ -133,10 +133,7 @@ def approval_inputs(tmp_path):
     receipt = {"schema": "issue30-g0-v1", "all_passed": True,
                "current_wrapper_sources": m.program_sources(),
                "binaries": {name: m.digest(b"synthetic-not-an-executable") for name in m.BINARIES.values()}}
-    approval = {"schema": "issue30-owner-approval-v1", "attempt": "synthetic-a", "phase": "A",
-                "head": "synthetic-head", "boot": env["boot"],
-                "environment_sha256": m.digest(json.dumps(env, sort_keys=True).encode()),
-                "receipt_sha256": m.digest(json.dumps(receipt, sort_keys=True).encode())}
+    approval = m.approval_record("A", "synthetic-a", env, receipt, "synthetic-head")
     return env, receipt, approval
 
 
@@ -188,10 +185,10 @@ def test_cli_rejects_arbitrary_path_flags(monkeypatch):
 
 
 def test_B_authorization_rechecks_A_before_preparing_device_mapping(tmp_path, monkeypatch):
-    from tests.test_issue30_topology import env, judge, records
+    from tests.test_issue30_topology import certified, env, judge, records
 
     before = env()
-    discovery = [judge(records())]
+    discovery = [certified(judge(records()))]
     fake_receipt = {"source_commit": m.SOURCE_COMMIT, "runtime_library_sha256": m.LIBRARY_SHA256}
     values = {m.BEFORE_FILE: before, m.CURRENT_RECEIPT.name: fake_receipt, "approval.json": {}}
     monkeypatch.setattr(m, "_load", lambda path, *args: discovery[0] if path.name == "discovery.json" else values[path.name])

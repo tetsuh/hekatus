@@ -15,7 +15,17 @@ def policy():
 
 
 def env():
-    return environment() | {"topology": policy(), "links": [], "uncabled": []}
+    value = environment() | {"topology": policy(), "links": [], "uncabled": []}
+    for card in value["cards"]:
+        card["arc_heartbeat"] = {"first": 100, "second": 102}
+    return value
+
+
+def certified(discovery):
+    # Synthetic B-positive output inventory, never produced by a physical run.
+    discovery["firmware_observation"]["per_core_versions"] = [
+        {"chip": r["chip"], "core": r["core"], "version": "1.4.1"} for r in discovery["observed_qsfp"]]
+    return discovery
 
 
 def core(chip, channel):
@@ -81,7 +91,7 @@ def test_complete_hypotheses_and_within_port_lane_crossing(hypothesis, crossed):
     result = judge(records(hypothesis, crossed=crossed))
     assert result["verdict"] == "accepted_discovery"
     assert result["topology"]["hypothesis"] == hypothesis
-    assert result["schema"] == "issue30-verdict-v2"
+    assert result["schema"] == "issue30-verdict-v3"
 
 
 @pytest.mark.parametrize(("active", "reason"), [(set(), "no_peers"), ({4, 6}, "partial_peers"),
@@ -161,7 +171,7 @@ def test_policy_cannot_be_redefined_by_input():
 def test_new_policy_does_not_relax_heartbeat_or_execution():
     assert judge(records())["verdict"] == "accepted_discovery"
     changed = env(); changed["cards"][0]["eth_heartbeat_healthy"] = None
-    assert judge(records(), before=changed)["reason"] == "environment"
+    assert judge(records(), before=changed)["reason"] == "unobservable_reason"
     assert judge(records(), timed_out=True)["reason"] == "execution"
 
 
@@ -194,7 +204,7 @@ def test_channel_port_implementation_matches_frozen_input():
 
 def test_B_recomputes_A_topology_instead_of_trusting_verdict_label():
     before = env()
-    good = judge(records())
+    good = certified(judge(records()))
     def transfer(discovery):
         return m.evaluate("B", "synthetic-a", before, before, xml("B"), b"", b"", m.GOOD_EXECUTION, discovery)
     assert transfer(good)["verdict"] == "accepted_transfer"

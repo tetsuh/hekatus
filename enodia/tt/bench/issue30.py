@@ -18,6 +18,7 @@ from xml.etree.ElementTree import ParseError
 
 from defusedxml import ElementTree as ET
 
+from enodia.tt.bench import issue30_admission as admission
 from enodia.tt.bench import issue30_topology as topology
 
 IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
@@ -25,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v4.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v5.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
 LIBRARY_SHA256 = "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141"
@@ -48,7 +49,9 @@ MASKS = ["/sys", "/proc/bus", "/proc/driver", "/proc/acpi", "/proc/asound",
 PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CMakeLists.txt",
                  "tools/build_issue30.py", "tests/test_issue30.py", "tests/test_issue30_capture.py",
                  "pyproject.toml", "uv.lock", "enodia/tt/bench/issue30_topology.py",
-                 "tests/test_issue30_topology.py", topology.POLICY_FILE)
+                 "tests/test_issue30_topology.py", topology.POLICY_FILE,
+                 "enodia/tt/bench/issue30_admission.py", "tests/test_issue30_admission.py",
+                 "docs/adr/0021-discovery-observability-gate.md")
 
 
 def digest(data: bytes) -> str:
@@ -138,12 +141,21 @@ def request(phase: str, identity: str, assets: Path, capture: Path, *, uid: int,
                            "Binds": [f"{assets.resolve()}:/assets:ro", f"{capture.resolve()}:/capture:rw"]}}
 
 
+def approval_record(phase, identity, env, receipt, head):
+    record = {"schema": "issue30-owner-approval-v1", "attempt": identity, "phase": phase,
+              "head": head, "boot": env["boot"],
+              "environment_sha256": digest(json.dumps(env, sort_keys=True).encode()),
+              "receipt_sha256": digest(json.dumps(receipt, sort_keys=True).encode())}
+    if phase == "A":
+        record |= {"schema": "issue30-owner-approval-v2", "operator_correction": dict(admission.CORRECTION),
+                   "owner_authorization": {"date": "2026-11-24", "logical_unit": "issue30-a-discovery-watcher-v1",
+                                           "invocations": 1, "test": TESTS["A"], "watcher": "1",
+                                           "cards": [list(c) for c in CARDS], "max_seconds": 60}}
+    return record
+
+
 def _approval(phase, identity, approval, env, receipt, head):
-    expected = {"schema": "issue30-owner-approval-v1", "attempt": identity, "phase": phase,
-                "head": head, "boot": env["boot"],
-                "environment_sha256": digest(json.dumps(env, sort_keys=True).encode()),
-                "receipt_sha256": digest(json.dumps(receipt, sort_keys=True).encode())}
-    if approval != expected:
+    if approval != approval_record(phase, identity, env, receipt, head):
         raise ValueError("approval_binding")
     if receipt.get("schema") != "issue30-g0-v1" or receipt.get("all_passed") is not True:
         raise ValueError("g0_not_ready")
@@ -160,7 +172,7 @@ def _binary_binding(assets, receipt):
 
 def board_request(phase: str, identity: str, assets: Path, output: Path, *,
                   approval: dict, environment: dict, receipt: dict, head: str) -> dict:
-    _environment(environment, identity)
+    _environment(environment, identity, phase)
     _approval(phase, identity, approval, environment, receipt, head)
     _binary_binding(assets, receipt)
     payload = request(phase, identity, assets, output, uid=os.getuid(), gid=os.getgid())
@@ -182,23 +194,22 @@ def _bundle_report_name(value):
     return ".".join(str(int(x)) for x in value.split(".")[:3])
 
 
-def _card(card):
-    erisc, cmfw = card.get("erisc", ""), card.get("cmfw", "")
-    if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}", erisc, re.ASCII):
-        raise ValueError("environment")
+def _card(card, phase):
+    cmfw = card.get("cmfw", "")
     if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?", cmfw, re.ASCII):
         raise ValueError("environment")
-    if not any(map(int, cmfw.split("."))) or tuple(map(int, erisc.split("."))) < (1, 4, 1):
+    if not any(map(int, cmfw.split("."))):
         raise ValueError("environment")
     if tuple(map(int, _bundle_report_name(card.get("bundle", "")).split("."))) < (18, 5, 0):
         raise ValueError("environment")
-    if card.get("dram_healthy") is not True or card.get("eth_heartbeat_healthy") is not True:
+    admission.card_health(card, phase)
+    if card.get("dram_healthy") is not True:
         raise ValueError("environment")
     if type(card.get("aiclk_mhz")) is not int or card["aiclk_mhz"] <= 0 or type(card.get("pcie_index")) is not int:
         raise ValueError("environment")
 
 
-def _cards(cards):
+def _cards(cards, phase, require_arc):
     if not isinstance(cards, list) or len(cards) != 2:
         raise ValueError("environment")
     if {c.get("chip") for c in cards} != {0, 1}:
@@ -206,7 +217,9 @@ def _cards(cards):
     if {(c.get("serial"), c.get("pci")) for c in cards} != set(CARDS):
         raise ValueError("environment")
     for c in cards:
-        _card(c)
+        _card(c, phase)
+        if require_arc:
+            admission.arc_progress(c)
     if len({c["pcie_index"] for c in cards}) != 2 or len({c["bundle"] for c in cards}) != 1:
         raise ValueError("environment")
 
@@ -226,14 +239,14 @@ def _links(env):
             raise ValueError("environment")
 
 
-def _environment(env, identity):
+def _environment(env, identity, phase="B"):
     if (env.get("schema") != "issue30-environment-v1" or env.get("attempt") != identity
             or not env.get("boot") or env.get("image") != IMAGE or env.get("watcher") != "1"):
         raise ValueError("environment")
     kmd = env.get("kmd", "")
     if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}", kmd, re.ASCII) or tuple(map(int, kmd.split("."))) < (2, 8, 0):
         raise ValueError("environment")
-    _cards(env.get("cards"))
+    _cards(env.get("cards"), phase, phase == "A" and "topology" in env)
     _links(env)
 
 
@@ -399,7 +412,7 @@ def _health(env, raw, observed):
 
 
 def baseline_digest(env):
-    return digest(json.dumps({k: v for k, v in env.items() if k != "attempt"}, sort_keys=True).encode())
+    return digest(json.dumps(admission.stable_environment(env), sort_keys=True).encode())
 
 
 def _execution(execution):
@@ -416,10 +429,10 @@ def _execution(execution):
         raise ValueError("containers")
 
 
-def _post(env, after, identity):
-    _environment(env, identity)
-    _environment(after, identity)
-    if env != after:
+def _post(env, after, identity, phase):
+    _environment(env, identity, phase)
+    _environment(after, identity, phase)
+    if baseline_digest(env) != baseline_digest(after):
         raise ValueError("environment")
 
 
@@ -429,18 +442,21 @@ def _transfer_binding(before, discovery, raw):
         raise ValueError("discovery_binding")
     if "topology" in before:
         topology.require_accepted_discovery(discovery)
+        admission.require_discovery_versions(discovery)
     if re.search(rb"\b(?:warning|error|fatal|critical)\b", raw, re.IGNORECASE):
         raise ValueError("diagnostic")
 
 
 def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, discovery=None):
     reason, decision, observed = "accepted", None, []
+    firmware = admission.observe_firmware(stdout + b"\n" + stderr)
     try:
         _execution(execution)
         _xml(phase, xml)
-        _post(before, after, identity)
+        _post(before, after, identity, phase)
         if phase == "A":
             decision = _health(before, stdout + b"\n" + stderr, observed)
+            admission.check_reported_versions(firmware)
             if decision is not None:
                 reason = decision["reason"]
         else:
@@ -452,7 +468,8 @@ def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, dis
               "scope": SCOPES[phase], "baseline_sha256": baseline_digest(before),
               "evidence_sha256": {"xml": digest(xml), "stdout": digest(stdout), "stderr": digest(stderr)}}
     if "topology" in before:
-        result |= {"schema": "issue30-verdict-v2", "topology": decision, "observed_qsfp": observed}
+        result |= {"schema": "issue30-verdict-v3", "topology": decision, "observed_qsfp": observed,
+                   "firmware_observation": firmware}
         if decision is not None and decision["reason"] == reason:
             result["verdict"] = {"accepted": ACCEPTED[phase], "not_established": "link_not_established",
                                  "unexpected": "unexpected_topology"}.get(decision["outcome"], "rejected")
@@ -595,6 +612,7 @@ def _git(source, *args):
 def _authorize(phase, identity, inputs, output):
     env = _load(inputs / BEFORE_FILE)
     topology.validate_input(env)
+    _environment(env, identity, phase)
     receipt = _load(CURRENT_RECEIPT, ROOT)
     if _git(ROOT, "status", "--porcelain"):
         raise ValueError("hardware capture requires a clean committed tree")
@@ -640,9 +658,12 @@ def _judge(phase, identity, output, inputs):
         if review.get(field + "_sha256") != digest(_read(inputs / (field + ".json"))):
             raise ValueError("review observation fingerprint mismatch")
     discovery = _load(inputs / "discovery.json") if phase == "B" else None
+    xml_path = output / "native/gtest.xml"
+    xml = _read(xml_path) if xml_path.exists() else b""
     result = evaluate(phase, identity, _load(inputs / BEFORE_FILE), _load(inputs / "after.json"),
-                      _read(output / "native/gtest.xml"), _read(output / "stdout.bin"),
+                      xml, _read(output / "stdout.bin"),
                       _read(output / "stderr.bin"), execution, discovery)
+    result["xml_present"] = xml_path.exists()
     publish(output / "result.json", result)
     return 0 if result["reason"] == "accepted" else 2
 

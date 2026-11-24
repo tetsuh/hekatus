@@ -11,13 +11,15 @@ probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
 The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
 remain immutable evidence for their original head. Hardened admission selects
-[G0 receipt v4](receipt-v4.json). V3 remains immutable. Original v2 private-scratch/fixed-layout
+[G0 receipt v5](receipt-v5.json). V3/V4 remain immutable. Original v2 private-scratch/fixed-layout
 verification and [build receipt v2](build-receipt-v2.json) remain immutable.
 V3/V4 rebind only host input/judgment changes using CPU tests and an unchanged
 launch/watchdog AST proof; no native binary or container was rerun for either.
 V4 also retains the source's Unique-ID peer form as unresolved unexpected
 topology, without guessing a local chip ID. No hardware correctness, dispatch,
-link training or jitter result is claimed. All 74 local
+link training or jitter result is claimed. The operator's A-only observability
+correction is [ADR-0021](../../adr/0021-discovery-observability-gate.md): explicitly
+reasoned unknown ERISC/ETH telemetry can enter discovery, never B. All 89 local
 G0 unit cases pass; full-suite/CI/Sonar evidence is recorded in the PR/report.
 CodeRabbit CLI could not authenticate at review time; no review was completed.
 The [source study](../issue30-source-study.md) pins T/U and the runtime image.
@@ -88,7 +90,7 @@ There are **no arbitrary path CLI flags**. Assets are fixed at
 hardware outputs at `out/issue30/runs/<attempt>`. Owner inputs have fixed slots
 under `out/issue30/observations/<attempt>`: `before.json`, `after.json`,
 `approval.json`, `review.json`, and B's `discovery.json`. The selected G0 receipt is fixed
-at this document's `receipt-v4.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
+at this document's `receipt-v5.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
 program-owned roots; identity is validated before any file/process operation.
 
 `capture` defaults to device-free; **`--approved-board`** additionally requires
@@ -101,16 +103,22 @@ Canonical path, stale-receipt and daemon-ID mutations have negative tests.
 
 - `issue30-environment-v1`: attempt/boot/image/KMD/Watcher plus exactly the two
   serial/PCI identities, runtime chip-to-PCIe-index map, bundle, CMFW, base ERISC,
-  independently observed ERISC heartbeat health, AICLK and DRAM status. Current
+  phase-appropriate ERISC/ETH observations, AICLK and DRAM status. A may use null
+  ERISC/ETH heartbeat only with `unobservable[field]` equal to the exact source-
+  cited pre-19.9 reason (see admission.REASON). Observed bad/low values still
+  refuse. Current
   hardware inputs also require `topology` equal to the precommitted
   [two-hypothesis policy](../issue30-a-topology.json), with `links=[]` and
   `uncabled=[]`: lane/core pairs are learned as observations, never predefined
-  expectations. Before/after stable values and the full policy must match. Node paths
+  expectations. Before/after stable values and the full policy must match;
+  progressing `arc_heartbeat={first,second}` and `temperature_c` are observations,
+  not stable identity. A requires both ARC pairs to advance and idle AICLK=800. Node paths
   appear only in private execution inputs. Minimum source gates: KMD 2.8,
   bundle 18.5, ERISC 1.4.1; they are necessary, not sufficient for first training.
-- `issue30-owner-approval-v1`: exact attempt/phase/head/boot and SHA-256 of
-  canonical environment and G0 receipt. Fresh owner observations are required;
-  this file format does not let the agent approve its own hardware run.
+- `issue30-owner-approval-v2` for A: exact attempt/phase/head/boot and SHA-256 of
+  canonical environment/G0 receipt, owner 2026-11-24 once-only scope and separate
+  operator admission correction/ADR. It records supplied authority, not agent-
+  generated permission. B retains separate authority and never inherits A.
 - `issue30-execution-v1`: immutable direct container/client exits, started/
   timed-out/terminated/device-free state, elapsed time, binary hash, image,
   actual argv/environment and raw/ps/lifecycle companion hashes. No exit is
@@ -121,11 +129,13 @@ Canonical path, stale-receipt and daemon-ID mutations have negative tests.
   telemetry. B additionally needs the accepted A verdict at the identical
   baseline fingerprint/boot and a recomputed accepted H1/H2 topology; a changed
   label on partial observations cannot release B. Smoke stdout is not a health report.
-- `issue30-verdict-v2`: accepted_discovery (record H1/H2), link_not_established
+- `issue30-verdict-v3`: accepted_discovery (record H1/H2), link_not_established
   (zero/partial peers), unexpected_topology, or rejected for invalid evidence;
   includes every parsed QSFP record in `observed_qsfp`, the `topology` decision,
-  baseline and XML/raw-stream hashes. B can only produce accepted_transfer after accepted
-  A, recomputed from its observations before B launch and at B judgment.
+  baseline and XML/raw-stream hashes plus `firmware_observation` and `xml_present`.
+  Missing/first-core-only firmware output stays unknown. B can only produce
+  accepted_transfer after accepted A, recomputed topology and complete per-core
+  version output before B launch and at judgment. Unknowns keep B closed.
   V1 remains for historical exact-table CPU fixtures, not hardware admission. XML uses
   defusedxml, is bounded, rejects declarations/entities and must contain exactly
   the expected executed, completed, non-skipped testcase and no errors/failures.
@@ -168,7 +178,7 @@ cannot produce an accepted record.
 |---|---|
 | U `device/topology/topology_discovery.cpp:554-602`, `device/firmware/firmware_info_provider.cpp:324-337` | 19.6 is between 18.5 minimum and 19.7.1 latest-supported. This bundle alone is not rejected and does not cause the older-than-minimum warning. Both-card mismatch is a default error. |
 | T `INSTALLING.md:26-42` | The install guide lists 19.8.1; it is not the runtime minimum check. No automatic update is necessary merely to satisfy that text. It does not prove 19.6 trains links. |
-| U `device/topology/topology_discovery.cpp:302-306,627-664`; `device/api/umd/device/firmware/erisc_firmware.hpp:20-25`; `device/firmware/firmware_utils.cpp:80-99` | Per-core base ERISC <1.4.1 can warn; inconsistent versions can stop discovery. Version is read from core major/minor/patch addresses, not the unavailable telemetry field. **BH discovery skips its heartbeat check**; the absence of warnings cannot prove heartbeat health. A requires an independent before/after heartbeat observation in its owner-provided snapshot; unknown is not accepted. |
+| U `device/topology/topology_discovery.cpp:302-306,627-664`; `device/api/umd/device/firmware/erisc_firmware.hpp:20-25`; `device/firmware/firmware_utils.cpp:80-99` | Per-core base ERISC <1.4.1 can warn; inconsistent versions can stop discovery. Version is read from core major/minor/patch addresses, not the unavailable telemetry field. **BH discovery skips its heartbeat check**; the absence of warnings cannot prove heartbeat health. A permits source-justified unobservable fields for discovery only; it never infers ETH health. B still refuses unknown input/output health and requires accepted A's per-core version evidence. |
 | U `device/firmware/firmware_info_provider.cpp:212-230` | On BH 19.6 telemetry ETH_LIVE_STATUS remains zero and ETH_FW_VERSION is unavailable; neither zero proves link-down or ERISC version. Use per-core status/heartbeat and discovered peers. |
 | U `device/tt_device/blackhole_tt_device.cpp:309-336`, `device/topology/topology_discovery_blackhole.cpp:207-209` | PORT_UNKNOWN can enter the long firmware-training wait; host retrain is skipped. Our watchdog stops it, not a larger training timeout. Settled-down can return with no peers. |
 
@@ -228,8 +238,9 @@ in this task. No increase is justified by the observed pool alone.
 ### A: `issue30-a-discovery-watcher-v1`
 
 - Gate: completed G0 receipt + clean/pushed approved head + current owner
-  two-card identity/firmware/host observation (independent ERISC version/heartbeat
-  still mandatory), plus the committed H1/H2 policy, not a guessed lane table.
+  two-card identity/bundle/ARC/clock/DRAM/host observation plus the committed
+  H1/H2 policy. Null ERISC/ETH values require exact source reasons; known low
+  version or unhealthy heartbeat refuses. No guessed lane table or ETH health.
 - Execute only Cluster.ReportSystemHealth, Watcher=1, fresh named container,
   binary/container/cleanup deadlines 40/50/60 s. Both cards are opened by UMD;
   second card serial 0000040331914124 / PCI 0000:09:00.0 is explicitly in scope.
@@ -248,7 +259,10 @@ in this task. No increase is justified by the observed pool alone.
 ### B: `issue30-b-fabric1d-smoke-watcher-v1`
 
 - Separate approval after accepted A, identical boot/baseline/cabling and
-  source/build hashes. Only Fabric1DFixture.TestUnicastConnAPI1DSmoke;
+  source/build hashes; known acceptable ERISC/ETH health plus per-core version
+  inventory and links confirmed by A output. First-core-only or missing output
+  is not enough and needs owner judgment; the A observability exception cannot
+  enter B. Only Fabric1DFixture.TestUnicastConnAPI1DSmoke;
   explicit two-card mappings, FABRIC_1D/default dispatch/default two-ERISC,
   Watcher=1, binary/container/cleanup deadlines 40/50/60 s, fresh attempt.
 - Prediction: after mapping/firmware/EDM handshake, upstream five checked

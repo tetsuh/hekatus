@@ -117,6 +117,6 @@ def check_warnings(records, warnings):
 
 def require_accepted_discovery(discovery):
     decision = classify(discovery.get("observed_qsfp"))
-    if (discovery.get("schema") != "issue30-verdict-v2" or decision["outcome"] != "accepted"
+    if (discovery.get("schema") != "issue30-verdict-v3" or decision["outcome"] != "accepted"
             or discovery.get("topology") != decision):
         raise ValueError("discovery_binding")

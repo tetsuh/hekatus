@@ -161,6 +161,34 @@ source-level preparation is not a successful G0 receipt. Standard GoogleTest
 XML is a result file, not the last-stdout-line transport rejected by ADR-0018.
 Existing Issue #120 JSON schemas/runners are unchanged and not repurposed.
 
+## Discovery observability correction (operator decision, 2026-11-24)
+
+[ADR-0021](../adr/0021-discovery-observability-gate.md) corrects the circular
+pre-open ERISC/ETH requirement. The 66caf96 preflight-stop record stays immutable.
+The owner renews the unused A-only once scope; the admission correction is the
+operator's judgment, not an expansion of owner scope.
+
+Before changing code, the invariants are: A alone permits null ERISC version
+and ETH heartbeat with an exact `unobservable` reason citing pinned UMD
+firmware_info_provider.cpp:217-229, firmware_utils.cpp:80-99 and
+topology_discovery.cpp:302-306, only for bundle <19.9. Bare null/wrong reason,
+observed ERISC <1.4.1 or observed heartbeat failure refuse. Identity/bundle,
+progressing ARC watchdog, 800 MHz, DRAM, loaded KMD, pages, image/binary/source
+hashes, boot, quiet host/zero containers and owner binding remain mandatory.
+
+A retains reported firmware/version diagnostics; missing or first-core-only
+output does not certify all cores or heartbeat health. Warnings/refusals stop.
+B requires known health inputs AND per-core version inventory/reciprocal links
+confirmed by accepted A output. The unchanged official report may expose no
+per-core inventory: B then remains closed for an owner decision, even when H1/H2
+connectivity is accepted. No lack-of-warning inference fills unknown fields.
+
+Before/after ARC sample pairs and temperature are observations, not stable
+identity fields; both pairs must show progress, while stable identity/version/
+health/policy fields still match. A approvals use an explicitly bound v2 file
+recording owner date/scope separately from operator correction. Existing bytes
+and native binaries remain unchanged; receipt-v5 requalifies only host changes.
+
 ## Frozen A topology hypotheses (owner report, not a hardware observation)
 
 The machine-readable input is [issue30-a-topology.json](issue30-a-topology.json).
@@ -197,7 +225,7 @@ the declared port pair (e.g. either 4-to-4 or 4-to-6 within vendor port 4 is
 allowed). All eight QSFP channel records per card must be present once, with
 unique local cores, to distinguish explicit DOWN from missing evidence.
 
-After all unchanged execution/XML/identity/firmware/heartbeat/Watcher/diagnostic
+After all phase-appropriate execution/XML/identity/firmware/Watcher/diagnostic
 gates pass, A's three connectivity outcomes are:
 
 1. **accepted_discovery:** exactly H1 or H2, four undirected links / eight UP
@@ -215,8 +243,10 @@ gates pass, A's three connectivity outcomes are:
    to be a local chip ID or rejected as an unknown text format. Preserve observations and
    stop; no expectation rewrite, retry, MGD override or B release follows.
 
-Truncated/duplicate/malformed reports and unknown execution/health/firmware are
-**rejected evidence**, not a fourth physical connectivity inference. Raw streams
+Truncated/duplicate/malformed reports and unknown execution/otherwise-required
+health are **rejected evidence**, not a fourth physical connectivity inference.
+Reasoned unobservable ERISC/ETH values are the A-only exception above; missing
+A output remains unknown and withholds B rather than certifying healthy firmware. Raw streams
 are retained on every path. Only the source-shaped DOWN warning for a matching
 reported chip/PCI/channel/core is eligible for topology classification; unrelated
 warnings and nonzero retrains still refuse. B recomputes A's observed topology
@@ -225,9 +255,10 @@ before device mappings and again at judgment, rather than trusting a label.
 The new input is `before.topology` equal to the full frozen JSON, with
 `links=[]` and `uncabled=[]` (hypothesis-dependent, not asserted absent). No exact
 core table is in that input. Hardware CLI admission requires this policy; old
-exact-table fixtures remain historical CPU compatibility tests only. The new
-experimental verdict is `issue30-verdict-v2`; its `topology` decision and
-`observed_qsfp` accompany immutable raw files and hashes. Production contracts,
+exact-table fixtures remain historical CPU compatibility tests only. The current
+experimental verdict is `issue30-verdict-v3`; `topology`, `observed_qsfp` and
+`firmware_observation` accompany immutable raw files and hashes. Missing native
+XML is explicitly flagged, not replaced by a fabricated successful file. Production contracts,
 transport atomicity, separate owner approvals and the 40/50/60 s caps do not change.
 
 ## Separately approved hardware units
@@ -263,7 +294,7 @@ transport atomicity, separate owner approvals and the 40/50/60 s caps do not cha
   but down, expect missing peer links even if the reporting test exits zero.
   This run is not asserted to initiate physical training.
 - **Stop/release:** use the frozen H1/H2 three-way connectivity rules above.
-  Timeout, unknown/invalid health or evidence, new non-topology diagnostics,
+  Timeout, invalid or otherwise-required missing health/evidence, new non-topology diagnostics,
   partial/no links or unexpected topology => stop; B withheld. Only matching
   H1/H2 with all other gates can be accepted, still requiring owner review and
   separate B approval.
