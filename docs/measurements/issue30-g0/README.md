@@ -11,7 +11,7 @@ probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
 The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
 remain immutable evidence for their original head. Hardened admission selects
-[G0 receipt v7](receipt-v7.json). V3/V4/V5/V6 remain immutable. Original v2 private-scratch/fixed-layout
+[G0 receipt v8](receipt-v8.json). V3/V4/V5/V6/V7 remain immutable. Original v2 private-scratch/fixed-layout
 verification and [build receipt v2](build-receipt-v2.json) remain immutable.
 V3/V4 rebind only host input/judgment changes using CPU tests and an unchanged
 launch/watchdog AST proof; no native binary or container was rerun for either.
@@ -24,8 +24,13 @@ amendment binds B to the separately accepted A observations at identical boot/
 cabling, retaining unknown firmware health. It permits only exact #176 baseline
 warnings and requires fresh captured/reviewed Watcher dumps for B, not A. See
 [owner decision and B procedure](../issue30-first-transfer-plan.md#owner-decision-and-single-b-procedure-2026-11-24-late-night).
-V6/V7 change host gates/source bindings only, preserving all native qualifications;
-full-suite/CI/Sonar evidence is recorded in the PR/report.
+V6/V7 changed host gates/source bindings only. V8 additionally qualifies the
+[attempt-owned runtime layout and offline compiler gate](../issue196/README.md):
+old-layout RX include-error RED,24 kernel TU GREEN, owned export write, four new
+isolated loader/list/no-chip probes, unchanged official ELF/image/library and
+unchanged stream/watchdog/cleanup/atomic transport. No hardware run occurred.
+Bv2 remains closed for new owner/fresh-A decision after card power-off. Full-suite/
+CI/Sonar evidence is recorded in the PR/report.
 CodeRabbit CLI could not authenticate at review time; no review was completed.
 The [source study](../issue30-source-study.md) pins T/U and the runtime image.
 The final A/B rules below supersede the preparation gaps in the original plan;
@@ -95,7 +100,7 @@ There are **no arbitrary path CLI flags**. Assets are fixed at
 hardware outputs at `out/issue30/runs/<attempt>`. Owner inputs have fixed slots
 under `out/issue30/observations/<attempt>`: `before.json`, `after.json`,
 `approval.json`, `review.json`, and B's `discovery.json`. The selected G0 receipt is fixed
-at this document's `receipt-v7.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
+at this document's `receipt-v8.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
 program-owned roots; identity is validated before any file/process operation.
 
 `capture` defaults to device-free; **`--approved-board`** additionally requires

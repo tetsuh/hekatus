@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v7.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v8.json"
 OWNER_ACCEPTANCE = "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
@@ -59,7 +59,14 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "docs/measurements/2026-11-14-p150a-issue120-p6-api-lock-semaphore-v3-baseline-verification.json",
                  "docs/measurements/2026-11-24-issue30-a-discovery/A-discovery.json",
                  "docs/measurements/2026-11-24-issue30-a-discovery/A-native-evidence.tar.gz",
-                 "docs/measurements/2026-11-24-issue30-a-owner-acceptance/baseline-match.json")
+                 "docs/measurements/2026-11-24-issue30-a-owner-acceptance/baseline-match.json",
+                 "enodia/tt/bench/issue30_runtime.py", "enodia/tt/bench/issue120_runtime.py",
+                 "enodia/tt/bench/issue196_compile.py", "enodia/tt/bench/issue196_compile_manifest.json",
+                 "tools/check_issue196_device_kernels.py", "tests/test_issue196.py",
+                 "docs/measurements/issue196/offline-inputs.tar.gz",
+                 "docs/measurements/issue196/official-smoke-source.txt",
+                 "docs/measurements/issue196/morning-admission.json",
+                 "docs/measurements/2026-11-24-issue30-b-smoke/B-native-evidence.tar.gz")
 
 
 def digest(data: bytes) -> str:
@@ -139,14 +146,15 @@ def request(phase: str, identity: str, assets: Path, capture: Path, *, uid: int,
     scratch = f"rw,nosuid,nodev,noexec,size=256m,mode=0700,uid={uid},gid={gid}"
     return {"Image": IMAGE, "User": f"{uid}:{gid}", "WorkingDir": "/capture",
             "Env": ["TT_METAL_WATCHER=1", "HOME=/scratch", "LD_BIND_NOW=1", "TMPDIR=/scratch",
-                    "TT_METAL_RUNTIME_ROOT=/opt/venv/lib/python3.12/site-packages/ttnn",
+                    "TT_METAL_RUNTIME_ROOT=/capture/runtime", "TT_METAL_KERNEL_PATH=/source",
                     "TT_METAL_CACHE=/capture/cache", "TT_METAL_LOGS_PATH=/capture/logs"],
-            "Cmd": ["timeout", "--signal=KILL", "40s", f"/assets/{BINARIES[phase]}",
-                    f"--gtest_filter={TESTS[phase]}", "--gtest_output=xml:/capture/native/gtest.xml"],
+            "Cmd": ["timeout", "--signal=KILL", "40s", "python3",
+                    "/harness/enodia/tt/bench/issue30_runtime.py", phase],
             "HostConfig": {"NetworkMode": "none", "ReadonlyRootfs": True, "Devices": [],
                            "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges"],
                            "MaskedPaths": MASKS, "Tmpfs": {"/scratch": scratch},
-                           "Binds": [f"{assets.resolve()}:/assets:ro", f"{capture.resolve()}:/capture:rw"]}}
+                           "Binds": [f"{assets.resolve()}:/assets:ro", f"{capture.resolve()}:/capture:rw",
+                                     f"{ROOT}:/harness:ro", f"{SOURCE_ROOT}:/source:ro"]}}
 
 
 def approval_record(phase, identity, env, receipt, head):
@@ -198,9 +206,9 @@ def board_request(phase: str, identity: str, assets: Path, output: Path, *,
     host = payload["HostConfig"]
     host["Devices"] = [{"PathOnHost": n, "PathInContainer": n, "CgroupPermissions": "rw"} for n in nodes]
     host["MaskedPaths"] = [p for p in MASKS if p not in ("/sys", "/proc/bus", "/proc/driver")]
-    host["Binds"] += [f"{SOURCE_ROOT}:/source:ro", "/dev/hugepages-1G:/dev/hugepages-1G:rw"]
+    host["Binds"] += ["/dev/hugepages-1G:/dev/hugepages-1G:rw"]
     host["Ulimits"] = [{"Name": "memlock", "Soft": -1, "Hard": -1}]
-    payload["Env"] += ["TT_VISIBLE_DEVICES=" + ",".join(c[1] for c in CARDS), "TT_METAL_KERNEL_PATH=/source"]
+    payload["Env"] += ["TT_VISIBLE_DEVICES=" + ",".join(c[1] for c in CARDS)]
     return payload
 
 
@@ -595,7 +603,7 @@ def _cleanup(name, cid, output, start, state):
 
 def _captured_files(output):
     files = [p for p in output.iterdir() if p.is_file()]
-    for role in ("native", "logs"):
+    for role in ("native", "logs", "runtime/generated"):
         files += [p for p in (output / role).rglob("*") if p.is_file()]
     return [artifact(p, output) for p in sorted(files)]
 
@@ -610,7 +618,7 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
     (output / "native").mkdir(mode=0o700)
     payload = approved_payload or request(phase, identity, assets, output, uid=os.getuid(), gid=os.getgid())
     if listing:
-        payload["Cmd"] = payload["Cmd"][:4] + ["--gtest_list_tests"]
+        payload["Cmd"] += ["--list-tests"]
     if observations is not None:
         publish(output / "observations-before.json", observations)
     start, name, cid = time.monotonic(), "issue30-" + identity, None
@@ -667,6 +675,10 @@ def _git(source, *args):
 
 
 def _authorize(phase, identity, inputs, output):
+    if phase == "B":
+        gate = _load(ROOT / "docs/measurements/issue196/morning-admission.json", ROOT)
+        if gate.get("owner_approved") is not True:
+            raise ValueError("B_v2_requires_new_owner_and_fresh_A_decision")
     env = _load(inputs / BEFORE_FILE)
     topology.validate_input(env)
     _environment(env, identity, phase)
@@ -757,7 +769,8 @@ def main():
         output, inputs = _slots(identity, args.approved_board or args.action == "judge")
         if args.action == "plan":
             payload = request(args.phase, identity, ASSETS, output, uid=os.getuid(), gid=os.getgid())
-            payload["HostConfig"]["Binds"] = ["ASSETS:/assets:ro", "ATTEMPT:/capture:rw"]
+            payload["HostConfig"]["Binds"] = ["ASSETS:/assets:ro", "ATTEMPT:/capture:rw",
+                                              "HARNESS:/harness:ro", "PINNED_SOURCE:/source:ro"]
             print(json.dumps(payload, indent=2))
             return 0
         if args.action == "capture":

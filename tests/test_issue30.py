@@ -162,10 +162,11 @@ def test_payload_sandbox_and_fixed_argv(tmp_path):
     assert {"/sys", "/proc/bus", "/proc/driver"} <= set(h["MaskedPaths"])
     assert payload["Env"][:3] == ["TT_METAL_WATCHER=1", "HOME=/scratch", "LD_BIND_NOW=1"]
     assert "mode=0700,uid=1000,gid=1000" in h["Tmpfs"]["/scratch"]
-    assert "TT_METAL_RUNTIME_ROOT=/opt/venv/lib/python3.12/site-packages/ttnn" in payload["Env"]
+    assert "TT_METAL_RUNTIME_ROOT=/capture/runtime" in payload["Env"]
     assert payload["Cmd"][0:3] == ["timeout", "--signal=KILL", "40s"]
-    assert '--gtest_filter=Cluster.ReportSystemHealth' in payload["Cmd"]
-    assert '--gtest_output=xml:/capture/native/gtest.xml' in payload["Cmd"]
+    assert payload["Cmd"][3:] == ["python3", "/harness/enodia/tt/bench/issue30_runtime.py", "A"]
+    assert any(x.endswith(":/harness:ro") for x in h["Binds"])
+    assert any(x.endswith(":/source:ro") for x in h["Binds"])
     with pytest.raises(ValueError, match="identity"):
         m.request("A", "../unsafe", tmp_path, tmp_path, uid=1000, gid=1000)
     with pytest.raises(ValueError, match="non-root"):

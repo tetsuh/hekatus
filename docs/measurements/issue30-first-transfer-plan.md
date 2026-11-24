@@ -528,3 +528,90 @@ explains why this failed rather than skipped, and provides bounded separate
 morning approval units. It proposes include/export-layout qualification, not a
 firmware/reset remedy for a host compilation/filesystem error. Original A/B
 records and current one-use authority are not rewritten or renewed.
+
+## B v2 layout prediction and morning combined-unit proposal (#196)
+
+[Device-free layout/checker evidence](issue196/README.md) prepares
+`issue30-b-fabric1d-smoke-watcher-v2`, not a new hardware grant. The runtime root
+is a fresh attempt-owned view of audited pinned image assets plus unchanged
+pinned tests; normal JIT root-relative includes and generated/fabric output now
+share that supported root. No per-kernel include patch, edited official source,
+ELF/library/image replacement, extra capability or writable image root.
+
+### Prediction and precommitted judgments
+
+- A fresh approved A observes the two named cards and full reciprocal H1
+  channels4-7/retrain0,8-11 explicitly DOWN, while stable state matches. A is
+  cluster-only, application Watcher output N/A. No invented ERISC/ETH health.
+- Given accepted fresh-A handling and **new** owner approval, B v2 runs exactly
+  Fabric1DFixture.TestUnicastConnAPI1DSmoke once, strictFABRIC_1D/fast dispatch,
+  Watcher1, source-pinned runtime, named container and40/50/60s. Expected:
+  normal routing/credit/router handshake setup, all JIT compile, RX-before-TX
+  dispatch,5 PRNG-content-checked packets and orderly device/container close.
+- Milestones remain actual UMD/fixture/fabric-init/JIT logs, attached kernel maps/
+  Watcher dumps/waypoints, exact non-skipped failure-free XML, source-bound RX
+  content/status assertions, original warning/error text and both-card post-state.
+  The official test prints no per-packet payload/status/byte counters on success;
+  no value is manufactured. PASS/exit alone is not acceptance.
+- Cold JIT may still hit40s: BuildKernels/compiler progress or incomplete XML/
+  absent completion identifies the last observed stage. No extension/retry.
+  Router credit/handshake problems may stop after initialization logs with
+  Watcher ERISC/worker wait waypoints or sync-timeout diagnostics; no absent
+  message is treated as proof of success. Payload mismatch should appear as
+  failed receiver/status/byte assertions/XML failure, not silently accepted.
+- Stop on skip/failure/mismatch, any non-#176 warning/error (including any repeat
+  of readonly export warnings), missing/abnormal/unreviewed B Watcher, timeout,
+  incomplete cleanup/card anomaly. No fallback/legacy/2D/reset/firmware/cable/
+  host setting action. Bv1 evidence/verdict is immutable regardless of v2.
+
+### Cold-JIT estimate / cache proposal, not a cap change
+
+The device-free checker measures all24 object-compilation cases serially, with
+normal HAL flags, root layout and saved argument specializations. Initial pass
+13.17s, successor with dependency/export checks13.48s total on this host. RX/TX
+were0.28/0.34s in the initial pass;16 router compilations dominate. This is not
+an ELF-link/driver/handshake/traffic measurement or a guaranteed runtime bound.
+Bv1's complete fixture setup was4.355s including router setup and the failed RX.
+Base firmware has a separate build/precompiled path; its possible recompilation
+and full RISC-V ELF linking are **OPEN**, outside the24 registered kernel object
+cases. The saved B cache contains10 firmware objects, not proof of a future cache
+hit. A conservative rough sum of observed Bv1 setup and serial compile is about18s
+(double-counting some router compile), leaving about22s of40 for unmeasured
+link/configuration/dispatch/close; **40s appears feasible, not guaranteed**.
+No cap increase is currently proposed. If future full cold-JIT qualification
+shows it cannot fit, request an owner decision instead of changing the limit.
+
+TT_METAL_CACHE is the normal JIT cache root (rtoptions.cpp:421-428), now always
+attempt-owned. Source build.cpp:115-123 also supports compiler ccache via
+TT_METAL_CCACHE_KERNEL_SUPPORT, but neither sharing/warming nor an installed
+ccache executable is assumed. Offline objects are not drop-in future JIT cache
+entries: new boot/configuration/root/key/dependency differences can invalidate
+them. A separately qualified, owner-reviewed prewarm within the *same* attempt
+and exact native cache protocol is only a future proposal. No copied/warm cache
+is used to claim cold success or silently buy more time for B v2.
+
+### One-screen morning approval request (proposal only)
+
+- **Unit:** one new A identity, then `issue30-b-fabric1d-smoke-watcher-v2` once
+  **only if** its fresh observations pass the owner-approved conditional rule.
+  Two cards: serial...411c/PCI0000:06:00.0 and...4124/PCI0000:09:00.0; same
+  symmetric cabling, default strict1D, no third device, no physical intervention.
+- **Owner decisions needed first:** approve this combined conditional scope and
+  how new A becomes B's accepted evidence. Old A is invalid after card power-off
+  even if the host UUID remains unchanged; Bv1 scope is consumed. The pending
+  morning-admission registry is false and must not be treated as authority or
+  bypassed. Qualify the owner-selected conditional fresh-A binding before either
+  run; do not improvise authorization between A and B. Bind renewed scope/fresh-A
+  evidence through the normal receipt path.
+- **Prerequisites:** verified cold offline compile/export/list/absence proof,
+  clean/pushed/tested head, all CI/Sonar0/0/OK, fresh identities/boot-power epoch/
+  bundle/ARC800/DRAM/KMD/pages/quiet host/zero containers and unchanged hashes.
+- **Duration:** each A/B process<=40s, container<=50s, cleanup<=60s; combined
+  process/cleanup windows<=120s, plus bounded telemetry/preparation (roughly2-3min
+  total allocation, not a new larger single-run cap). A historical<1s; B cold
+  compile estimate above. No heavy host tests/builds while either device run.
+- **Risk/stop:** both-card runtime/router/worker/credit/NoC/JIT hangs, unknown base
+  ERISC/ETH health, allocation/temperature and cleanup uncertainty. A deviation
+  withholds B; any B stop withholds retry. After-state/container proof first,
+  unresponsive telemetry means stop without more operations/reset. New authority
+  is required for any retry, fallback, reset, cable or firmware maintenance.
