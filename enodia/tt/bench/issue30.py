@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v10.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v11.json"
 OWNER_ACCEPTANCE = "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
@@ -44,6 +44,8 @@ GOOD_EXECUTION = {"exit": 0, "client_exit": 0, "started": True, "elapsed_seconds
 CONTAINERS = "containers/"
 DOWN = "DOWN/unconnected"
 EXECUTION_FILE = "execution.json"
+STDOUT_FILE = "stdout.bin"
+STDERR_FILE = "stderr.bin"
 BEFORE_FILE = "before.json"
 MASKS = ["/sys", "/proc/bus", "/proc/driver", "/proc/acpi", "/proc/asound",
          "/proc/interrupts", "/proc/kcore", "/proc/keys", "/proc/latency_stats",
@@ -554,7 +556,7 @@ def _fresh_native(before, record):
     for field in ("before", "after"):
         if review.get(field + "_sha256") != digest(_read(inputs / (field + ".json"))):
             raise ValueError("fresh_A_review")
-    raw = [_read(output / name) for name in ("native/gtest.xml", "stdout.bin", "stderr.bin")]
+    raw = [_read(output / name) for name in ("native/gtest.xml", STDOUT_FILE, STDERR_FILE)]
     checked = evaluate("A", unit["A"], first, _load(inputs / "after.json"), *raw, execution)
     checked["xml_present"] = True
     if checked != original:
@@ -633,7 +635,7 @@ def _container_id(value):
 
 
 def _run_client(name, cid, output, start, state):
-    with (output / "stdout.bin").open("xb") as stdout, (output / "stderr.bin").open("xb") as stderr:
+    with (output / STDOUT_FILE).open("xb") as stdout, (output / STDERR_FILE).open("xb") as stderr:
         client = subprocess.Popen(["docker", "start", "-a", "--", name], stdout=stdout, stderr=stderr)
         state["started"] = True
         try:
@@ -737,7 +739,7 @@ def _git(source, *args):
     return subprocess.check_output(["git", "-C", str(source), *args], text=True).strip()
 
 
-def _authorize(phase, identity, inputs, output):
+def _renewed_gate(phase, inputs):
     if phase == "B":
         gate = _load(ROOT / "docs/measurements/issue196/morning-admission.json", ROOT)
         if gate.get("owner_approved") is not True:
@@ -745,6 +747,10 @@ def _authorize(phase, identity, inputs, output):
             if "owner_unit" not in candidate:
                 raise ValueError("B_v2_requires_new_owner_and_fresh_A_decision")
             _renewed_unit(candidate)
+
+
+def _authorize(phase, identity, inputs, output):
+    _renewed_gate(phase, inputs)
     env = _load(inputs / BEFORE_FILE)
     topology.validate_input(env)
     _environment(env, identity, phase)
@@ -802,8 +808,8 @@ def _judge(phase, identity, output, inputs):
     xml_path = output / "native/gtest.xml"
     xml = _read(xml_path) if xml_path.exists() else b""
     result = evaluate(phase, identity, _load(inputs / BEFORE_FILE), _load(inputs / "after.json"),
-                      xml, _read(output / "stdout.bin"),
-                      _read(output / "stderr.bin"), execution, discovery)
+                      xml, _read(output / STDOUT_FILE),
+                      _read(output / STDERR_FILE), execution, discovery)
     result["xml_present"] = xml_path.exists()
     publish(output / "result.json", result)
     return 0 if result["reason"] == "accepted" else 2
