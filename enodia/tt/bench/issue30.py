@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v11.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v12.json"
 OWNER_ACCEPTANCE = "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
@@ -69,6 +69,7 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "docs/measurements/issue196/official-smoke-source.txt",
                  "docs/measurements/issue196/morning-admission.json",
                  "tests/test_issue30_morning.py",
+                 "tests/test_issue30_dram.py",
                  "docs/measurements/2026-11-24-issue30-b-smoke/B-native-evidence.tar.gz")
 
 
@@ -284,6 +285,7 @@ def _environment(env, identity, phase="B"):
     if not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}", kmd, re.ASCII) or tuple(map(int, kmd.split("."))) < (2, 8, 0):
         raise ValueError("environment")
     _cards(env.get("cards"), phase, "topology" in env)
+    admission.dram_gate(env)
     _links(env)
 
 

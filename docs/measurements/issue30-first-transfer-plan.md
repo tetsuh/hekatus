@@ -638,3 +638,28 @@ markers and fresh reviewed Watcher, not exit/PASS alone. Previous precommitted
 stage diagnostics/timeout/content failure rules remain; no retry/fallback/cap
 increase/firmware/cable/host change. Fresh A and Bv2 evidence are new records;
 11/24 A and11/25 Bv1 evidence/verdicts remain byte-exact.
+
+### Owner DRAM admission correction — 2026-11-25 continuation
+
+The13:43:22Z card...4124 false/raw0x0 then true/0x5555 observation and stop
+remain immutable, cause unknown. The operator reports three subsequent read-only
+samples around23:05JST (~2s spacing), both cards DRAMtrue/800MHz/ARC advancing;
+no raw snapshots survive, so these are operator-reported, NOT native evidence
+and NOT any of the required five admission samples. Owner explicitly continues
+the SAME unused one-A/conditional-one-Bv2 scope, not a reset/retry grant.
+
+For this renewed owner_unit only, immediately before EACH phase require five
+consecutive raw telemetry snapshots at least5s apart. Every card in every sample
+must report DRAMtrue/rawDDR_STATUS0x5555, zero GDDR_UNCORR_ERRS,800MHz and advancing
+ARC. Keep all five raw snapshots plus monotonic times/content hashes. A missing/
+failed/abnormal read, short interval or stopped ARC withholds that phase; stop
+without restarting the series, resetting or consuming a native invocation.
+After each executed phase also collect multiple raw observations with the same
+five-reading protocol; any anomaly/change is retained and withholds the next
+phase. No telemetry after an unreadable/unresponsive card or uncertain cleanup.
+Snapshots/ARC/temperature are dynamic evidence, not physical identity/cabling;
+exclude only the series itself from stable A/B baseline, retain it in exact
+approval environment/capture/review fingerprints. No past health is rewritten.
+All original unit limits, cleanup, warning, content and Watcher rules remain.
+Source-bound successor receipt/tests/CI/Sonar must pass BEFORE fresh sampling
+and native execution. Operator report alone cannot satisfy the five-read gate.

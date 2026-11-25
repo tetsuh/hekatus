@@ -1,6 +1,7 @@
 """Reasoned unknown health and owner-accepted link evidence; no device IO."""
 from __future__ import annotations
 
+import math
 import re
 
 from enodia.tt.bench import issue30_topology as topology
@@ -53,10 +54,45 @@ def arc_progress(card):
 
 
 def stable_environment(env):
-    result = {k: v for k, v in env.items() if k != "attempt"}
+    result = {k: v for k, v in env.items() if k not in ("attempt", "dram_admission")}
     result["cards"] = [{k: v for k, v in c.items() if k not in ("arc_heartbeat", "temperature_c")}
                        for c in env.get("cards", [])]
     return result
+
+
+def _dram_sample(sample, serials):
+    stamp = sample.get("monotonic_seconds")
+    if type(stamp) not in (int, float) or not math.isfinite(stamp):
+        raise ValueError("dram_gate_timestamp")
+    if not re.fullmatch(r"[a-f0-9]{64}", sample.get("raw_sha256", "")):
+        raise ValueError("dram_gate_raw")
+    cards = sample.get("cards", [])
+    if len(cards) != 2 or {c.get("serial") for c in cards} != serials:
+        raise ValueError("dram_gate_cards")
+    for card in cards:
+        heartbeat = card.get("arc_heartbeat")
+        if (card.get("dram_status") is not True or card.get("raw_ddr_status") != "0x5555"
+                or type(card.get("uncorrectable_errors")) is not int or card["uncorrectable_errors"] != 0
+                or card.get("aiclk_mhz") != 800 or type(heartbeat) is not int or heartbeat < 0):
+            raise ValueError("dram_gate_reading")
+    return {c["serial"]: c["arc_heartbeat"] for c in cards}
+
+
+def dram_gate(env):
+    if "owner_unit" not in env:
+        return
+    evidence = env.get("dram_admission", {})
+    samples = evidence.get("samples", [])
+    if evidence.get("schema") != "issue30-dram-five-v1" or len(samples) != 5:
+        raise ValueError("dram_gate_five_required")
+    serials = {c["serial"] for c in env["cards"]}
+    previous, previous_time = None, None
+    for sample in samples:
+        current = _dram_sample(sample, serials)
+        stamp = sample["monotonic_seconds"]
+        if previous is not None and (stamp - previous_time < 5 or any(current[s] <= previous[s] for s in serials)):
+            raise ValueError("dram_gate_spacing_or_heartbeat")
+        previous, previous_time = current, stamp
 
 
 def observe_firmware(raw):

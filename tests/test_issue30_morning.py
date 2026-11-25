@@ -4,7 +4,18 @@ import copy
 import pytest
 
 from enodia.tt.bench import issue30 as m
-from tests.test_issue30_topology import env, judge, records
+from tests.test_issue30_dram import series
+from tests.test_issue30_topology import env as original_env
+from tests.test_issue30_topology import judge, records
+
+
+def env():
+    value = original_env()
+    readings = series()
+    for sample in readings['samples']:
+        for index, card in enumerate(sample['cards']):
+            card['serial'] = value['cards'][index]['serial']
+    return value | {'dram_admission': readings}
 
 
 def unit():

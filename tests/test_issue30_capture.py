@@ -30,7 +30,7 @@ def test_cli_defaults_to_the_receipted_assets(tmp_path, monkeypatch, capsys):
     assert m.main() == 0
     assert json.loads(capsys.readouterr().out)["Image"] == m.IMAGE
     assert observed == [m.ASSETS.as_posix()]
-    assert m.CURRENT_RECEIPT.name == "receipt-v11.json"
+    assert m.CURRENT_RECEIPT.name == "receipt-v12.json"
     assert m.CURRENT_RECEIPT.parent == m.ROOT / "docs/measurements/issue30-g0"
 
 
