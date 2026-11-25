@@ -1,0 +1,1373 @@
+{
+  "archive_sha256": "3d08cf8e54484c712879bb321a9268d6bc01e1fc0826ccfdece61ff6f63d650e",
+  "executed_head": "f8703fb5bebaaab5a3ae79488cfe3bb51f4259ef",
+  "five_reading_series": {
+    "after-A": {
+      "boot_sha256": "3c6c5e602c8a00d595b1571bc32668426e67bb0fdfc0795ac8d6d6c69fbdbd40",
+      "cards": [
+        {
+          "aiclk_mhz": 800,
+          "arc_heartbeat": {
+            "first": 7834,
+            "second": 7869
+          },
+          "bundle": "19.6.0.0",
+          "chip": 0,
+          "cmfw": "0.28.0.0",
+          "dram_healthy": true,
+          "erisc": null,
+          "eth_heartbeat_healthy": null,
+          "node": "/dev/tenstorrent/0",
+          "pci": "0000:06:00.0",
+          "pcie_index": 0,
+          "serial": "000004033191411c",
+          "temperature_c": 53.4,
+          "unobservable": {
+            "erisc": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            },
+            "eth_heartbeat_healthy": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            }
+          }
+        },
+        {
+          "aiclk_mhz": 800,
+          "arc_heartbeat": {
+            "first": 7835,
+            "second": 7870
+          },
+          "bundle": "19.6.0.0",
+          "chip": 1,
+          "cmfw": "0.28.0.0",
+          "dram_healthy": true,
+          "erisc": null,
+          "eth_heartbeat_healthy": null,
+          "node": "/dev/tenstorrent/1",
+          "pci": "0000:09:00.0",
+          "pcie_index": 1,
+          "serial": "0000040331914124",
+          "temperature_c": 56.4,
+          "unobservable": {
+            "erisc": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            },
+            "eth_heartbeat_healthy": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            }
+          }
+        }
+      ],
+      "container_count_observed": 0,
+      "hugepages": {
+        "free_hugepages": 6,
+        "nr_hugepages": 8,
+        "resv_hugepages": 0,
+        "surplus_hugepages": 0
+      },
+      "raw_snapshot_hashes": [
+        {
+          "original_raw_sha256": "9c32fdc49db651c9dda8a2748160eab7dc2e76b06377f8cae1d4b1f264dcd04e",
+          "sample": 1
+        },
+        {
+          "original_raw_sha256": "34e180ee2b47a3a2a44c1caf28f2dfdcad9300a117da4fea16ae660432072e6d",
+          "sample": 2
+        },
+        {
+          "original_raw_sha256": "5abcb26371cc093c37d373d7f8b3b1872b590aa5d9530c881a7c1eb046af5098",
+          "sample": 3
+        },
+        {
+          "original_raw_sha256": "609cfe1a893daa115308ed8ceb91b47c4b254ddcf156cea1cd91235f0bc61b3a",
+          "sample": 4
+        },
+        {
+          "original_raw_sha256": "12d2d654991ef6db2ad4fe3931f397f275ec1cf0fb8fd7116b5f9ddc51b4b10e",
+          "sample": 5
+        }
+      ],
+      "samples": [
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7834,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7835,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4677.57236676,
+          "raw_sha256": "9c32fdc49db651c9dda8a2748160eab7dc2e76b06377f8cae1d4b1f264dcd04e"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7843,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7844,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4682.817510502,
+          "raw_sha256": "34e180ee2b47a3a2a44c1caf28f2dfdcad9300a117da4fea16ae660432072e6d"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7852,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7852,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4688.06487073,
+          "raw_sha256": "5abcb26371cc093c37d373d7f8b3b1872b590aa5d9530c881a7c1eb046af5098"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7861,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7861,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4693.309763472,
+          "raw_sha256": "609cfe1a893daa115308ed8ceb91b47c4b254ddcf156cea1cd91235f0bc61b3a"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7869,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7870,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4698.55248614,
+          "raw_sha256": "12d2d654991ef6db2ad4fe3931f397f275ec1cf0fb8fd7116b5f9ddc51b4b10e"
+        }
+      ]
+    },
+    "after-B": {
+      "boot_sha256": "3c6c5e602c8a00d595b1571bc32668426e67bb0fdfc0795ac8d6d6c69fbdbd40",
+      "cards": [
+        {
+          "aiclk_mhz": 800,
+          "arc_heartbeat": {
+            "first": 8024,
+            "second": 8059
+          },
+          "bundle": "19.6.0.0",
+          "chip": 0,
+          "cmfw": "0.28.0.0",
+          "dram_healthy": true,
+          "erisc": null,
+          "eth_heartbeat_healthy": null,
+          "node": "/dev/tenstorrent/0",
+          "pci": "0000:06:00.0",
+          "pcie_index": 0,
+          "serial": "000004033191411c",
+          "temperature_c": 54.4,
+          "unobservable": {
+            "erisc": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            },
+            "eth_heartbeat_healthy": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            }
+          }
+        },
+        {
+          "aiclk_mhz": 800,
+          "arc_heartbeat": {
+            "first": 8025,
+            "second": 8060
+          },
+          "bundle": "19.6.0.0",
+          "chip": 1,
+          "cmfw": "0.28.0.0",
+          "dram_healthy": true,
+          "erisc": null,
+          "eth_heartbeat_healthy": null,
+          "node": "/dev/tenstorrent/1",
+          "pci": "0000:09:00.0",
+          "pcie_index": 1,
+          "serial": "0000040331914124",
+          "temperature_c": 57.6,
+          "unobservable": {
+            "erisc": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            },
+            "eth_heartbeat_healthy": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            }
+          }
+        }
+      ],
+      "container_count_observed": 0,
+      "hugepages": {
+        "free_hugepages": 6,
+        "nr_hugepages": 8,
+        "resv_hugepages": 0,
+        "surplus_hugepages": 0
+      },
+      "raw_snapshot_hashes": [
+        {
+          "original_raw_sha256": "6e7ecd05a45415af89c2f8e97aa0b523e7edfad2d6de15cefbab32a647da7286",
+          "sample": 1
+        },
+        {
+          "original_raw_sha256": "66e2fa6556524c650c936f782065e1a413838d56447928390a4f6de432904141",
+          "sample": 2
+        },
+        {
+          "original_raw_sha256": "c2826da47ed96d9dca8d0f966f86bc6e5e40ecf3ec31d8c26c1e19eb503fc7fc",
+          "sample": 3
+        },
+        {
+          "original_raw_sha256": "fcb5caa43a25e86f498bc78827036881e073a4d80424a3cf2d751336b17573c7",
+          "sample": 4
+        },
+        {
+          "original_raw_sha256": "4b098359383c33f792c01b26ed63977cbe807f1dd943b77733068bd3f2232af3",
+          "sample": 5
+        }
+      ],
+      "samples": [
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8024,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8025,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4791.489742927,
+          "raw_sha256": "6e7ecd05a45415af89c2f8e97aa0b523e7edfad2d6de15cefbab32a647da7286"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8033,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8033,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4796.738128595,
+          "raw_sha256": "66e2fa6556524c650c936f782065e1a413838d56447928390a4f6de432904141"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8042,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8042,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4801.983079886,
+          "raw_sha256": "c2826da47ed96d9dca8d0f966f86bc6e5e40ecf3ec31d8c26c1e19eb503fc7fc"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8050,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8051,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4807.236508076,
+          "raw_sha256": "fcb5caa43a25e86f498bc78827036881e073a4d80424a3cf2d751336b17573c7"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8059,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 8060,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4812.482450497,
+          "raw_sha256": "4b098359383c33f792c01b26ed63977cbe807f1dd943b77733068bd3f2232af3"
+        }
+      ]
+    },
+    "before-A": {
+      "boot_sha256": "3c6c5e602c8a00d595b1571bc32668426e67bb0fdfc0795ac8d6d6c69fbdbd40",
+      "cards": [
+        {
+          "aiclk_mhz": 800,
+          "arc_heartbeat": {
+            "first": 7717,
+            "second": 7752
+          },
+          "bundle": "19.6.0.0",
+          "chip": 0,
+          "cmfw": "0.28.0.0",
+          "dram_healthy": true,
+          "erisc": null,
+          "eth_heartbeat_healthy": null,
+          "node": "/dev/tenstorrent/0",
+          "pci": "0000:06:00.0",
+          "pcie_index": 0,
+          "serial": "000004033191411c",
+          "temperature_c": 53.6,
+          "unobservable": {
+            "erisc": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            },
+            "eth_heartbeat_healthy": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            }
+          }
+        },
+        {
+          "aiclk_mhz": 800,
+          "arc_heartbeat": {
+            "first": 7718,
+            "second": 7753
+          },
+          "bundle": "19.6.0.0",
+          "chip": 1,
+          "cmfw": "0.28.0.0",
+          "dram_healthy": true,
+          "erisc": null,
+          "eth_heartbeat_healthy": null,
+          "node": "/dev/tenstorrent/1",
+          "pci": "0000:09:00.0",
+          "pcie_index": 1,
+          "serial": "0000040331914124",
+          "temperature_c": 56.2,
+          "unobservable": {
+            "erisc": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            },
+            "eth_heartbeat_healthy": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            }
+          }
+        }
+      ],
+      "container_count_observed": 0,
+      "hugepages": {
+        "free_hugepages": 8,
+        "nr_hugepages": 8,
+        "resv_hugepages": 0,
+        "surplus_hugepages": 0
+      },
+      "raw_snapshot_hashes": [
+        {
+          "original_raw_sha256": "32fe08a001e44349037162c06519ee0403ca4d71c1659445dc6a25c97d319b89",
+          "sample": 1
+        },
+        {
+          "original_raw_sha256": "c15059146e0d160fab0fa0fc923d26354c9148ea6989870ba1d3be60709dd55d",
+          "sample": 2
+        },
+        {
+          "original_raw_sha256": "3ea93e98a5e1f56838777ec9a41ba51bc581d36c9f03690fcad9104535ab1e04",
+          "sample": 3
+        },
+        {
+          "original_raw_sha256": "db374e1a39551225ca234491756440668acb9af4d5eaa50ab305bbb770dc8dbd",
+          "sample": 4
+        },
+        {
+          "original_raw_sha256": "8e675e04f753bf9ac86d4b04243140f8ed7d1b65eb38dccb5ae6dc02890fe96a",
+          "sample": 5
+        }
+      ],
+      "samples": [
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7717,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7718,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4607.364843402,
+          "raw_sha256": "32fe08a001e44349037162c06519ee0403ca4d71c1659445dc6a25c97d319b89"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7726,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7727,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4612.61175122,
+          "raw_sha256": "c15059146e0d160fab0fa0fc923d26354c9148ea6989870ba1d3be60709dd55d"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7735,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7735,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4617.857462193,
+          "raw_sha256": "3ea93e98a5e1f56838777ec9a41ba51bc581d36c9f03690fcad9104535ab1e04"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7744,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7744,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4623.104667935,
+          "raw_sha256": "db374e1a39551225ca234491756440668acb9af4d5eaa50ab305bbb770dc8dbd"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7752,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7753,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4628.347578099,
+          "raw_sha256": "8e675e04f753bf9ac86d4b04243140f8ed7d1b65eb38dccb5ae6dc02890fe96a"
+        }
+      ]
+    },
+    "before-B": {
+      "boot_sha256": "3c6c5e602c8a00d595b1571bc32668426e67bb0fdfc0795ac8d6d6c69fbdbd40",
+      "cards": [
+        {
+          "aiclk_mhz": 800,
+          "arc_heartbeat": {
+            "first": 7896,
+            "second": 7931
+          },
+          "bundle": "19.6.0.0",
+          "chip": 0,
+          "cmfw": "0.28.0.0",
+          "dram_healthy": true,
+          "erisc": null,
+          "eth_heartbeat_healthy": null,
+          "node": "/dev/tenstorrent/0",
+          "pci": "0000:06:00.0",
+          "pcie_index": 0,
+          "serial": "000004033191411c",
+          "temperature_c": 53.6,
+          "unobservable": {
+            "erisc": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            },
+            "eth_heartbeat_healthy": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            }
+          }
+        },
+        {
+          "aiclk_mhz": 800,
+          "arc_heartbeat": {
+            "first": 7896,
+            "second": 7931
+          },
+          "bundle": "19.6.0.0",
+          "chip": 1,
+          "cmfw": "0.28.0.0",
+          "dram_healthy": true,
+          "erisc": null,
+          "eth_heartbeat_healthy": null,
+          "node": "/dev/tenstorrent/1",
+          "pci": "0000:09:00.0",
+          "pcie_index": 1,
+          "serial": "0000040331914124",
+          "temperature_c": 56.2,
+          "unobservable": {
+            "erisc": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            },
+            "eth_heartbeat_healthy": {
+              "reason": "blackhole_pre_19_9_telemetry_unavailable",
+              "sources": [
+                "umd/device/firmware/firmware_info_provider.cpp:217-229",
+                "umd/device/firmware/firmware_utils.cpp:80-99",
+                "umd/device/topology/topology_discovery.cpp:302-306"
+              ]
+            }
+          }
+        }
+      ],
+      "container_count_observed": 0,
+      "hugepages": {
+        "free_hugepages": 6,
+        "nr_hugepages": 8,
+        "resv_hugepages": 0,
+        "surplus_hugepages": 0
+      },
+      "raw_snapshot_hashes": [
+        {
+          "original_raw_sha256": "ab125f3870c618a04be471e68c62fc4acc0730d7535befc1cc9dc7cb8e5164c6",
+          "sample": 1
+        },
+        {
+          "original_raw_sha256": "043be2659bc8c65e501ce7fbe7d478c76a206740124c13c0ae49c4b86c28dff1",
+          "sample": 2
+        },
+        {
+          "original_raw_sha256": "7a1c3af49ec438831f3a69a9c27ed39c618d63e343be7c424131c1d868e4729c",
+          "sample": 3
+        },
+        {
+          "original_raw_sha256": "2c9f215b78625c7d2578f17e601fd32ddfb035c42791157f8b8063c53c37f1f3",
+          "sample": 4
+        },
+        {
+          "original_raw_sha256": "d7382029e2064644f7969dae717d28fe2a38ddc7dd5a97e1e6b9005246896177",
+          "sample": 5
+        }
+      ],
+      "samples": [
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7896,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7896,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4714.573988158,
+          "raw_sha256": "ab125f3870c618a04be471e68c62fc4acc0730d7535befc1cc9dc7cb8e5164c6"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7905,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7905,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4719.818912505,
+          "raw_sha256": "043be2659bc8c65e501ce7fbe7d478c76a206740124c13c0ae49c4b86c28dff1"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7914,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7914,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4725.063880047,
+          "raw_sha256": "7a1c3af49ec438831f3a69a9c27ed39c618d63e343be7c424131c1d868e4729c"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7922,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7923,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4730.308662747,
+          "raw_sha256": "2c9f215b78625c7d2578f17e601fd32ddfb035c42791157f8b8063c53c37f1f3"
+        },
+        {
+          "cards": [
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7931,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "000004033191411c",
+              "uncorrectable_errors": 0
+            },
+            {
+              "aiclk_mhz": 800,
+              "arc_heartbeat": 7931,
+              "dram_status": true,
+              "raw_ddr_status": "0x5555",
+              "serial": "0000040331914124",
+              "uncorrectable_errors": 0
+            }
+          ],
+          "monotonic_seconds": 4735.558221572,
+          "raw_sha256": "d7382029e2064644f7969dae717d28fe2a38ddc7dd5a97e1e6b9005246896177"
+        }
+      ]
+    }
+  },
+  "native_member_hashes": {
+    "A/docker-after.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "A/docker-before.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "A/execution.json": "5907d8f0aeef4062cf515a7e69f178127311267fe5d7d2d5f5e22ccb37548a03",
+    "A/native/gtest.xml": "933707e420ea77491486ea48afe03b33d4fc299983aa9a0c7dddb84cb745bde8",
+    "A/result.json": "a11a5e4461ed6f798eb890c4648e7a2b67fbcedd170a1ec90649b0e2ae68d66f",
+    "A/review.json": "6135d956a4ac9971db4e596bebc7789eee96f1bebc08e777775da9e0a9fcba77",
+    "A/runtime-layout.json": "445d54ac6c12b51f3a0f0a2d36ec25fa6330a7e6998118691f32a53471a6a526",
+    "A/stderr.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "A/stdout.bin": "6d4b9c5ea950431447961e93fe16d3408d71f9c024284019dffb499a0439e983",
+    "B/docker-after.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "B/docker-before.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "B/execution.json": "25d30113056ce2f236e573a36eb4d0e37891da2f858effb00830f9e3237f32e8",
+    "B/logs/generated/watcher/kernel_names.txt": "596079cc54d8f83f28485de82c7ab26f8af66a24255d44dbc464733a9881fe20",
+    "B/logs/generated/watcher/watcher.log": "9c13a91ad321b75909f2e049396519da60286f1e5dac26618983bdcd83eba438",
+    "B/native/gtest.xml": "aa168da04d45cdf5498057b394f3d42437d71268a2bd24967a838491fc24c7d9",
+    "B/privacy-normalized-asic_to_fabric_node_mapping_rank_1_of_1.yaml": "c3043df50bca9ff5221c2463e4c44aa2e0ffeeb288f19dfcc493f34c28b55c88",
+    "B/result.json": "16959b0af1a57083aee126374b21061d141b7e7e9f223d1c81dfb683c4d98a9b",
+    "B/review.json": "dd6c64a07f83f21a03d97a33dd77eb75a0e844c9351bdd30bc5bff6a5598fc77",
+    "B/runtime-layout.json": "445d54ac6c12b51f3a0f0a2d36ec25fa6330a7e6998118691f32a53471a6a526",
+    "B/runtime/generated/fabric/physical_chip_mesh_coordinate_mapping_1_of_1.yaml": "3ea7e68aed91474181e8cfb054bc7b97b80c8b7114713a4a44f649a8dd8e69aa",
+    "B/stderr.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "B/stdout.bin": "bf77e0d5bab80b21c4c834e11fd8e74616445639050d6b2151eb2985fe30c1a8",
+    "after-A/series.json": "8171712b109108bd73775bcc7462b4e0e4e1185d98e6df79ff8c091a456b6934",
+    "after-A/snapshot1.public.json": "8c66d1a5caf8bb45690dbeeeacd620d23df3b62662ed145fe75f19460916bfb9",
+    "after-A/snapshot2.public.json": "3f6072d98ce1bb9f6badd682313d5ae0f30a2068362be86fa727d315bc8701ef",
+    "after-A/snapshot3.public.json": "9726ef1f40be9adf4b3e147cca99797d3dc1c11fed5f4b074f87d903e162375e",
+    "after-A/snapshot4.public.json": "547c744242068e7959a5a2de2e666cd061e15e991d3feb1d49fb9098930867d5",
+    "after-A/snapshot5.public.json": "744b46aa2a5030fc44e57ec82ed7a48ad4b513b69db70e974526e7d204eb2d69",
+    "after-B/series.json": "6cb2f0b939113687f7f1b6e218646c574eb28c21b4d2cb942e26bdcfe57e7205",
+    "after-B/snapshot1.public.json": "23fcf6c2bb4f9ac13924435e47ef0640f9f7b358fc5a01069555b9c93d1be6cd",
+    "after-B/snapshot2.public.json": "4ccf946b474851f6914688bc360b6f517eea3ed368fb42c56a1c0011c49dc0ba",
+    "after-B/snapshot3.public.json": "1eff202b166265ee7a6045b2062a0e8cbd736e2a30a33e96c0c7ca3ad4bbb11e",
+    "after-B/snapshot4.public.json": "47b461e06f3f3fe870dd976716e2d7de0407ca2fac128094645130d3365a46ec",
+    "after-B/snapshot5.public.json": "db6be361b630bc34da853b80a55ab691a587222b3735169a2a7b15164941a80a",
+    "before-A/series.json": "fed63c832465bc5555f8f033dc129fe081091c869ce8fe803c411304c01e716e",
+    "before-A/snapshot1.public.json": "6edb335192774c262a2fa37ac357cad08a89f63f7b33906c1fa45fc56d5acb5a",
+    "before-A/snapshot2.public.json": "4012d21920e810280c1efaa5054fdfebaacf8055910e75bc9408f106d94e087a",
+    "before-A/snapshot3.public.json": "d368fa4371d23f3990d4c357fb3c8ae0e211baefe018875a1d94262123c6c254",
+    "before-A/snapshot4.public.json": "f223260c74d325993f12a81523c8b307b685327e171bb15b3cf604d87a055838",
+    "before-A/snapshot5.public.json": "580ab9217d2a06c94a7fd77f9640d46406b48745fe4455ae0a60db4c64f9a641",
+    "before-B/series.json": "abfa750e5148f18fcf42a6c2d73c2e16510f3c11ec5e3bd05da71c9627bb0029",
+    "before-B/snapshot1.public.json": "a639fe28f2318ef86babd522046472bd368390f34a3b6d3990a4a410aa8a0337",
+    "before-B/snapshot2.public.json": "5009b5a87ad372e6ec9f18c1ced8cbef01ad1c4c176e1a3111c5a16d0d90d3eb",
+    "before-B/snapshot3.public.json": "52924c145a27cd9a905740435df9fabc97aad850a5690ab0eb822ef3fe0fdac1",
+    "before-B/snapshot4.public.json": "c4228b7d1e98d5d062529144796b50add1a15588f3ba43911dbfeed9f305e6ed",
+    "before-B/snapshot5.public.json": "417a67303299446d62dc96ad7564a89e55a8e00b59dc30dd1b43491cd9af2bf7",
+    "watcher-review-detail.json": "2ff97abe03862a1eb7a7b5f41e8dced99c78ab761c524b97f1a4fca892115364",
+    "watcher-scan.json": "fdcd738aa15a962669d91f771898f3e195c74baa10401931309d3554bf74ba3b"
+  },
+  "operator_followup": {
+    "approx_time_JST": "2026-11-25 23:05",
+    "both_cards": "DRAMtrue,800MHz,ARC advancing; NOT the five-reading admission evidence",
+    "provenance": "operator report only; no raw snapshots",
+    "samples": 3,
+    "spacing_seconds_approx": 2
+  },
+  "owner_date": "2026-11-25",
+  "phases": {
+    "A": {
+      "approval_sha256": "2ff775409ee491906f7d3e0df98b84b44188196fc6b8d54fbff91891b367728d",
+      "execution": {
+        "argv": [
+          "timeout",
+          "--signal=KILL",
+          "40s",
+          "python3",
+          "/harness/enodia/tt/bench/issue30_runtime.py",
+          "A"
+        ],
+        "artifacts": [
+          {
+            "bytes": 23,
+            "path": "docker-after.json",
+            "sha256": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626"
+          },
+          {
+            "bytes": 0,
+            "path": "docker-after.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "bytes": 23,
+            "path": "docker-before.json",
+            "sha256": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626"
+          },
+          {
+            "bytes": 0,
+            "path": "docker-before.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "bytes": 559,
+            "path": "native/gtest.xml",
+            "sha256": "933707e420ea77491486ea48afe03b33d4fc299983aa9a0c7dddb84cb745bde8"
+          },
+          {
+            "bytes": 9137,
+            "path": "observations-before.json",
+            "sha256": "b438900f2a162d173c1124b0d3c4b25e1e284515d4abc5adfb31feaa34a4e87c"
+          },
+          {
+            "bytes": 337,
+            "path": "runtime-layout.json",
+            "sha256": "445d54ac6c12b51f3a0f0a2d36ec25fa6330a7e6998118691f32a53471a6a526"
+          },
+          {
+            "bytes": 0,
+            "path": "stderr.bin",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "bytes": 6139,
+            "path": "stdout.bin",
+            "sha256": "6d4b9c5ea950431447961e93fe16d3408d71f9c024284019dffb499a0439e983"
+          }
+        ],
+        "attempt": "issue30-a-discovery-watcher-v2-c1f49b70",
+        "binary_sha256": "10acd9257a39ab5bf8998bcdd87a1a926d3d9bbc5d9b0545b4368f85d43cc741",
+        "client_exit": 0,
+        "containers_clean": true,
+        "device_free": false,
+        "elapsed_seconds": 1.1827402600001733,
+        "environment": [
+          "TT_METAL_WATCHER=1",
+          "HOME=/scratch",
+          "LD_BIND_NOW=1",
+          "TMPDIR=/scratch",
+          "TT_METAL_RUNTIME_ROOT=/capture/runtime",
+          "TT_METAL_KERNEL_PATH=/source",
+          "TT_METAL_CACHE=/capture/cache",
+          "TT_METAL_LOGS_PATH=/capture/logs",
+          "TT_VISIBLE_DEVICES=0000:06:00.0,0000:09:00.0"
+        ],
+        "exit": 0,
+        "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "inner_deadline_status": "not_indicated",
+        "schema": "issue30-execution-v1",
+        "started": true,
+        "terminated": true,
+        "timed_out": false,
+        "watcher_clean": null
+      },
+      "review": {
+        "after_sha256": "b6b1f1d1c06f3dd850b957472a5d066cab95898aa321a329a66db4eeb0fc2149",
+        "attempt": "issue30-a-discovery-watcher-v2-c1f49b70",
+        "before_sha256": "b438900f2a162d173c1124b0d3c4b25e1e284515d4abc5adfb31feaa34a4e87c",
+        "execution_sha256": "5907d8f0aeef4062cf515a7e69f178127311267fe5d7d2d5f5e22ccb37548a03",
+        "schema": "issue30-review-v1",
+        "watcher_clean": null
+      },
+      "verdict": {
+        "attempt": "issue30-a-discovery-watcher-v2-c1f49b70",
+        "baseline_sha256": "af12dd4a6d0ead8e2aec0adb7409f767e3e9715176da4f6eb55aa239a1bdd5f6",
+        "evidence_sha256": {
+          "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout": "6d4b9c5ea950431447961e93fe16d3408d71f9c024284019dffb499a0439e983",
+          "xml": "933707e420ea77491486ea48afe03b33d4fc299983aa9a0c7dddb84cb745bde8"
+        },
+        "firmware_observation": {
+          "diagnostic_lines": [
+            "2026-11-25 14:28:52.142 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)"
+          ],
+          "erisc_health": "unknown",
+          "eth_heartbeat_health": "unknown",
+          "per_core_versions": [],
+          "reported_versions": [],
+          "truncated": false
+        },
+        "observed_qsfp": [
+          {
+            "channel": 4,
+            "chip": 1,
+            "core": "0-4",
+            "peer": 0,
+            "peer_core": "0-4",
+            "retrain_count": 0,
+            "state": "UP"
+          },
+          {
+            "channel": 5,
+            "chip": 1,
+            "core": "0-5",
+            "peer": 0,
+            "peer_core": "0-5",
+            "retrain_count": 0,
+            "state": "UP"
+          },
+          {
+            "channel": 6,
+            "chip": 1,
+            "core": "0-6",
+            "peer": 0,
+            "peer_core": "0-6",
+            "retrain_count": 0,
+            "state": "UP"
+          },
+          {
+            "channel": 7,
+            "chip": 1,
+            "core": "0-7",
+            "peer": 0,
+            "peer_core": "0-7",
+            "retrain_count": 0,
+            "state": "UP"
+          },
+          {
+            "channel": 8,
+            "chip": 1,
+            "core": "0-8",
+            "state": "DOWN/unconnected"
+          },
+          {
+            "channel": 9,
+            "chip": 1,
+            "core": "0-9",
+            "state": "DOWN/unconnected"
+          },
+          {
+            "channel": 10,
+            "chip": 1,
+            "core": "0-10",
+            "state": "DOWN/unconnected"
+          },
+          {
+            "channel": 11,
+            "chip": 1,
+            "core": "0-11",
+            "state": "DOWN/unconnected"
+          },
+          {
+            "channel": 4,
+            "chip": 0,
+            "core": "0-4",
+            "peer": 1,
+            "peer_core": "0-4",
+            "retrain_count": 0,
+            "state": "UP"
+          },
+          {
+            "channel": 5,
+            "chip": 0,
+            "core": "0-5",
+            "peer": 1,
+            "peer_core": "0-5",
+            "retrain_count": 0,
+            "state": "UP"
+          },
+          {
+            "channel": 6,
+            "chip": 0,
+            "core": "0-6",
+            "peer": 1,
+            "peer_core": "0-6",
+            "retrain_count": 0,
+            "state": "UP"
+          },
+          {
+            "channel": 7,
+            "chip": 0,
+            "core": "0-7",
+            "peer": 1,
+            "peer_core": "0-7",
+            "retrain_count": 0,
+            "state": "UP"
+          },
+          {
+            "channel": 8,
+            "chip": 0,
+            "core": "0-8",
+            "state": "DOWN/unconnected"
+          },
+          {
+            "channel": 9,
+            "chip": 0,
+            "core": "0-9",
+            "state": "DOWN/unconnected"
+          },
+          {
+            "channel": 10,
+            "chip": 0,
+            "core": "0-10",
+            "state": "DOWN/unconnected"
+          },
+          {
+            "channel": 11,
+            "chip": 0,
+            "core": "0-11",
+            "state": "DOWN/unconnected"
+          }
+        ],
+        "packet_observation": null,
+        "phase": "A",
+        "reason": "accepted",
+        "schema": "issue30-verdict-v3",
+        "scope": "one discovery",
+        "topology": {
+          "hypothesis": "H1",
+          "outcome": "accepted",
+          "reason": "accepted"
+        },
+        "verdict": "accepted_discovery",
+        "xml_present": true
+      }
+    },
+    "B": {
+      "approval_sha256": "50be5ecf42b976c4a723f98998faddb24482af15570cd89bc41d4c25e35e4ced",
+      "execution": {
+        "argv": [
+          "timeout",
+          "--signal=KILL",
+          "40s",
+          "python3",
+          "/harness/enodia/tt/bench/issue30_runtime.py",
+          "B"
+        ],
+        "artifacts": [
+          {
+            "bytes": 23,
+            "path": "docker-after.json",
+            "sha256": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626"
+          },
+          {
+            "bytes": 0,
+            "path": "docker-after.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "bytes": 23,
+            "path": "docker-before.json",
+            "sha256": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626"
+          },
+          {
+            "bytes": 0,
+            "path": "docker-before.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "bytes": 6909,
+            "path": "logs/generated/inspector/kernels.yaml",
+            "sha256": "61c3ae431e04d89deb7b4981cd68af87ad699a943b043a415b20708e0fb9a32c"
+          },
+          {
+            "bytes": 774,
+            "path": "logs/generated/inspector/mesh_devices_log.yaml",
+            "sha256": "ccf80b23f32d1d5cd47dbc2902913ddb225c4a4d172d7d721de68ddb4b100a41"
+          },
+          {
+            "bytes": 1200,
+            "path": "logs/generated/inspector/mesh_workloads_log.yaml",
+            "sha256": "c627c9fb42e0f02aefeabd28d84c18e096f3992a0c2c1ab1d8064c792abd4b9e"
+          },
+          {
+            "bytes": 11083,
+            "path": "logs/generated/inspector/programs_log.yaml",
+            "sha256": "4d3011a69f20d3261162af7b6874a501a1b9381bbcb364ce09b03fb23a609533"
+          },
+          {
+            "bytes": 144,
+            "path": "logs/generated/inspector/startup.yaml",
+            "sha256": "7cac3a20445bb53f059d08c355eb265dd1b5e7339714790a325a3ce1070b6502"
+          },
+          {
+            "bytes": 4002,
+            "path": "logs/generated/watcher/kernel_elf_paths.txt",
+            "sha256": "ecbbe4749485c27c935056366271332aa454b0c5fd193178d17001d1b2b6c4f4"
+          },
+          {
+            "bytes": 1728,
+            "path": "logs/generated/watcher/kernel_names.txt",
+            "sha256": "596079cc54d8f83f28485de82c7ab26f8af66a24255d44dbc464733a9881fe20"
+          },
+          {
+            "bytes": 184746,
+            "path": "logs/generated/watcher/watcher.log",
+            "sha256": "9c13a91ad321b75909f2e049396519da60286f1e5dac26618983bdcd83eba438"
+          },
+          {
+            "bytes": 597,
+            "path": "native/gtest.xml",
+            "sha256": "aa168da04d45cdf5498057b394f3d42437d71268a2bd24967a838491fc24c7d9"
+          },
+          {
+            "bytes": 9143,
+            "path": "observations-before.json",
+            "sha256": "b4397ae3494d6fcb0c90fcc9ada99757c649a0220b1027510a7b243c24846f98"
+          },
+          {
+            "bytes": 599,
+            "path": "runtime/generated/fabric/asic_to_fabric_node_mapping_rank_1_of_1.yaml",
+            "sha256": "3e2c8be81e5279f2089abcbb7c889e38196831ef9377ca2a43f4d13e23bb4b43"
+          },
+          {
+            "bytes": 30,
+            "path": "runtime/generated/fabric/physical_chip_mesh_coordinate_mapping_1_of_1.yaml",
+            "sha256": "3ea7e68aed91474181e8cfb054bc7b97b80c8b7114713a4a44f649a8dd8e69aa"
+          },
+          {
+            "bytes": 337,
+            "path": "runtime-layout.json",
+            "sha256": "445d54ac6c12b51f3a0f0a2d36ec25fa6330a7e6998118691f32a53471a6a526"
+          },
+          {
+            "bytes": 0,
+            "path": "stderr.bin",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "bytes": 9692,
+            "path": "stdout.bin",
+            "sha256": "bf77e0d5bab80b21c4c834e11fd8e74616445639050d6b2151eb2985fe30c1a8"
+          }
+        ],
+        "attempt": "issue30-b-fabric1d-smoke-watcher-v2-c1f49b70",
+        "binary_sha256": "dbdda98ffbd566f845ead7a2bbf759545dc07fbe2d8aa000f55ce47f77cb5cf5",
+        "client_exit": 0,
+        "containers_clean": true,
+        "device_free": false,
+        "elapsed_seconds": 6.031428762999894,
+        "environment": [
+          "TT_METAL_WATCHER=1",
+          "HOME=/scratch",
+          "LD_BIND_NOW=1",
+          "TMPDIR=/scratch",
+          "TT_METAL_RUNTIME_ROOT=/capture/runtime",
+          "TT_METAL_KERNEL_PATH=/source",
+          "TT_METAL_CACHE=/capture/cache",
+          "TT_METAL_LOGS_PATH=/capture/logs",
+          "TT_VISIBLE_DEVICES=0000:06:00.0,0000:09:00.0"
+        ],
+        "exit": 0,
+        "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "inner_deadline_status": "not_indicated",
+        "schema": "issue30-execution-v1",
+        "started": true,
+        "terminated": true,
+        "timed_out": false,
+        "watcher_clean": null
+      },
+      "host_bearing_export": {
+        "public_form": "explicit privacy-normalized copy, not byte-exact raw",
+        "source_sha256": "3e2c8be81e5279f2089abcbb7c889e38196831ef9377ca2a43f4d13e23bb4b43"
+      },
+      "review": {
+        "after_sha256": "dcba3baaff75040a273ce44eae2486fcc162541b4dd0123922329e7112f27e09",
+        "attempt": "issue30-b-fabric1d-smoke-watcher-v2-c1f49b70",
+        "before_sha256": "b4397ae3494d6fcb0c90fcc9ada99757c649a0220b1027510a7b243c24846f98",
+        "execution_sha256": "25d30113056ce2f236e573a36eb4d0e37891da2f858effb00830f9e3237f32e8",
+        "schema": "issue30-review-v1",
+        "watcher_clean": true,
+        "watcher_sha256": "9c13a91ad321b75909f2e049396519da60286f1e5dac26618983bdcd83eba438"
+      },
+      "verdict": {
+        "attempt": "issue30-b-fabric1d-smoke-watcher-v2-c1f49b70",
+        "baseline_sha256": "af12dd4a6d0ead8e2aec0adb7409f767e3e9715176da4f6eb55aa239a1bdd5f6",
+        "evidence_sha256": {
+          "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout": "bf77e0d5bab80b21c4c834e11fd8e74616445639050d6b2151eb2985fe30c1a8",
+          "xml": "aa168da04d45cdf5498057b394f3d42437d71268a2bd24967a838491fc24c7d9"
+        },
+        "firmware_observation": {
+          "diagnostic_lines": [
+            "2026-11-25 14:30:46.733 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)",
+            "2026-11-25 14:30:46.987 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)",
+            "2026-11-25 14:30:47.656 | info     |           Metal | Initializing Fabric (fabric_firmware_initializer.cpp:296)",
+            "2026-11-25 14:30:49.586 | info     |           Metal | Fabric initialized on 2 devices (fabric_firmware_initializer.cpp:444)",
+            "2026-11-25 14:30:49.586 | info     |           Metal | Fabric Initialized with config FabricConfig::FABRIC_1D (fabric_firmware_initializer.cpp:313)"
+          ],
+          "erisc_health": "unknown",
+          "eth_heartbeat_health": "unknown",
+          "per_core_versions": [],
+          "reported_versions": [],
+          "truncated": false
+        },
+        "observed_qsfp": [],
+        "packet_observation": {
+          "basis": "source_bound_official_receiver_assertions",
+          "expected_packets_from_pinned_source": 5,
+          "payload_bytes_or_status_words_printed": false,
+          "scope": "nonbenchmark five-packet PRNG receiver checks and sender/receiver status/byte equality; not timing"
+        },
+        "phase": "B",
+        "reason": "accepted",
+        "schema": "issue30-verdict-v3",
+        "scope": "five checked packets; no timing claim",
+        "topology": null,
+        "verdict": "accepted_transfer",
+        "xml_present": true
+      }
+    }
+  },
+  "prior_stop_preserved": "docs/measurements/2026-11-25-issue30-ab-v2-preflight-stop/preflight-stop.json",
+  "privacy": "Native stdout/stderr/XML/Watcher/execution/verdict/review/layout/mapping-coordinate files are byte-exact. Twenty public snapshots omit host_info and are labeled privacy-reduced; all original full raw snapshots remain private with hashes. ASIC hostname normalized explicitly.",
+  "schema": "issue30-renewed-AB-v2-result-v1",
+  "scope": "one A then one conditional Bv2; both consumed once, no retry/fallback/reset"
+}

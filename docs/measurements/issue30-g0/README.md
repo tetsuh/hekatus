@@ -11,7 +11,7 @@ probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
 The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
 remain immutable evidence for their original head. Hardened admission selects
-[G0 receipt v11](receipt-v11.json). V3/V4/V5/V6/V7/V8/V9/V10 remain immutable. Original v2 private-scratch/fixed-layout
+[G0 receipt v12](receipt-v12.json). V3/V4/V5/V6/V7/V8/V9/V10/V11 remain immutable. Original v2 private-scratch/fixed-layout
 verification and [build receipt v2](build-receipt-v2.json) remain immutable.
 V3/V4 rebind only host input/judgment changes using CPU tests and an unchanged
 launch/watchdog AST proof; no native binary or container was rerun for either.
@@ -33,7 +33,12 @@ for the renewed2026-11-25 one-A/conditional-H1-Bv2 unit, approval-v4 and fresh
 canonical native A revalidation. V11 retains16 unchanged transport functions
 plus one explicitly two-literal-normalized stream function/19 constants. The
 [renewed unit stopped in read-only preflight](../2026-11-25-issue30-ab-v2-preflight-stop/README.md)
-before A or Bv2 due to a false-then-true DRAM telemetry observation. Full-suite/
+before A or Bv2 due to a false-then-true DRAM telemetry observation. V12 adds
+owner-scoped five-read DRAM admission (33 source bindings,173 CPU controls),
+unchanged native evidence. After owner continuation, [fresh A and Bv2](../2026-11-25-issue30-ab-v2/README.md)
+were accepted once each atf8703fb; all20 pre/post readings met that scoped gate.
+The original stop remains unchanged, and both native invocation scopes are now
+consumed. No receipt itself authorizes any additional run. Full-suite/
 CI/Sonar evidence is recorded in the PR/report.
 CodeRabbit CLI could not authenticate at review time; no review was completed.
 The [source study](../issue30-source-study.md) pins T/U and the runtime image.
@@ -104,7 +109,7 @@ There are **no arbitrary path CLI flags**. Assets are fixed at
 hardware outputs at `out/issue30/runs/<attempt>`. Owner inputs have fixed slots
 under `out/issue30/observations/<attempt>`: `before.json`, `after.json`,
 `approval.json`, `review.json`, and B's `discovery.json`. The selected G0 receipt is fixed
-at this document's `receipt-v11.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
+at this document's `receipt-v12.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
 program-owned roots; identity is validated before any file/process operation.
 
 `capture` defaults to device-free; **`--approved-board`** additionally requires

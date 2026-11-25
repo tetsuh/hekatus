@@ -252,6 +252,14 @@ preflight](measurements/2026-11-25-issue30-ab-v2-preflight-stop/README.md): card
 reported DRAM status false/rawDDR_STATUS0x0, then true/0x5555. Cause/persistence
 are unknown; the second reading did not waive the stop. Neither A nor Bv2 ran.
 
+The same owner then required five fresh raw DRAMtrue/DDR_STATUS0x5555 samples
+at>=5s spacing before each phase, with zero uncorrectable errors and progressing
+ARC. The [renewed A/Bv2](measurements/2026-11-25-issue30-ab-v2/README.md) subsequently
+accepted fresh H1 and one official strict1D five-packet content-checked transfer;
+all20 before/after snapshots met the scoped rule. This does not erase the earlier
+false reading/cause uncertainty, establish continuous health, or identify when/
+why links first trained. No reset/firmware/cable/host setting change occurred.
+
 ### What limits this workload
 
 The workload estimate puts arithmetic at a few percent of theoretical peak.
@@ -350,6 +358,20 @@ file/line references, UMD/image pins and explicit open questions.
 The2026-11-25 renewed A/Bv2 unit stopped before any native invocation on a
 false-then-true DRAM telemetry observation; no new link, packet, routing jitter
 or latency evidence was obtained. See the [preflight stop](measurements/2026-11-25-issue30-ab-v2-preflight-stop/README.md).
+
+**First content-verified TT-to-TT smoke (2026-11-25):** after fresh H1 A and
+owner-scoped five-read DRAM gates, the [corrected-layout Bv2](measurements/2026-11-25-issue30-ab-v2/README.md)
+completed the unmodified official five-packet PRNG receiver/status/byte-equality
+checks, strictFABRIC_1D on2 devices, fresh reviewed Watcher5 dumps and clean
+close/container cleanup,6.031s through cleanup (test body0.915s). All diagnostics
+matched existing baseline; owned mapping exports succeeded, no readonly warning.
+These checks are source-bound to pinned binary/source plus complete XML, native
+output, Watcher and post-state; raw packet/status/byte counters were not printed.
+JIT cache0/34hits; separate JIT/packet latency is not measured. This resolves the
+prior layout stop for this configuration, not firmware health, sustained input,
+external FPGA interoperability, loopback or B3/B4 timing. The prior A/Bv1/DRAM
+stop remains unchanged.20 fresh before/after readings were true/0x5555 with zero
+uncorrectables/800MHz/advancingARC; no generic intermittent-fault immunity claim.
 
 **FPGA side remains open:** the source establishes software peer obligations,
 not a sufficient external sender specification. The legacy `erisc_info`
