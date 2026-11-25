@@ -392,6 +392,39 @@ known; their actual jitter cost, continuous-stream behavior on these cards and
 B4 latency remain **unverified on hardware**. See source-study section 4 for a
 later instrumented measurement proposal; B5/B6 and #105 stage 3 remain open.
 
+**Why B3 jitter is still unmeasured:** the authorized smoke has five packets,
+no receive-completion interval series and no entry/exit timestamps or counters
+for the selected routing/context-switch helper. Gtest/host durations and Watcher
+waypoints cannot isolate a service pause, establish its overhead, or estimate
+tail jitter under sustained offered traffic. Passing the smoke clears a first-
+content prerequisite, not those observability/statistical prerequisites.
+A separately proposed **B3-J0** run needs a board-free-qualified instrumented
+kernel: bounded finite packet trains/controlled gaps, sequence/content/drop and
+overflow checks, same-card receive-completion intervals and helper entry/exit
+cycle timestamps/counters, with actual generated router policy and clock units/
+wrap recorded. Distinguish full routing from the Blackhole no-sync/debounced
+path. First instrumented run Watcher on, process40s/container50s/cleanup60s,
+one invocation only under new owner approval. An overhead-control or Watcher-off
+comparison is a separately approved run, not an implicit second invocation.
+Report sample count, distributions/max and intervals near recorded calls;
+insufficient samples mean no high-percentile estimate, and correlation alone
+is not causal attribution. No instrumentation or board run is authorized here.
+
+**B4 latency boundary and prerequisite:** the Bv2 body0.915s/fixture5.286s/
+capture6.031s mix JIT, dispatch, checks and teardown; none is inter-card latency.
+There is no defined card-side TX-to-RX timestamp pair or cross-card clock
+calibration. A separately proposed **B4-L0** run first needs qualified finite
+sequence-tagged payloads and a two-card echo/RTT kernel with both boundaries on
+one card clock, explicit enqueue/send/completion definitions, payload/route/
+cache/credit conditions, content/drop checks and timestamp overhead calibration.
+RTT is not one-way latency and must not be divided by two to assert symmetry.
+One-way results additionally require B6 offset/drift/uncertainty calibration;
+host-visible timing also needs B5 ordering/fence semantics. First new kernel
+Watcher on,40/50/60s, one owner-approved invocation; any control/Watcher-off run
+needs separate scope. #13 is a distinct same-card port loopback topology, not
+this two-card unicast/echo; no recabling is implied. #105 stage 3 still needs
+real-rate frame input, B5/B6 resolution and its own prewritten acceptance criteria.
+
 ---
 
 ## 4. Probes
