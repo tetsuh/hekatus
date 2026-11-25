@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v9.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v10.json"
 OWNER_ACCEPTANCE = "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
@@ -66,6 +66,7 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "docs/measurements/issue196/offline-inputs.tar.gz",
                  "docs/measurements/issue196/official-smoke-source.txt",
                  "docs/measurements/issue196/morning-admission.json",
+                 "tests/test_issue30_morning.py",
                  "docs/measurements/2026-11-24-issue30-b-smoke/B-native-evidence.tar.gz")
 
 
@@ -162,6 +163,15 @@ def approval_record(phase, identity, env, receipt, head):
               "head": head, "boot": env["boot"],
               "environment_sha256": digest(json.dumps(env, sort_keys=True).encode()),
               "receipt_sha256": digest(json.dumps(receipt, sort_keys=True).encode())}
+    if "owner_unit" in env:
+        unit = _renewed_unit(env)
+        if identity != unit[phase]:
+            raise ValueError("owner_unit_identity")
+        return record | {"schema": "issue30-owner-approval-v4", "owner_unit": unit,
+                         "owner_authorization": {"date": unit["date"], "invocations": 1,
+                                                 "test": TESTS[phase], "watcher": "1",
+                                                 "cards": [list(c) for c in CARDS], "max_seconds": 60},
+                         "conditional_B": "accepted fresh H1 A, identical boot and cabling"}
     if phase == "A":
         record |= {"schema": "issue30-owner-approval-v2", "operator_correction": dict(admission.CORRECTION),
                    "owner_authorization": {"date": "2026-11-24", "logical_unit": "issue30-a-discovery-watcher-v1",
@@ -445,7 +455,10 @@ def _health(env, raw, observed):
     bundles = [x.removeprefix(prefix) for x in lines if x.startswith(prefix)]
     if bundles != [_bundle_report_name(env["cards"][0]["bundle"])]:
         raise ValueError("bundle")
-    return _health_records(env, lines, observed, warnings)
+    decision = _health_records(env, lines, observed, warnings)
+    if "owner_unit" in env and decision.get("hypothesis") != "H1":
+        raise ValueError("fresh_A_H1_required")
+    return decision
 
 
 def baseline_digest(env):
@@ -477,8 +490,11 @@ def _transfer_binding(before, discovery, raw):
     if not discovery:
         raise ValueError("discovery_binding")
     if "topology" in before:
-        admission.owner_links(discovery, baseline_digest(before), digest(before["boot"].encode()),
-                              digest(json.dumps(before["topology"], sort_keys=True).encode()))
+        if "owner_unit" in before:
+            _fresh_links(before, discovery)
+        else:
+            admission.owner_links(discovery, baseline_digest(before), digest(before["boot"].encode()),
+                                  digest(json.dumps(before["topology"], sort_keys=True).encode()))
         _messages(before, raw, accepted=discovery["observed_qsfp"])
     else:  # Historical CPU fixtures; hardware CLI always requires the frozen topology.
         if (discovery.get("phase") != "A" or discovery.get("verdict") != ACCEPTED["A"]
@@ -503,8 +519,55 @@ def _packet_observation(before, raw):
             "scope": "nonbenchmark five-packet PRNG receiver checks and sender/receiver status/byte equality; not timing"}
 
 
+def _renewed_unit(env):
+    unit = env.get("owner_unit", {})
+    if set(unit) != {"date", "A", "B"} or unit.get("date") != "2026-11-25":
+        raise ValueError("owner_unit")
+    for phase, prefix in (("A", "issue30-a-discovery-watcher-v2"),
+                          ("B", "issue30-b-fabric1d-smoke-watcher-v2")):
+        if not _identity(unit[phase]).startswith(prefix + "-"):
+            raise ValueError("owner_unit_identity")
+    return unit
+
+
+def _fresh_links(before, record):
+    _renewed_unit(before)
+    decision = topology.classify(record.get("observed_qsfp"))
+    if (record.get("schema") != "issue30-verdict-v3" or record.get("phase") != "A"
+            or record.get("verdict") != ACCEPTED["A"] or record.get("reason") != "accepted"
+            or record.get("baseline_sha256") != baseline_digest(before)
+            or decision != record.get("topology") or decision.get("hypothesis") != "H1"
+            or decision.get("outcome") != "accepted"):
+        raise ValueError("fresh_A_binding")
+
+
+def _fresh_native(before, record):
+    unit = _renewed_unit(before)
+    output, inputs = _slots(unit["A"], True)
+    original = _load(output / "result.json")
+    if record != original or record.get("attempt") != unit["A"]:
+        raise ValueError("fresh_A_canonical_result")
+    first = _load(inputs / BEFORE_FILE)
+    _approval("A", unit["A"], _load(inputs / "approval.json"), first,
+              _load(CURRENT_RECEIPT, ROOT), _git(ROOT, "rev-parse", "HEAD"))
+    execution, review = _review("A", unit["A"], output, inputs)
+    for field in ("before", "after"):
+        if review.get(field + "_sha256") != digest(_read(inputs / (field + ".json"))):
+            raise ValueError("fresh_A_review")
+    raw = [_read(output / name) for name in ("native/gtest.xml", "stdout.bin", "stderr.bin")]
+    checked = evaluate("A", unit["A"], first, _load(inputs / "after.json"), *raw, execution)
+    checked["xml_present"] = True
+    if checked != original:
+        raise ValueError("fresh_A_revalidation")
+    _fresh_links(before, record)
+
+
 def _bound_discovery(inputs):
     record = _load(inputs / "discovery.json")
+    before = _load(inputs / BEFORE_FILE)
+    if "owner_unit" in before:
+        _fresh_native(before, record)
+        return record
     expected = _load(ROOT / OWNER_ACCEPTANCE, ROOT)
     if json.dumps(record, sort_keys=True) != json.dumps(expected, sort_keys=True):
         raise ValueError("owner_acceptance_binding")
@@ -678,7 +741,10 @@ def _authorize(phase, identity, inputs, output):
     if phase == "B":
         gate = _load(ROOT / "docs/measurements/issue196/morning-admission.json", ROOT)
         if gate.get("owner_approved") is not True:
-            raise ValueError("B_v2_requires_new_owner_and_fresh_A_decision")
+            candidate = _load(inputs / BEFORE_FILE)
+            if "owner_unit" not in candidate:
+                raise ValueError("B_v2_requires_new_owner_and_fresh_A_decision")
+            _renewed_unit(candidate)
     env = _load(inputs / BEFORE_FILE)
     topology.validate_input(env)
     _environment(env, identity, phase)

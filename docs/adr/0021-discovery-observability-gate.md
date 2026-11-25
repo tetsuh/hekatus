@@ -93,6 +93,27 @@ rewritten or reissued. The owner, not the agent, approves the following revision
     records/receipts/native evidence remain byte-exact. No production data-plane
     contract or application architecture is changed.
 
+
+### Renewed conditional unit — owner 2026-11-25 (same unmerged PR)
+
+After card power-off and host reboot, the owner authorizes exactly one new A,
+then one Bv2 only on fresh accepted H1. Old A and consumed Bv1 are not authority.
+The per-unit environment names both new attempt identities and owner date;
+approval-v4 binds each one-use phase to that unit, head, boot, environment and
+receipt. A accepts H1 only (channels4-7 reciprocal UP/retrain0,8-11 DOWN), not H2;
+exact baseline diagnostics apply, cluster-only Watcher output not required.
+B uses the canonical fresh A result at its named output slot, revalidates original
+approval/head/receipt, captured before/review/after/XML/stdout/stderr, and matches
+B's stable baseline including boot and unit. Non-device or stale evidence cannot
+qualify. No new per-core health claim. This supersedes the old no-A-recheck/fixed
+2026-11-24 acceptance path for this new unit only; historical records are unchanged.
+The pending #196 registry does not itself grant permission: the new branch needs
+explicit phase approval-v4 and verified fresh A before preparing a device mapping.
+Named containers/Watcher/40-50-60s and all diagnostic/cleanup/health stops remain.
+No retry, reset, fallback, firmware/cable/host setting operation is authorized.
+A source-bound CPU/AST successor receipt reuses unchanged native compile/layout
+and transport evidence; all tests/CI/Sonar must pass before fresh preflight/run.
+
 ## Consequences
 
 Discovery can observe what was unavailable before opening without fabricating
@@ -113,3 +134,6 @@ unchanged. Owner authority remains once-only, bounded and non-transitive.
 - 2026-11-24 late night: Owner accepts A observations and authorizes one B;
   amends the still-unmerged record's B admission, exact baseline warning and
   phase-appropriate Watcher rules. Original A verdict and observations are immutable.
+
+- 2026-11-25: Owner renews one conditional fresh A then H1-only Bv2 unit; fresh
+  native evidence replaces stale fixed acceptance for the renewed scope only.

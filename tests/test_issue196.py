@@ -78,7 +78,7 @@ def test_B_v2_power_cycle_does_not_reuse_old_A_or_B_scope(tmp_path, monkeypatch)
     monkeypatch.setattr(m, "_load", only_gate)
     with pytest.raises(ValueError, match="B_v2_requires_new_owner_and_fresh_A_decision"):
         m._authorize("B", "synthetic", tmp_path, tmp_path / "run")
-    assert calls == ["morning-admission.json"]
+    assert calls == ["morning-admission.json", "before.json"]
 
 
 def test_offline_options_do_not_add_source_root_include_workaround():

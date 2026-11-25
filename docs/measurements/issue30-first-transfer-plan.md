@@ -615,3 +615,26 @@ is used to claim cold success or silently buy more time for B v2.
   withholds B; any B stop withholds retry. After-state/container proof first,
   unresponsive telemetry means stop without more operations/reset. New authority
   is required for any retry, fallback, reset, cable or firmware maintenance.
+
+## Executable renewed scope — owner 2026-11-25
+
+Owner grants A once then Bv2 once only if fresh A matches H1. No run is implied
+by preparation. A requires both named cards, channel4-7 reciprocal UP/retrain0,
+8-11 DOWN/unconnected only. Exact #176 NUMA/motherboard/SMC baseline diagnostics
+are permitted, no other warning/error; A's cluster-only Watcher output is N/A.
+Any H2/partial/new peer/unknown identity/retrain/skip/failure stops before B.
+B admission revalidates fresh canonical A native evidence, approval-v4 and stable
+baseline (same boot, same cabling policy, same unit/head/receipt), never old A.
+Each approval-v4 records owner2026-11-25, one phase invocation and the two named
+attempt IDs. Existing pending registry and consumed old scopes grant nothing.
+Immediately before each phase: zero containers/quiet host; before B also enough
+free1GiB pages. Each phase retains40s process/50s container/60s cleanup; total
+process-cleanup windows<=120s plus telemetry/preparation. No heavy tests/builds
+while either hardware run. After each: both-card telemetry and container0 first;
+unreadable telemetry/unresponsive card/uncertain cleanup means stop, no extra
+operation/reset. Source-derived roughly18s cold B expectation is not a bound.
+B requires original five PRNG/status/byte checks, complete XML, packet-evidence
+markers and fresh reviewed Watcher, not exit/PASS alone. Previous precommitted
+stage diagnostics/timeout/content failure rules remain; no retry/fallback/cap
+increase/firmware/cable/host change. Fresh A and Bv2 evidence are new records;
+11/24 A and11/25 Bv1 evidence/verdicts remain byte-exact.
