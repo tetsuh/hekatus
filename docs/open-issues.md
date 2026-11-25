@@ -27,8 +27,11 @@ The Ethernet items above were blocked on a board without ports; that is no
 longer the constraint. The owner accepts A's four reported reciprocal UP links
 on the two cabled target boards (bundle19.6.0.0, H1); receiver content has not
 yet been verified: B reached strict1D initialization but stopped at RX JIT (#196).
-Issue #30's board-free source findings do not
-need a board: the legacy/fabric distinction and context-switch conditions are
+The renewed2026-11-25 A/Bv2 unit [stopped before A](measurements/2026-11-25-issue30-ab-v2-preflight-stop/README.md):
+card...4124 DRAM telemetry false/0x0 then true/0x5555, cause/persistence unknown;
+no waiver or further operation. No new B1 link/content, B3 jitter or B4 latency
+result; old A is invalid for new-boot admission. Issue #30's board-free source
+findings do not need a board: the legacy/fabric distinction and context-switch conditions are
 now documented. The source shows runtime observation/cooperation with base
 firmware, not a guaranteed host first-training command (design.md §2–§3).
 First verified receiver content remains the shared hardware gate for #13 and

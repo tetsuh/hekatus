@@ -1,0 +1,96 @@
+{
+  "boot_sha256": "3c6c5e602c8a00d595b1571bc32668426e67bb0fdfc0795ac8d6d6c69fbdbd40",
+  "cards": [
+    {
+      "DDR_STATUS": [
+        "0x5555",
+        "0x5555"
+      ],
+      "aiclk_mhz": [
+        800,
+        800
+      ],
+      "arc_heartbeat": {
+        "first": 3250,
+        "second": 3254
+      },
+      "bundle": "19.6.0.0",
+      "cmfw": "0.28.0.0",
+      "dram_status": [
+        true,
+        true
+      ],
+      "pci": "0000:06:00.0",
+      "serial": "000004033191411c",
+      "temperature_c": [
+        53.5,
+        53.6
+      ]
+    },
+    {
+      "DDR_STATUS": [
+        "0x0",
+        "0x5555"
+      ],
+      "aiclk_mhz": [
+        800,
+        800
+      ],
+      "arc_heartbeat": {
+        "first": 3250,
+        "second": 3254
+      },
+      "bundle": "19.6.0.0",
+      "cmfw": "0.28.0.0",
+      "dram_status": [
+        false,
+        true
+      ],
+      "pci": "0000:09:00.0",
+      "serial": "0000040331914124",
+      "temperature_c": [
+        56.1,
+        56.2
+      ]
+    }
+  ],
+  "containers_observed": 0,
+  "diagnosis": "unknown; no persistent fault or readout cause asserted",
+  "hugepages_1GiB": {
+    "free_hugepages": 8,
+    "nr_hugepages": 8,
+    "resv_hugepages": 0,
+    "surplus_hugepages": 0
+  },
+  "kernel": "6.8.0-149-generic",
+  "kmd": "2.12.0",
+  "native_attempts": {
+    "A": 0,
+    "Bv2": 0
+  },
+  "next_action": "Stop; no additional telemetry, reset, retries or workloads; owner disposition required before any continuation",
+  "observed_only": true,
+  "old_A_admissible": false,
+  "owner_date": "2026-11-25",
+  "phase_approvals_created": false,
+  "prepared_head": "6856565f92539249a61c38af2ebc235753ff22e9",
+  "raw_snapshot_privacy": "Original byte-exact host-bearing snapshots retained privately; public record contains literal selected fields and original hashes, not redacted-as-raw output",
+  "reason": "card1_dram_status_false_then_true",
+  "schema": "issue30-renewed-preflight-stop-v1",
+  "source_artifacts_sha256": {
+    "before.json": "4f008a052b2fd0454ec52f271794329cb51c5364b53ee5d362f8408eb003e2b7",
+    "docker.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "host.json": "4a930a4229d8cf9b17a9e354bfb824f0e24e2a0091b3510ed18cc1bb7ce90881",
+    "snapshot1.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "snapshot1.stdout": "71cffa40902c9ec93af8919eafaa91a5f9cbdb056bbddd8f113e19bf3646d1c1",
+    "snapshot2.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "snapshot2.stdout": "0d43a8e13d2f2ad6f3a1da5c387d5256df0a6b729278715089747ad58507fa35"
+  },
+  "status": "stopped_before_A",
+  "time_utc": "2026-11-25T13:43:22.733172+00:00",
+  "unit": {
+    "A": "issue30-a-discovery-watcher-v2-7da9c311",
+    "B": "issue30-b-fabric1d-smoke-watcher-v2-7da9c311",
+    "date": "2026-11-25"
+  }
+}

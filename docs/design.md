@@ -247,6 +247,11 @@ training on these cards (Issue #30's [source study](measurements/issue30-source-
 section 2). Establishing an actual chip-to-chip transfer remains the first
 board step, not an assumption the receive-path work can start from.
 
+The renewed owner-authorized A/Bv2 unit on2026-11-25 [stopped in read-only
+preflight](measurements/2026-11-25-issue30-ab-v2-preflight-stop/README.md): card...4124
+reported DRAM status false/rawDDR_STATUS0x0, then true/0x5555. Cause/persistence
+are unknown; the second reading did not waive the stop. Neither A nor Bv2 ran.
+
 ### What limits this workload
 
 The workload estimate puts arithmetic at a few percent of theoretical peak.
@@ -341,6 +346,10 @@ file/line references, UMD/image pins and explicit open questions.
   responsive after-state800MHz/DRAM true; no retry. This is a bounded runtime-
   layout stop, not a content mismatch or verified transfer. Follow-up #196 is
   board-free; per-core firmware/ETH health and B3/B4 remain unmeasured/unknown.
+
+The2026-11-25 renewed A/Bv2 unit stopped before any native invocation on a
+false-then-true DRAM telemetry observation; no new link, packet, routing jitter
+or latency evidence was obtained. See the [preflight stop](measurements/2026-11-25-issue30-ab-v2-preflight-stop/README.md).
 
 **FPGA side remains open:** the source establishes software peer obligations,
 not a sufficient external sender specification. The legacy `erisc_info`
