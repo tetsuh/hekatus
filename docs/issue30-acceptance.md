@@ -23,13 +23,13 @@ commits identify the original evidence and subsequent completion clarification.
 
 ## Evidence-consumption hardening
 
-The follow-up host-only qualification is [receipt v13](measurements/issue30-g0/receipt-v13.json).
+The follow-up host-only qualification is [receipt v14](measurements/issue30-g0/receipt-v14.json).
 Shared verified readers cover judge/fresh A/B admission; raw bytes bind all four
 telemetry roles, identity, values, time order and ARC progression. Strict result,
 diagnostic and empty-container checks preserve fail-stop semantics. Exact offline
 compiler provenance and unambiguous historical authority are retained.
 [Replay procedure and actual-format inventory](measurements/issue30-evidence-replay.md)
-and [offline proof](measurements/issue30-g0/evidence-replay-v13.json) record four
+and [offline proof](measurements/issue30-g0/evidence-replay-v14.json) record four
 unchanged current-baseline conclusions and two refused copied-data mutations.
 `tests/test_issue30_evidence.py` and `tests/test_issue30_raw_evidence.py` provide
 positive/single-mutation controls. No old receipt or measurement is replaced.

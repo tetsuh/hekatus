@@ -19,7 +19,13 @@ probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
 The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
 remain immutable evidence for their original head. Hardened admission selects
-[G0 receipt v13](receipt-v13.json). V3/V4/V5/V6/V7/V8/V9/V10/V11/V12 remain immutable.
+[G0 receipt v14](receipt-v14.json). V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13 remain immutable.
+V14 binds38 sources, constrains replay CLI paths to fixed evidence/private task
+roots, and retains identical ASCII numeric checks while satisfying static
+analysis. Its cleanup proof additionally normalizes only the intentionally
+unused parameter name; native operations/deadlines are unchanged. The
+[current offline proof](evidence-replay-v14.json) retains four baseline matches
+and copied-data refusals. V13's preceding qualification remains historical:
 V13 binds37 sources and the [offline evidence replay](evidence-replay-v13.json):
 four current-baseline conclusions unchanged, two copied-data mutations refused,
 98 original files unchanged. The [format/procedure inventory](../issue30-evidence-replay.md)

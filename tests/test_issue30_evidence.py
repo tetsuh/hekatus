@@ -37,8 +37,9 @@ def test_xml_requires_direct_suite_and_case():
 def test_utf16_dtd_is_forbidden():
     m._xml('A', xml())
     changed = '<!DOCTYPE testsuites>' + xml().decode()
+    encoded = changed.encode('utf-16')
     with pytest.raises(ValueError, match='test_result'):
-        m._xml('A', changed.encode('utf-16'))
+        m._xml('A', encoded)
 
 
 def test_client_exit_boolean_is_not_integer_zero():

@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v13.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v14.json"
 OWNER_ACCEPTANCE = "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
@@ -74,7 +74,8 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "tests/test_issue30_dram.py",
                  "docs/measurements/2026-11-24-issue30-b-smoke/B-native-evidence.tar.gz",
                  "enodia/tt/bench/issue30_evidence.py", "tests/test_issue30_evidence.py",
-                 "tests/test_issue30_raw_evidence.py", "tools/replay_issue30_evidence.py")
+                 "tests/test_issue30_raw_evidence.py", "tools/replay_issue30_evidence.py",
+                 "tests/test_issue30_replay_paths.py")
 
 
 def digest(data: bytes) -> str:
@@ -705,7 +706,7 @@ def _run_client(name, cid, output, start, state):
     state["timed_out"] |= state["exit"] == 124
 
 
-def _cleanup(name, cid, output, start, state):
+def _cleanup(_name, cid, output, start, state):
     try:
         if cid is not None:
             _api("DELETE", CONTAINERS + cid + "?force=1", timeout=remaining(start, 59, time.monotonic()))

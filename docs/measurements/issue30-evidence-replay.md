@@ -21,6 +21,13 @@ uv run --no-sync python -m tools.replay_issue30_evidence \
   --baseline "$PRE_CORRECTION_BASELINE" --output "$NEW_PRIVATE_REPLAY_DIR"
 ```
 
+The source is fixed to this checkout's canonical `out/issue30`. Baseline must
+be named `replay-baseline.json` in an existing owner-only0700 directory directly
+under `/tmp`, named `tidd-195-*` or `pi30-*`. Snapshot root must be such a private
+root too. Output is a new alphanumeric/hyphen/underscore child of a private root,
+not an arbitrary path. Redirected paths, broader file selection and unsafe root
+permissions refuse before staging. This also bounds LLM-supplied CLI arguments.
+
 The fresh private directory must not exist. The tool stages copied capture,
 review/input and20 raw files at canonical attempt/role slots. It invokes the
 same `_judgment`/verified readers as live judge and fresh A reevaluation, but

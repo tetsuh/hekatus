@@ -71,6 +71,10 @@ def validate_manifest(value):
             raise ValueError("unsafe or benchmark compiler option")
 
 
+    _validate_provenance(value)
+
+
+def _validate_provenance(value):
     # Freeze associations as well as set projections: case ID, processor, flags,
     # source/support hashes and original argv are one provenance object.
     if (set(value.get("kernel_source_sha256", {})) != kernel_inventory()

@@ -17,14 +17,14 @@ def _integer(value):
         return value
     if type(value) is str:
         value = value.strip(' ')  # tt-smi display padding only; never tabs/newlines.
-        if re.fullmatch(r'(?:0x[0-9a-fA-F]+|[0-9]+)', value):
+        if re.fullmatch(r'(?:0x[0-9a-fA-F]+|\d+)', value, re.ASCII):
             return int(value, 16 if value.startswith('0x') else 10)
     raise ValueError('dram_raw_integer')
 
 
 def _temperature(value):
     # Temperature is a decimal observation, never an integer counter or health threshold.
-    if type(value) is not str or not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', value.strip(' ')):
+    if type(value) is not str or not re.fullmatch(r'\d+(?:\.\d+)?', value.strip(' '), re.ASCII):
         raise ValueError('raw_temperature')
     result = float(value.strip(' '))
     if not math.isfinite(result):
@@ -72,7 +72,7 @@ def _aggregate(env, normalized, temperatures):
 def _snapshot_time(value):
     # tt-smi emits host-local naive ISO time. Portable replay restores the
     # recording process timezone; this decoder does not set host configuration.
-    if not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}', value):
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}', value, re.ASCII):
         raise ValueError('dram_snapshot_timestamp')
     return datetime.fromisoformat(value).timestamp()
 

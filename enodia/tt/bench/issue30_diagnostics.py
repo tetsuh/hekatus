@@ -27,7 +27,7 @@ def baseline():
 
 def _condition(line, cards):
     if len(line) > 16384 or not re.fullmatch(
-            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \| warning  \| +[\w:]+ +\| .+", line):
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \| warning {2}\| +[\w:]+ +\| .+", line):
         return None
     text = line.split("| warning  |", 1)[1].strip()
     physical = re.findall(r"physical_device_id: (\d+)", text)

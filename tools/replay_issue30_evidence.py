@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import stat
 import time
 from pathlib import Path
 
@@ -101,7 +103,44 @@ def _negative(label, phase, identity, expected):
     return {'mutation': label, 'expected_refusal': required, 'actual_refusal': reason}
 
 
+def _private_root(value):
+    candidate = value.absolute()
+    if (candidate.parent != Path('/tmp')
+            or not re.fullmatch(r'(?:tidd-195-|pi30-)[A-Za-z0-9_-]+', candidate.name, re.ASCII)):
+        raise ValueError('replay_private_root')
+    root = Path('/tmp') / candidate.name
+    m._owned(root, root)
+    mode = root.lstat()
+    if (not stat.S_ISDIR(mode.st_mode) or mode.st_uid != os.getuid()
+            or stat.S_IMODE(mode.st_mode) != 0o700):
+        raise ValueError('replay_private_root')
+    return root
+
+
+def _source_root(value):
+    root = m.ROOT / 'out/issue30'
+    if value.absolute() != root:
+        raise ValueError('replay_source_scope')
+    return m._owned(root, root)
+
+
+def _output_path(value):
+    root = _private_root(value.parent)
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', value.name, re.ASCII):
+        raise ValueError('replay_output_scope')
+    return m._owned(root / value.name, root)
+
+
+def _baseline(value):
+    if value.name != 'replay-baseline.json':
+        raise ValueError('replay_baseline_scope')
+    root = _private_root(value.parent)
+    return json.loads(m._read(root / 'replay-baseline.json', root))
+
+
 def replay(source, snapshots, output, baseline):
+    source, snapshots = _source_root(source), _private_root(snapshots)
+    output = _output_path(output)
     output.mkdir(mode=0o700, exist_ok=False)
     copies, original_work = Copies(source, snapshots), m.WORK
     try:
@@ -137,7 +176,7 @@ def main():
     os.environ['TZ'] = 'Asia/Tokyo'
     time.tzset()
     record = replay(args.source.absolute(), args.snapshots.absolute(), args.output.absolute(),
-                    json.loads(args.baseline.read_bytes()))
+                    _baseline(args.baseline))
     print(json.dumps({'matches': len(record['results']), 'refused_negatives': len(record['negatives'])}))
 
 
