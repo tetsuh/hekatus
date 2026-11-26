@@ -1,5 +1,13 @@
 # Issue #30 G0: device-free preparation
 
+**Authority status (2026-11-26): historical preparation, not an open approval.**
+The [completed A/Bv2 record](../2026-11-25-issue30-ab-v2/README.md) is the latest
+executed scope; both one-use approvals are consumed. Earlier final v1 health
+requirements and approval screens below are superseded by the owner amendments
+in [ADR-0021](../../adr/0021-discovery-observability-gate.md). They are retained
+as history, not competing admission rules. No observation/workload/reset is
+authorized here; any future hardware operation requires new owner authority.
+
 No real board/device node, tt-smi, reset, firmware update or host setting was
 accessed/changed. Python imports, CPU tests and compilation do not initialize
 TT runtime. Explicit isolated absence probes enter initialization with no
@@ -11,7 +19,16 @@ probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
 The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
 remain immutable evidence for their original head. Hardened admission selects
-[G0 receipt v12](receipt-v12.json). V3/V4/V5/V6/V7/V8/V9/V10/V11 remain immutable. Original v2 private-scratch/fixed-layout
+[G0 receipt v13](receipt-v13.json). V3/V4/V5/V6/V7/V8/V9/V10/V11/V12 remain immutable.
+V13 binds37 sources and the [offline evidence replay](evidence-replay-v13.json):
+four current-baseline conclusions unchanged, two copied-data mutations refused,
+98 original files unchanged. The [format/procedure inventory](../issue30-evidence-replay.md)
+covers all20 raw snapshots and four captures. Fifteen transport functions and19
+constants remain AST-identical; run-client stream literals and the strengthened
+cleanup predicate have explicit normalization proofs. Capture changes only add
+host clock evidence and stricter pre-launch empty-state checks; native request,
+commands, deadlines, official ELF/image/layout/compiler evidence are unchanged.
+No native/container rerun or new authority is claimed by this host qualification. Original v2 private-scratch/fixed-layout
 verification and [build receipt v2](build-receipt-v2.json) remain immutable.
 V3/V4 rebind only host input/judgment changes using CPU tests and an unchanged
 launch/watchdog AST proof; no native binary or container was rerun for either.

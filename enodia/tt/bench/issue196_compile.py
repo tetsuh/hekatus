@@ -71,6 +71,17 @@ def validate_manifest(value):
             raise ValueError("unsafe or benchmark compiler option")
 
 
+    # Freeze associations as well as set projections: case ID, processor, flags,
+    # source/support hashes and original argv are one provenance object.
+    if (set(value.get("kernel_source_sha256", {})) != kernel_inventory()
+            or any(not re.fullmatch(r"[a-f0-9]{64}", x)
+                   for x in value["kernel_source_sha256"].values())):
+        raise ValueError("compile source hash provenance differs")
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    if sha(canonical) != "a407b8e54cd79bf8cb7c6956c7786ccae91292043b58af16fbe670feb4a1f714":
+        raise ValueError("compile case provenance differs")
+
+
 def isolated():
     if Path("/dev/tenstorrent").exists():
         raise ValueError("device mappings are forbidden")

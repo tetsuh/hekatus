@@ -1,6 +1,14 @@
 # Issue #30: first chip-to-chip transfer proposal
 
-**Current status (2026-11-24 late night): A observations owner-accepted; one B
+**Current authority (2026-11-26): no unused hardware authorization.** The
+[completed renewed A/Bv2 record](2026-11-25-issue30-ab-v2/README.md) supersedes
+all pending November 24/25 approval proposals and v1 admission descriptions
+below. Both renewed one-use scopes are consumed; any future observation or
+workload requires new owner authority. Historical rules/results are preserved,
+not retroactively changed. See [ADR-0021](../adr/0021-discovery-observability-gate.md)
+for the prospective Watcher correction and subsequent five-reading amendment.
+
+**Historical status (2026-11-24 late night; superseded): A observations owner-accepted; one B
 is separately authorized, pending the corrected gates, verification and fresh
 same-boot preflight. Original proposals remain below; the final owner-decision
 section supersedes the earlier admission/Watcher/baseline rules only as stated.**

@@ -39,7 +39,7 @@ def transcript():
 
 def xml(phase="A"):
     suite, test = m.TESTS[phase].split(".")
-    return (f'<testsuites tests="1" failures="0" errors="0"><testsuite name="{suite}">'
+    return (f'<testsuites tests="1" failures="0" errors="0"><testsuite name="{suite}" tests="1">'
             f'<testcase name="{test}" classname="{suite}" status="run" result="completed"/>'
             '</testsuite></testsuites>').encode()
 

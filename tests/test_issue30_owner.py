@@ -29,15 +29,15 @@ def accepted(before=None):
 
 def baseline_lines():
     baseline = json.loads(checks.BASELINE.read_bytes())
-    return ["synthetic | warning  | " + condition["matches"][0]["text"]
+    return ["2026-01-01 00:00:00.000 | warning  | " + condition["matches"][0]["text"]
             for condition in baseline["evidence"]]
 
 
 def smoke_stdout():
     return (b"Running main() from gmock_main.cc\n"
-            b"[ RUN      ] Fabric1DFixture.TestUnicastConnAPI1DSmoke\n"
             b"info | Running fabric api tests with fast dispatch\n"
             b"info | Fabric Reliability Mode: STRICT_SYSTEM_HEALTH_SETUP_MODE\n"
+            b"[ RUN      ] Fabric1DFixture.TestUnicastConnAPI1DSmoke\n"
             b"[       OK ] Fabric1DFixture.TestUnicastConnAPI1DSmoke (125 ms)\n"
             b"[  PASSED  ] 1 test.\n")
 
@@ -183,18 +183,27 @@ def test_B_Watcher_requires_captured_fresh_dump_and_clean_hash_bound_review(tmp_
     output.mkdir(); inputs.mkdir()
     before = discovery_env()
     m.publish(inputs / "before.json", before)
+    m.publish(inputs / "after.json", before)
     m.publish(output / "observations-before.json", before)
+    for role in ("before", "after"):
+        m.publish(output / ("docker-" + role + ".json"), {"containers": []})
+        (output / ("docker-" + role + ".txt")).write_bytes(b"")
+    other_entries = [m.artifact(path, output) for path in output.iterdir() if path.is_file()]
     watcher = output / "logs/generated/watcher/watcher.log"
     watcher.parent.mkdir(parents=True)
     raw = b"Dump #1 at synthetic time\nsynthetic healthy waypoint\n"
     watcher.write_bytes(raw)
     entry = m.artifact(watcher, output)
     execution = m.GOOD_EXECUTION | {"schema": "issue30-execution-v1", "attempt": "synthetic-a",
-                                     "device_free": False, "artifacts": [entry]}
+                                     "device_free": False, "artifacts": other_entries + [entry],
+                                     "image": m.IMAGE,
+                                     "binary_sha256": m._load(m.CURRENT_RECEIPT, m.ROOT)['binaries'][m.BINARIES['B']]}
     m.publish(output / "execution.json", execution)
     review = {"schema": "issue30-review-v1", "attempt": "synthetic-a", "watcher_clean": True,
               "execution_sha256": m.digest((output / "execution.json").read_bytes()),
-              "watcher_sha256": entry["sha256"]}
+              "watcher_sha256": entry["sha256"],
+              "before_sha256": m.digest((inputs / "before.json").read_bytes()),
+              "after_sha256": m.digest((inputs / "after.json").read_bytes())}
     m.publish(inputs / "review.json", review)
     assert m._review("B", "synthetic-a", output, inputs)[0]["watcher_clean"] is True
     # Each case mutates only one underlying fact and updates fingerprints as needed;
@@ -207,9 +216,9 @@ def test_B_Watcher_requires_captured_fresh_dump_and_clean_hash_bound_review(tmp_
         watcher.write_bytes(new)
         review["watcher_sha256"] = m.digest(new)
         if change != "changed_after_capture":
-            execution["artifacts"] = [m.artifact(watcher, output)]
+            execution["artifacts"] = other_entries + [m.artifact(watcher, output)]
     elif change == "not_captured":
-        execution["artifacts"] = []
+        execution["artifacts"] = other_entries
     else:
         review["watcher_clean"] = None
     # These are synthetic fixture rewrites, never modifications of real evidence.

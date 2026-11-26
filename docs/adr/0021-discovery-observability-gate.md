@@ -152,6 +152,47 @@ any minimum-version mismatch. Known failures and missing evidence never become
 success. The production data plane and ADR-0018 atomic result transport are
 unchanged. Owner authority remains once-only, bounded and non-transitive.
 
+## Evidence-consumption clarification (2026-11-26 correction)
+
+Existing fail-stop rules apply to captured bytes, not unverified summaries.
+Execution bytes are anchored by the separate review fingerprint; a common
+reader verifies consumed native/Watcher/captured-before/container artifacts
+against unique capture-manifest entries before parsing. After-observation bytes
+are separately anchored by the review fingerprint. Missing, duplicate
+or changed consumed entries refuse. The same read-only judgment boundary serves
+judge, fresh A reevaluation and offline replay. Offline replay grants no new
+physical authority; live B additionally retains canonical approval/fresh-A gates.
+
+For the five-reading unit, canonical observation storage must include
+`telemetry/before-A/snapshot1.stdout` through `snapshot5.stdout`, and similarly
+`after-A`, `before-B`, `after-B` in the corresponding attempt's input directory.
+Those bytes must match the role-specific summary fingerprints already anchored
+by captured before observations and the separate review's before/after hashes.
+They are not found by searching an arbitrary digest pool. Parse exact board/BDF/
+firmware identity and DRAM/DDR/error/clock/ARC values, bind aggregate ARC endpoints,
+reject reused hashes across the entire A/B unit, and verify raw timestamps and
+ARC increase across roles. Summary monotonic figures are retained metadata, not
+an independent proof of when the raw bytes were collected. Actual raw dates
+establish spacing/order; tt-smi naive dates require the recording host timezone.
+
+The pinned UTC root gtest timestamp is inside native execution and therefore
+capture. The total recorded capture elapsed conservatively encloses that event
+on both sides; require before samples earlier than that enclosing interval and
+after samples later. New captures supply a manifest-bound wall/monotonic clock
+that narrows the enclosure and verifies claimed sample completion times. This uses native manifest-bound bytes, never filesystem
+mtimes or fabricated historical capture timestamps. No deadline is extended.
+Complete empty daemon and CLI listings are mandatory before launch and after
+cleanup, without removing unrelated containers. Strict XML hierarchy/counts/DTD
+prohibition, anchored unique ordered markers, typed integer exits and complete
+within-stream baseline diagnostic matches are evidence checks, not new health
+baselines. Exact frozen compiler row/source/support provenance remains required.
+
+The operator selected the unchanged current evaluator as the replay baseline.
+Old A's original rejected/watcher record is preserved: its current acceptance
+is the prospective Watcher correction at lines 57-63 and 80-84 above, not a new
+historical-policy profile. Jitter/latency and physical DRAM-cause investigation
+remain separate follow-ups; no new observation is authorized by this correction.
+
 ## Status history
 
 - 2026-11-24: Operator-directed correction for Issue #30, recorded in PR #195.

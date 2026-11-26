@@ -17,9 +17,11 @@ from pathlib import Path
 from xml.etree.ElementTree import ParseError
 
 from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 from enodia.tt.bench import issue30_admission as admission
 from enodia.tt.bench import issue30_diagnostics as diagnostics
+from enodia.tt.bench import issue30_evidence as evidence
 from enodia.tt.bench import issue30_topology as topology
 
 IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
@@ -27,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v12.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v13.json"
 OWNER_ACCEPTANCE = "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
@@ -70,7 +72,9 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "docs/measurements/issue196/morning-admission.json",
                  "tests/test_issue30_morning.py",
                  "tests/test_issue30_dram.py",
-                 "docs/measurements/2026-11-24-issue30-b-smoke/B-native-evidence.tar.gz")
+                 "docs/measurements/2026-11-24-issue30-b-smoke/B-native-evidence.tar.gz",
+                 "enodia/tt/bench/issue30_evidence.py", "tests/test_issue30_evidence.py",
+                 "tests/test_issue30_raw_evidence.py", "tools/replay_issue30_evidence.py")
 
 
 def digest(data: bytes) -> str:
@@ -113,6 +117,33 @@ def artifact(path: Path, root: Path) -> dict:
             hashed.update(block)
     return {"path": selected.relative_to(root.absolute()).as_posix(),
             "bytes": count, "sha256": hashed.hexdigest()}
+
+
+def _verified(path, root, expected):
+    """Read once, then verify before parsing or consuming evidence."""
+    try:
+        raw = _read(path, root, limit=diagnostics.checks.MAX_WATCHER_BYTES)
+    except (OSError, ValueError) as exc:
+        raise ValueError("capture_artifact") from exc
+    if (expected.get("sha256") != digest(raw)
+            or "bytes" in expected and (type(expected["bytes"]) is not int or expected["bytes"] != len(raw))):
+        raise ValueError("capture_artifact")
+    return raw
+
+
+def _captured(output, execution, name):
+    entries = execution.get("artifacts", [])
+    if type(entries) is not list or any(type(entry) is not dict for entry in entries):
+        raise ValueError("capture_artifact")
+    matches = [entry for entry in entries if entry.get("path") == name]
+    if len(matches) != 1 or set(matches[0]) != {"path", "bytes", "sha256"}:
+        raise ValueError("capture_artifact")
+    return _verified(output / name, output, matches[0])
+
+
+def _native(output, execution):
+    return [_captured(output, execution, name)
+            for name in ("native/gtest.xml", STDOUT_FILE, STDERR_FILE)]
 
 
 def publish(path: Path, record: dict) -> None:
@@ -293,13 +324,16 @@ def _xml(phase, raw):
     if len(raw) > 1024 * 1024 or b"<!" in raw:
         raise ValueError("test_result")
     try:
-        root = ET.fromstring(raw)
-    except ParseError as exc:
+        root = ET.fromstring(raw, forbid_dtd=True)
+    except (ParseError, DefusedXmlException) as exc:
         raise ValueError("test_result") from exc
     cases = list(root.iter("testcase"))
     suite, name = TESTS[phase].split(".")
     if (root.tag != "testsuites" or root.get("tests") != "1"
-            or len(list(root.iter("testsuite"))) != 1 or len(cases) != 1):
+            or len(list(root.iter("testsuite"))) != 1 or len(cases) != 1
+            or len(root) != 1 or root[0].tag != "testsuite"
+            or root[0].get("name") != suite or root[0].get("tests") != "1"
+            or list(root[0].findall("testcase")) != cases):
         raise ValueError("test_result")
     if (cases[0].get("name") != name or cases[0].get("classname") != suite
             or cases[0].get("status") != "run" or cases[0].get("result") != "completed"):
@@ -326,6 +360,9 @@ def _strip_source(text):
 def _message(line):
     parts = line.split("|", 3)
     if len(parts) == 4:
+        if (not re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}", parts[0].strip())
+                or not re.fullmatch(r"[\w:]+", parts[2].strip())):
+            return "", line.strip()
         return parts[1].strip().casefold(), _strip_source(parts[3].strip())
     if len(parts) == 2:
         return parts[0].strip().casefold(), _strip_source(parts[1].strip())
@@ -390,11 +427,11 @@ def _messages(env, raw, warnings=None, accepted=None):
     messages = []
     lines = _diagnostic_lines(raw)
     for index, line in enumerate(lines):
+        if diagnostics.SERIOUS.search(line):
+            raise ValueError("diagnostic")
         if diagnostics.baseline_at(lines, index, env["cards"]):
             continue
         level, body = _message(line)
-        if diagnostics.SERIOUS.search(line):
-            raise ValueError("diagnostic")
         if level == "warning":
             warning = _warning(env, body)
             if accepted is not None:
@@ -472,7 +509,8 @@ def baseline_digest(env):
 def _execution(execution, phase="B"):
     if (type(execution.get("exit")) is not int or execution["exit"] != 0
             or execution.get("timed_out") is not False or execution.get("terminated") is not True
-            or execution.get("started") is not True or execution.get("client_exit") != 0):
+            or execution.get("started") is not True
+            or type(execution.get("client_exit")) is not int or execution["client_exit"] != 0):
         raise ValueError("execution")
     elapsed = execution.get("elapsed_seconds")
     if type(elapsed) not in (int, float) or not 0 <= elapsed <= 60:
@@ -507,15 +545,29 @@ def _transfer_binding(before, discovery, raw):
         _messages(before, raw)
 
 
+def _marker_position(lines, bodies, marker):
+    found = [i for i, body in enumerate(bodies) if body == marker
+             and (lines[i] == marker if marker.startswith("[") else _message(lines[i])[0] == "info")]
+    if len(found) != 1 or sum(marker in line for line in lines) != 1:
+        raise ValueError("packet_evidence")
+    return found[0]
+
+
 def _packet_observation(before, raw):
     if "topology" not in before:
         return None
-    text = raw.decode("utf-8")
-    required = ("[ RUN      ] " + TESTS["B"],
-                "Running fabric api tests with fast dispatch",
-                "Fabric Reliability Mode: STRICT_SYSTEM_HEALTH_SETUP_MODE", "[  PASSED  ] 1 test.")
-    completed = re.search(r"^\[       OK \] " + re.escape(TESTS["B"]) + r" \(\d+ ms\)$", text, re.MULTILINE)
-    if not completed or any(item not in text for item in required):
+    lines = _diagnostic_lines(raw)
+    bodies = [_message(line)[1] for line in lines]
+    required = ("Running fabric api tests with fast dispatch",
+                "Fabric Reliability Mode: STRICT_SYSTEM_HEALTH_SETUP_MODE",
+                "[ RUN      ] " + TESTS["B"], "[  PASSED  ] 1 test.")
+    positions = [_marker_position(lines, bodies, marker) for marker in required]
+    completed = [i for i, line in enumerate(lines) if re.fullmatch(
+        r"\[       OK \] " + re.escape(TESTS["B"]) + r" \(\d+ ms\)", line)]
+    if (len(completed) != 1 or sum("[       OK ] " + TESTS["B"] in line for line in lines) != 1
+            or sum("Running fabric api tests" in line for line in lines) != 1
+            or sum("Fabric Reliability Mode:" in line for line in lines) != 1
+            or not positions[0] < positions[1] < positions[2] < completed[0] < positions[3]):
         raise ValueError("packet_evidence")
     return {"expected_packets_from_pinned_source": 5,
             "basis": "source_bound_official_receiver_assertions",
@@ -554,13 +606,7 @@ def _fresh_native(before, record):
     first = _load(inputs / BEFORE_FILE)
     _approval("A", unit["A"], _load(inputs / "approval.json"), first,
               _load(CURRENT_RECEIPT, ROOT), _git(ROOT, "rev-parse", "HEAD"))
-    execution, review = _review("A", unit["A"], output, inputs)
-    for field in ("before", "after"):
-        if review.get(field + "_sha256") != digest(_read(inputs / (field + ".json"))):
-            raise ValueError("fresh_A_review")
-    raw = [_read(output / name) for name in ("native/gtest.xml", STDOUT_FILE, STDERR_FILE)]
-    checked = evaluate("A", unit["A"], first, _load(inputs / "after.json"), *raw, execution)
-    checked["xml_present"] = True
+    checked = _judgment("A", unit["A"], output, inputs)
     if checked != original:
         raise ValueError("fresh_A_revalidation")
     _fresh_links(before, record)
@@ -585,6 +631,9 @@ def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, dis
         _execution(execution, phase)
         _xml(phase, xml)
         _post(before, after, identity, phase)
+        # Validate independent streams before any combined topology interpretation.
+        _messages(before, stdout)
+        _messages(before, stderr)
         if phase == "A":
             decision = _health(before, stdout + b"\n" + stderr, observed)
             if decision is not None:
@@ -663,7 +712,8 @@ def _cleanup(name, cid, output, start, state):
         after = _api("GET", CONTAINERS + "json?all=1", timeout=remaining(start, 60, time.monotonic()))
         _docker_ps(output / "docker-after.txt", remaining(start, 60, time.monotonic()))
         publish(output / "docker-after.json", {"containers": after})
-        state["containers_clean"] = not any("/" + name in c.get("Names", []) for c in after)
+        state["containers_clean"] = (type(after) is list and after == []
+                                     and _read(output / "docker-after.txt", output) == b"")
     except (OSError, subprocess.SubprocessError, ValueError):
         state["containers_clean"] = False
 
@@ -689,6 +739,7 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
     if observations is not None:
         publish(output / "observations-before.json", observations)
     start, name, cid = time.monotonic(), "issue30-" + identity, None
+    started_wall = time.time()
     binary = assets / BINARIES[phase]
     state = {"schema": "issue30-execution-v1", "attempt": identity, "started": False, "exit": None,
              "timed_out": False, "terminated": False, "device_free": not payload["HostConfig"]["Devices"],
@@ -699,7 +750,8 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
         _docker_ps(output / "docker-before.txt", remaining(start, 5, time.monotonic()))
         before = _api("GET", CONTAINERS + "json?all=1", timeout=remaining(start, 8, time.monotonic()))
         publish(output / "docker-before.json", {"containers": before})
-        if before:
+        if (type(before) is not list or before != []
+                or _read(output / "docker-before.txt", output) != b""):
             raise ValueError("preexisting_containers")
         created = _api("POST", CONTAINERS + "create?name=" + name, payload, timeout=remaining(start, 15, time.monotonic()))
         cid = _container_id(created["Id"])
@@ -708,7 +760,11 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
         state["error_type"] = type(exc).__name__
     finally:
         _cleanup(name, cid, output, start, state)
-        state["elapsed_seconds"] = time.monotonic() - start
+        finished = time.monotonic()
+        state["elapsed_seconds"] = finished - start
+        publish(output / "capture-clock.json", {"schema": "issue30-capture-clock-v1",
+                "attempt": identity, "start_wall": started_wall, "end_wall": time.time(),
+                "start_monotonic": start, "end_monotonic": finished})
         state["artifacts"] = _captured_files(output)
         publish(output / EXECUTION_FILE, state)
     return state
@@ -751,9 +807,21 @@ def _renewed_gate(phase, inputs):
             _renewed_unit(candidate)
 
 
+def _admit_series(phase, inputs, env):
+    if "owner_unit" not in env:
+        return
+    _raw_series(env, phase, "before", inputs)
+    if phase == "B":
+        _, ain = _slots(env["owner_unit"]["A"], True)
+        a_after = _load(ain / "after.json")
+        evidence.ordered(_raw_series(a_after, "A", "after", ain),
+                         _raw_series(env, "B", "before", inputs))
+
+
 def _authorize(phase, identity, inputs, output):
     _renewed_gate(phase, inputs)
     env = _load(inputs / BEFORE_FILE)
+    _admit_series(phase, inputs, env)
     topology.validate_input(env)
     _environment(env, identity, phase)
     receipt = _load(CURRENT_RECEIPT, ROOT)
@@ -776,43 +844,104 @@ def _authorize(phase, identity, inputs, output):
     return payload, env
 
 
-def _review(phase, identity, output, inputs):
-    execution = _load(output / EXECUTION_FILE)
-    review = _load(inputs / "review.json")
+def _observations(inputs, review):
+    return [json.loads(_verified(inputs / (role + ".json"), inputs,
+                                 {"sha256": review.get(role + "_sha256")}),
+                       object_pairs_hook=_unique_json) for role in ("before", "after")]
+
+
+def _raw_series(env, phase, role, inputs):
+    return evidence.series(env, phase, role, lambda name: _read(inputs / name, inputs))
+
+
+def _series_proof(phase, output, inputs, execution, before, after):
+    if "owner_unit" not in before:
+        return
+    first = _raw_series(before, phase, "before", inputs)
+    last = _raw_series(after, phase, "after", inputs)
+    clock_name = "capture-clock.json"
+    clock = None
+    if ((output / clock_name).exists()
+            or any(e.get("path") == clock_name for e in execution["artifacts"])):
+        clock = json.loads(_captured(output, execution, clock_name), object_pairs_hook=_unique_json)
+    evidence.bracket(first, last, _captured(output, execution, "native/gtest.xml"), execution, clock)
+    if phase == "B":
+        aout, ain = _slots(before["owner_unit"]["A"], True)
+        _, areview = _review("A", before["owner_unit"]["A"], aout, ain)
+        a_before, a_after = _observations(ain, areview)
+        evidence.ordered(_raw_series(a_before, "A", "before", ain),
+                         _raw_series(a_after, "A", "after", ain), first, last)
+
+
+def _review_execution(phase, identity, output, review):
+    raw_execution = _verified(output / EXECUTION_FILE, output,
+                              {"sha256": review.get("execution_sha256")})
+    execution = json.loads(raw_execution, object_pairs_hook=_unique_json)
     if execution.get("schema") != "issue30-execution-v1" or execution.get("attempt") != identity:
         raise ValueError("execution schema/attempt mismatch")
     if (review.get("schema") != "issue30-review-v1" or review.get("attempt") != identity
-            or review.get("execution_sha256") != digest(_read(output / EXECUTION_FILE))):
+            or review.get("execution_sha256") != digest(raw_execution)):
         raise ValueError("review execution binding")
     if execution.get("device_free") is not False:
         raise ValueError("device-free capture cannot qualify as board evidence")
-    if _load(output / "observations-before.json") != _load(inputs / BEFORE_FILE):
+    receipt = _load(CURRENT_RECEIPT, ROOT)
+    if (execution.get("image") != IMAGE
+            or execution.get("binary_sha256") != receipt["binaries"][BINARIES[phase]]):
+        raise ValueError("execution_provenance")
+    return execution
+
+
+def _container_observations(output, execution):
+    for role in ("before", "after"):
+        listing = json.loads(_captured(output, execution, "docker-" + role + ".json"),
+                             object_pairs_hook=_unique_json)
+        if listing != {"containers": []} or _captured(output, execution, "docker-" + role + ".txt") != b"":
+            raise ValueError("containers")
+
+
+def _review(phase, identity, output, inputs):
+    review = _load(inputs / "review.json")
+    execution = _review_execution(phase, identity, output, review)
+    _container_observations(output, execution)
+    before, after = _observations(inputs, review)
+    captured_before = json.loads(_captured(output, execution, "observations-before.json"),
+                                 object_pairs_hook=_unique_json)
+    if captured_before != before:
         raise ValueError("captured before observation mismatch")
-    clean = review.get("watcher_clean")
-    if phase == "B":
-        clean = False
-        watcher = output / "logs/generated/watcher/watcher.log"
-        if watcher.is_file():
-            raw = _read(watcher, limit=diagnostics.checks.MAX_WATCHER_BYTES)
-            entry = artifact(watcher, output)
-            scan = diagnostics.watcher_observation(raw)
-            clean = (review.get("watcher_clean") is True and entry in execution.get("artifacts", [])
-                     and review.get("watcher_sha256") == entry["sha256"] and scan["scan_passed"])
+    clean = _watcher_review(phase, output, execution, review)
+    _series_proof(phase, output, inputs, execution, before, after)
     return execution | {"watcher_clean": clean}, review
 
 
-def _judge(phase, identity, output, inputs):
+def _watcher_review(phase, output, execution, review):
+    if phase != "B":
+        return review.get("watcher_clean")
+    try:
+        raw = _captured(output, execution, "logs/generated/watcher/watcher.log")
+    except ValueError:
+        return False
+    scan = diagnostics.watcher_observation(raw)
+    return (review.get("watcher_clean") is True
+            and review.get("watcher_sha256") == digest(raw) and scan["scan_passed"])
+
+
+def _judgment(phase, identity, output, inputs, discovery=None):
+    """Read-only adjudication shared by live judge and offline evidence replay.
+
+    This does not issue/reuse physical authority: live B separately requires
+    _bound_discovery and approval checks before this evidence-only boundary.
+    """
     execution, review = _review(phase, identity, output, inputs)
-    for field in ("before", "after"):
-        if review.get(field + "_sha256") != digest(_read(inputs / (field + ".json"))):
-            raise ValueError("review observation fingerprint mismatch")
+    raw = _native(output, execution)
+    before, after = _observations(inputs, review)
+    result = evaluate(phase, identity, before, after, *raw, execution, discovery)
+    result["xml_present"] = True
+    return result
+
+
+def _judge(phase, identity, output, inputs):
     discovery = _bound_discovery(inputs) if phase == "B" else None
-    xml_path = output / "native/gtest.xml"
-    xml = _read(xml_path) if xml_path.exists() else b""
-    result = evaluate(phase, identity, _load(inputs / BEFORE_FILE), _load(inputs / "after.json"),
-                      xml, _read(output / STDOUT_FILE),
-                      _read(output / STDERR_FILE), execution, discovery)
-    result["xml_present"] = xml_path.exists()
+    result = _judgment(phase, identity, output, inputs, discovery)
     publish(output / "result.json", result)
     return 0 if result["reason"] == "accepted" else 2
 
