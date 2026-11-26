@@ -19,7 +19,15 @@ probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
 The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
 remain immutable evidence for their original head. Hardened admission selects
-[G0 receipt v14](receipt-v14.json). V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13 remain immutable.
+[G0 receipt v15](receipt-v15.json). V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14 remain immutable.
+V15 binds39 sources: warning chip/bus identity, discovery attempt and canonical
+captured A result are enforced across offline/live judgments. OS temporary-root
+selection retains canonical ownership/0700/prefix/non-checkout checks. Its
+[offline proof](evidence-replay-v15.json) records four unchanged conclusions and
+five copied-data refusals, including coherently fingerprinted bus and discovery
+mutations. No native operation/deadline or measurement is changed. Other lifecycle,
+publication/device-node/document/root-test follow-ups are explicitly tracked in
+#200 and must precede any future board use. Earlier qualification is historical:
 V14 binds38 sources, constrains replay CLI paths to fixed evidence/private task
 roots, and retains identical ASCII numeric checks while satisfying static
 analysis. Its cleanup proof additionally normalizes only the intentionally

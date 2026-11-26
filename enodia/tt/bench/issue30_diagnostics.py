@@ -25,6 +25,14 @@ def baseline():
             for row in value["evidence"] for hit in row["matches"]}
 
 
+def _bus_binding(text, cards):
+    pairs = re.findall(r"chip_id=(\d+) \(bus_id=(0x[0-9a-fA-F]+)\)", text)
+    if len(pairs) != text.count("bus_id="):
+        return False
+    buses = {str(c["chip"]): int(c["pci"].split(":")[1], 16) for c in cards}
+    return all(chip in buses and int(bus, 16) == buses[chip] for chip, bus in pairs)
+
+
 def _condition(line, cards):
     if len(line) > 16384 or not re.fullmatch(
             r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \| warning {2}\| +[\w:]+ +\| .+", line):
@@ -34,6 +42,8 @@ def _condition(line, cards):
     chips = re.findall(r"chip_id=(\d+)", text)
     if (any(int(x) not in {c["pcie_index"] for c in cards} for x in physical)
             or any(int(x) not in {c["chip"] for c in cards} for x in chips)):
+        return None
+    if not _bus_binding(text, cards):
         return None
     return baseline().get(normalized(text))
 

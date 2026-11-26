@@ -23,8 +23,9 @@ uv run --no-sync python -m tools.replay_issue30_evidence \
 
 The source is fixed to this checkout's canonical `out/issue30`. Baseline must
 be named `replay-baseline.json` in an existing owner-only0700 directory directly
-under `/tmp`, named `tidd-195-*` or `pi30-*`. Snapshot root must be such a private
-root too. Output is a new alphanumeric/hyphen/underscore child of a private root,
+under the OS temporary root obtained with `tempfile.gettempdir()`, named
+`tidd-195-*` or `pi30-*`. The configured temporary root and every selected task
+root must be outside the checkout. Snapshot root must be such a private root too. Output is a new alphanumeric/hyphen/underscore child of a private root,
 not an arbitrary path. Redirected paths, broader file selection and unsafe root
 permissions refuse before staging. This also bounds LLM-supplied CLI arguments.
 
@@ -41,9 +42,14 @@ conclusions. A conclusion different from baseline, a need to weaken existing
 checks/baselines, or a need to edit records/archives stops the correction.
 Uncommitted implementation format bugs can be corrected without another approval.
 After four positive matches, exactly one stdout byte is changed in a copy and a
-before-B snapshot is replaced with after-B bytes in a copy. Both must refuse
+before-B snapshot is replaced with after-B bytes in a copy. Additional copy
+mutations change a motherboard bus (with derived capture/review fingerprints
+updated coherently), discovery attempt, and discovery capture fingerprint. All must refuse
 through the same shared boundary; restoring the copied bytes must restore the
-positive result. Unit controls additionally cover XML/DTD/marker/severity/pairing,
+positive result. Discovery must equal the canonical, independently rejudged A capture result in
+both offline and live paths; only live additionally checks physical authority.
+A motherboard chip/bus pair must identify the same admitted card, not independent
+members of allowed sets. Unit controls additionally cover XML/DTD/marker/severity/pairing,
 container and compiler provenance mutations. No daemon/device is accessed.
 
 ## Actual20-snapshot format inventory (40 card rows)

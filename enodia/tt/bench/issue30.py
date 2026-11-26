@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v14.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v15.json"
 OWNER_ACCEPTANCE = "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
@@ -75,7 +75,7 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "docs/measurements/2026-11-24-issue30-b-smoke/B-native-evidence.tar.gz",
                  "enodia/tt/bench/issue30_evidence.py", "tests/test_issue30_evidence.py",
                  "tests/test_issue30_raw_evidence.py", "tools/replay_issue30_evidence.py",
-                 "tests/test_issue30_replay_paths.py")
+                 "tests/test_issue30_replay_paths.py", "tests/test_issue30_final_binding.py")
 
 
 def digest(data: bytes) -> str:
@@ -588,9 +588,10 @@ def _renewed_unit(env):
 
 
 def _fresh_links(before, record):
-    _renewed_unit(before)
+    unit = _renewed_unit(before)
     decision = topology.classify(record.get("observed_qsfp"))
     if (record.get("schema") != "issue30-verdict-v3" or record.get("phase") != "A"
+            or record.get("attempt") != unit["A"]
             or record.get("verdict") != ACCEPTED["A"] or record.get("reason") != "accepted"
             or record.get("baseline_sha256") != baseline_digest(before)
             or decision != record.get("topology") or decision.get("hypothesis") != "H1"
@@ -598,19 +599,25 @@ def _fresh_links(before, record):
         raise ValueError("fresh_A_binding")
 
 
-def _fresh_native(before, record):
+def _fresh_evidence(before, record):
     unit = _renewed_unit(before)
     output, inputs = _slots(unit["A"], True)
     original = _load(output / "result.json")
     if record != original or record.get("attempt") != unit["A"]:
         raise ValueError("fresh_A_canonical_result")
-    first = _load(inputs / BEFORE_FILE)
-    _approval("A", unit["A"], _load(inputs / "approval.json"), first,
-              _load(CURRENT_RECEIPT, ROOT), _git(ROOT, "rev-parse", "HEAD"))
     checked = _judgment("A", unit["A"], output, inputs)
     if checked != original:
         raise ValueError("fresh_A_revalidation")
     _fresh_links(before, record)
+
+
+def _fresh_native(before, record):
+    unit = _renewed_unit(before)
+    _, inputs = _slots(unit["A"], True)
+    first = _load(inputs / BEFORE_FILE)
+    _approval("A", unit["A"], _load(inputs / "approval.json"), first,
+              _load(CURRENT_RECEIPT, ROOT), _git(ROOT, "rev-parse", "HEAD"))
+    _fresh_evidence(before, record)
 
 
 def _bound_discovery(inputs):
@@ -935,6 +942,8 @@ def _judgment(phase, identity, output, inputs, discovery=None):
     execution, review = _review(phase, identity, output, inputs)
     raw = _native(output, execution)
     before, after = _observations(inputs, review)
+    if phase == "B" and "owner_unit" in before:
+        _fresh_evidence(before, discovery)
     result = evaluate(phase, identity, before, after, *raw, execution, discovery)
     result["xml_present"] = True
     return result

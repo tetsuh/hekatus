@@ -29,7 +29,7 @@ def accepted(before=None):
 
 def baseline_lines():
     baseline = json.loads(checks.BASELINE.read_bytes())
-    return ["2026-01-01 00:00:00.000 | warning  | " + condition["matches"][0]["text"]
+    return ["2026-01-01 00:00:00.000 | warning  | " + condition["matches"][0]["text"].replace('chip_id=0', 'chip_id=1')
             for condition in baseline["evidence"]]
 
 
@@ -107,7 +107,7 @@ def test_exact_three_baselines_and_observed_down_are_allowed():
     lines = baseline_lines()
     # Only invocation variables change, including the second enumerated chip.
     lines = [line.replace("physical_device_id: 1", "physical_device_id: 0")
-             .replace("chip_id=0", "chip_id=1").replace("bus_id=0x9", "bus_id=0x6")
+             .replace("chip_id=1", "chip_id=0").replace("bus_id=0x9", "bus_id=0x6")
              .replace("pid: 1 tid: 136557857326912", "pid: 7 tid: 99") for line in lines]
     down = [line for line in report(records()).decode().splitlines() if line.startswith("warning |")]
     raw = ("\n".join(lines + down) + "\n").encode() + smoke_stdout()

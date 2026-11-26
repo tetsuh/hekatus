@@ -6,6 +6,7 @@ import json
 import os
 import re
 import stat
+import tempfile
 import time
 from pathlib import Path
 
@@ -103,12 +104,63 @@ def _negative(label, phase, identity, expected):
     return {'mutation': label, 'expected_refusal': required, 'actual_refusal': reason}
 
 
+def _coherent_capture(path, output, inputs):
+    execution_path, review_path = output / 'execution.json', inputs / 'review.json'
+    saved = {p: p.read_bytes() for p in (execution_path, review_path)}
+    execution, review = json.loads(saved[execution_path]), json.loads(saved[review_path])
+    name = path.relative_to(output).as_posix()
+    entry = next(e for e in execution['artifacts'] if e['path'] == name)
+    entry.update({'bytes': path.stat().st_size, 'sha256': m.digest(path.read_bytes())})
+    execution_path.write_text(json.dumps(execution))
+    review['execution_sha256'] = m.digest(execution_path.read_bytes())
+    review_path.write_text(json.dumps(review))
+    return saved
+
+
+def _identity_negative(label, expected):
+    phase, identity = CASES[3]
+    output, inputs = m._slots(identity, True)
+    path = output / 'stdout.bin' if label == 'warning_bus' else inputs / 'discovery.json'
+    saved = {path: path.read_bytes()}
+    if label == 'warning_bus':
+        changed, count = re.subn(rb'bus_id=0x[0-9a-fA-F]+', b'bus_id=0xff', saved[path], count=1)
+        if count != 1:
+            raise ValueError('missing positive bus evidence')
+        path.write_bytes(changed)
+        saved.update(_coherent_capture(path, output, inputs))
+        required = 'diagnostic'
+    else:
+        discovery = json.loads(saved[path])
+        if label == 'discovery_attempt':
+            discovery['attempt'] = 'other-attempt'
+        else:
+            discovery['evidence_sha256']['stdout'] = '0' * 64
+        path.write_text(json.dumps(discovery))
+        required = 'fresh_A_canonical_result'
+    try:
+        try:
+            reason = _judge(phase, identity)['reason']
+        except ValueError as exc:
+            reason = str(exc)
+        if reason != required:
+            raise ValueError('identity negative failed: ' + label + ': ' + reason)
+    finally:
+        for item, raw in saved.items():
+            item.write_bytes(raw)
+    if _conclusion(_judge(phase, identity)) != expected[identity]:
+        raise ValueError('restored identity positive failed')
+    return {'mutation': label, 'actual_refusal': reason, 'expected_refusal': required,
+            'derived_fingerprints_updated': label == 'warning_bus'}
+
+
 def _private_root(value):
     candidate = value.absolute()
-    if (candidate.parent != Path('/tmp')
+    temporary = Path(tempfile.gettempdir()).resolve()
+    if (candidate.is_relative_to(m.ROOT) or temporary.is_relative_to(m.ROOT)
+            or candidate.parent != temporary
             or not re.fullmatch(r'(?:tidd-195-|pi30-)[A-Za-z0-9_-]+', candidate.name, re.ASCII)):
         raise ValueError('replay_private_root')
-    root = Path('/tmp') / candidate.name
+    root = temporary / candidate.name
     m._owned(root, root)
     mode = root.lstat()
     if (not stat.S_ISDIR(mode.st_mode) or mode.st_uid != os.getuid()
@@ -154,6 +206,8 @@ def replay(source, snapshots, output, baseline):
             raise ValueError('baseline replay disagreement; see positive-replay.json')
         negatives = [_negative('stdout_one_byte', *CASES[0], expected),
                      _negative('wrong_telemetry_role', *CASES[3], expected)]
+        negatives += [_identity_negative(label, expected) for label in
+                      ('warning_bus', 'discovery_attempt', 'discovery_capture_fingerprint')]
         record = {'results': results, 'negatives': negatives,
                   'historical_difference': 'A v1 originally rejected/watcher; current baseline accepts discovery. '
                   'This is the prospective correction in ADR-0021:57-63,80-84, not a rewritten record '

@@ -25,7 +25,7 @@ def unit():
 
 def test_fresh_h1_binds_new_unit_and_rejects_single_mutations():
     before = env() | {"owner_unit": unit()}
-    result = judge(records(), before=before)
+    result = judge(records(), before=before) | {'attempt': unit()['A']}
     m._fresh_links(before, result)
     for field, value in (("baseline_sha256", "0" * 64), ("verdict", "rejected"), ("phase", "B")):
         changed = copy.deepcopy(result); changed[field] = value

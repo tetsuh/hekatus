@@ -12,7 +12,7 @@ from tools import replay_issue30_evidence as r
 
 @pytest.fixture
 def root():
-    path = Path(tempfile.mkdtemp(prefix='tidd-195-path-test-', dir='/tmp'))
+    path = Path(tempfile.mkdtemp(prefix='tidd-195-path-test-', dir=tempfile.gettempdir()))
     try:
         yield path
     finally:
