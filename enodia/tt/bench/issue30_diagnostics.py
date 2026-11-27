@@ -1,10 +1,10 @@
 """Exact #176/#120 baseline comparisons; no device IO or warning suppression."""
 from __future__ import annotations
 
-import json
 import re
 from functools import lru_cache
 
+from enodia.tt.bench import issue30_formats as formats
 from enodia.tt.bench.issue120_production import checks
 
 ALARM = re.compile(r"\b(?:warning|error|fatal|critical|traceback)\b|TT_FATAL|assertion failed|terminate called",
@@ -20,7 +20,7 @@ def normalized(text):
 
 @lru_cache(maxsize=1)
 def baseline():
-    value = json.loads(checks.BASELINE.read_bytes())
+    value = formats.load(checks.BASELINE.read_bytes())
     return {normalized(hit["text"]): row["condition"]
             for row in value["evidence"] for hit in row["matches"]}
 
@@ -34,8 +34,12 @@ def _bus_binding(text, cards):
 
 
 def _condition(line, cards):
-    if len(line) > 16384 or not re.fullmatch(
-            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \| warning {2}\| +[\w:]+ +\| .+", line):
+    # The frozen motherboard body contains an exact U+2014 dash. Only the
+    # invocation numerals are ASCII; do not generalize the literal's encoding.
+    if len(line) > 16384 or any(c.isdecimal() and not c.isascii() for c in line):
+        return None
+    envelope = formats.logger(line)
+    if envelope is None or envelope['level'] != 'warning  ':
         return None
     text = line.split("| warning  |", 1)[1].strip()
     physical = re.findall(r"physical_device_id: (\d+)", text)
@@ -63,9 +67,58 @@ def baseline_at(lines, index, cards):
             and _physical(lines[index]) == _physical(lines[other]))
 
 
-def watcher_observation(raw):
-    if len(raw) > checks.MAX_WATCHER_BYTES:
-        return {"fresh": False, "scan_passed": False, "dump_count": 0}
+def _watcher_event(line):
+    if line.startswith('At '):
+        match = re.fullmatch(r'At ([0-9]+\.[0-9]{3})s (?:starting|(?:attach|detach) device [01])', line)
+        if match is None:
+            raise ValueError('watcher_time')
+        return 'event', None, float(match[1])
+    if line.startswith('Dump #'):
+        match = re.fullmatch(r'Dump #([0-9]+)( completed)? at ([0-9]+\.[0-9]{3})s', line)
+        if match is None:
+            raise ValueError('watcher_dump')
+        return 'end' if match[2] else 'start', int(match[1]), float(match[3])
+    return None
+
+
+def _dump_step(state, kind, number):
+    if kind == 'start':
+        if state['active'] is not None or number != state['count'] + 1:
+            raise ValueError('watcher_dump')
+        state.update(active=number, body=False)
+    elif kind == 'end':
+        if state['active'] != number or not state['body']:
+            raise ValueError('watcher_dump')
+        state.update(active=None, count=state['count'] + 1)
+
+
+def _watcher_dumps(text, bound):
+    state, previous = {'active': None, 'count': 0, 'body': False}, 0.0
+    for line in text.splitlines():
+        event = _watcher_event(line)
+        if event is None:
+            if state['active'] is not None and line.startswith('Device '):
+                state['body'] = True
+            continue
+        kind, number, stamp = event
+        if not previous <= stamp <= bound:
+            raise ValueError('watcher_time')
+        previous = stamp
+        _dump_step(state, kind, number)
+    if state['active'] is not None or state['count'] == 0:
+        raise ValueError('watcher_dump')
+    return state['count']
+
+
+def watcher_observation(raw, elapsed=40):
+    refused = {'fresh': False, 'scan_passed': False, 'dump_count': 0}
+    if len(raw) > checks.MAX_WATCHER_BYTES or not formats.finite(elapsed) or not 0 <= elapsed <= 60:
+        return refused
+    try:
+        text = raw.decode('utf-8')
+        count = _watcher_dumps(text, min(40, elapsed))
+    except (UnicodeError, ValueError):
+        return refused
     result, _ = checks.watcher_check(None, raw, modified_after_start=True)
     extra = re.search(rb"\b(?:fatal|critical|hung|timeout|mismatch)\b", raw, re.IGNORECASE)
-    return result | {"scan_passed": result["scan_passed"] and extra is None}
+    return result | {'dump_count': count, 'scan_passed': result['scan_passed'] and extra is None}

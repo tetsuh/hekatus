@@ -1,0 +1,118 @@
+{
+  "additional_red": {
+    "red-logger.log": "197ee7e5c75b74fbf172a51b96e221f6e67360db1b22930e3f0f3b3b520a9efa",
+    "red-publish-race.log": "2b747b54ab84833cf9a4a0e84a059992369c17d5d905813e492c5b94e48d94c6",
+    "red-sweep.log": "5102862f8d4409f8929f949f8d5afb9d40ffb7266ae1ed470370277af3c67df7"
+  },
+  "atomic_rename_proof": {
+    "method": "Extracted renameat2 body equals the original publisher syscall body, including no-replace flag; staging cleanup is new and tested",
+    "sha256": "5b1c4201a236a55f94d9a3a421858528d2e37a103ed72b31ad8363297eca6ca6"
+  },
+  "binaries": {
+    "fabric_smoke_tests": "dbdda98ffbd566f845ead7a2bbf759545dc07fbe2d8aa000f55ce47f77cb5cf5",
+    "test_system_health": "10acd9257a39ab5bf8998bcdd87a1a926d3d9bbc5d9b0545b4368f85d43cc741"
+  },
+  "compared_source_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
+  "cpu_tests": {
+    "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue196.py",
+    "outcome": "321 passed in 0.75s"
+  },
+  "dram_freshness_proposal": {
+    "basis": "see docs/measurements/issue30-evidence-replay.md; exact old create/start intervals not retained",
+    "max_age_seconds": 60,
+    "status": "pending owner approval"
+  },
+  "evidence_replay": {
+    "eligible_for_admission": false,
+    "path": "docs/measurements/issue30-g0/evidence-replay-v16.json",
+    "sha256": "53b82ee1f111099fd226640c1cbc71853daaec11cd5e82662f1cd8a00f7b0cbd",
+    "validation_complete": false
+  },
+  "full_tests": {
+    "command": "uv run --with pytest-xdist pytest -n 4 -q",
+    "outcome": "7174 passed, 1057 skipped, 8 subtests passed in 231.11s (0:03:51)"
+  },
+  "intentional_changes": [
+    "Fixed CLI/API endpoint and ID start; explicit unknown create failure",
+    "Owned pre-rename staging cleanup, without removing later staging after success",
+    "Sysfs association and exact evidence type/format/time/freshness checks",
+    "Separate explicitly incomplete offline audit; live raw proof unchanged"
+  ],
+  "limits": [
+    "Historical raw-dependent renewed DRAM proof unavailable, not passed",
+    "No board authority, hardware health, jitter or latency assertion",
+    "Historical records, archives, assets and previous receipts unchanged"
+  ],
+  "method": "Host-only CPU/AST qualification and incomplete offline audit; no native/container rerun",
+  "red": {
+    "command": "uv run pytest -q tests/test_issue200_201.py",
+    "outcome": "21 failed, 1 passed before implementation",
+    "sha256": "2d185080f45dbea52db451659cc0109c9ae85f013a7963bff7c16c69f7cab41d"
+  },
+  "request_proof": {
+    "method": "Replace only the strengthened UID/GID type guard with the old guard; all other request AST equal",
+    "sha256": "852bf9f340eb03bb694c4e453ff9a169f6d29ca22dd4cfb1082f216be6d760fa"
+  },
+  "root_tests": {
+    "method": "UID0 in unprivileged user namespace, same focused selection; production UID0 refusal retained",
+    "outcome": "321 passed in 0.74s"
+  },
+  "run_client_proof": {
+    "method": "Restore only the former start argv/environment and unused parameter name; watchdog/wait/inspect AST otherwise equal",
+    "sha256": "b4ac39871d983b24151d701fdd6c4ae2cb7139cf93a5061fd07ef46c208f98cd"
+  },
+  "schema": "issue30-host-input-qualification-v1",
+  "supersedes": "host-input-qualification-v15.json",
+  "unchanged_constants": {
+    "ACCEPTED": "99675d06b2e12c7c6c6b2b0f348110e4beef0aaea47785f98bf4588b843d827d",
+    "BINARIES": "dee00f82ce546728b7bf68e33936bc8c3b9691342d0d1bfd79d925cfde03d862",
+    "CARDS": "4f636718b372a637d206868c527c63ce0667a7142b7c11b499653006587637ae",
+    "DEADLINES": "414afa4b77418f72685913fb1b6640dc4bb3361a311bbc75f0c872c08e9b7442",
+    "IMAGE": "fa8a3b7e3676b75272379a20fb718493c81a475070e12b25385d247d1e980afa",
+    "LIBRARY_SHA256": "62e5923c3d6f508ebdf9b79a417a4ccd7e7d48f50d89b5a69b9c12d511ed6e8a",
+    "MASKS": "f3e3f4cec5a8c3ac18c287c3cb6824db4493d2caf43b3da5d64be59b49206422",
+    "SCOPES": "45d976307fbdb25402b14a2ff919ad2b06eaa2b9bbcd0de5b34fd35bc858aa02",
+    "SOURCE_COMMIT": "61042480685803ebc1ddf7602f216360d497429d0b4a191f516b99052e8eb5d9",
+    "TESTS": "7541ae31cae8dc087364b5d34e009830d615822dc07d37a2fa33f45c501cf362",
+    "UMD_COMMIT": "595be35f16843be2f9a9876a937e36aef75cfa26f16b36f26758d5de4393be8e"
+  },
+  "unchanged_functions": {
+    "_authorize": "42457dc2138829757a373f4c7df5cfb586bd02c250cc825ddc37e398b0faa755",
+    "_binary_binding": "9200b7056444229eca943c2813ce7b880522254cf202cafdae4fa733921e6915",
+    "_bundle_report_name": "f63835ec798f8ded8b3f52debef0161548a5564a08ddb1cef6cb4cc13531c892",
+    "_captured_files": "568dfc34175f10e9ae319c60abdd88925287f0908a3fd3ea0e8527aec707f43b",
+    "_cleanup": "b942a31a7ebb71a958413eeebdbe9cf2988e94ae37252141f00396bce71f36a2",
+    "_diagnostic_lines": "17e1177e98b7ebb6571b84ac9a8e190c0f9c50db0ba68c35b82b7ed1c1e4463a",
+    "_fresh_native": "fc12a104d70ac9bd42d23e7f1e2801eed3cc4b7629063820805a5f265a7a0cab",
+    "_git": "36a0908b806d76fc1b24398d4f27632511eccf9d2d4c62ff9efb492c9a43ddff",
+    "_health": "b046f7a518c85ee6ab7922dafdc9dd15024e916678f1145d3d8d9656c6af1510",
+    "_identity": "99dea85809f314527ab99eebe5b71d0691b3770628892585237e72fef74f2447",
+    "_judge": "7b9ec2d2c26b3ba245ca1ab92767765cfe134e79dbc3bef627fdb126e20c8437",
+    "_links": "54e2610256a4729c05738ae7542b714d0826763f3cd0ec9cfa715587db54ac80",
+    "_marker_position": "4a97d37822a95d03c280971f154e42e7a5c89edb664e25cdf444c569b8493e63",
+    "_native": "6619869211dad0640db9f0ddac655ef467ed293bb870e493b0f169086e132748",
+    "_observed_link": "29fedc6f162232ff097dff078b83f06829256ce64ee6030f61e06b44c9162178",
+    "_owned": "a3cf0936d27103471bd78cb56ef78f48fa05930551138013a0618241c8051de1",
+    "_post": "cba3c96fe43d2482e98a72a38cc20b1c5416c6e74a6f30367f74575527d350e0",
+    "_raw_series": "6d9f02cfcd9bb32cff7facc147a5cde028ef76ba58296f9721e0b253505952cd",
+    "_read": "44fe2b99b12ee1f36a502c7a0a83a8bdc6eb1db5ad18ae277047e013c04b9532",
+    "_renewed_gate": "6a4ede513025476d3a691e7e80e7d751436c6915b6505a0e87b07c4d39c15bd2",
+    "_renewed_unit": "39bcd19be4346924bbb85538fb88712bca556451b281e47e7c882901db77ef16",
+    "_slots": "195c2568a47f1b82e91b4747108565207949feaf781502a60809af372b7c9603",
+    "_verified": "a8c301e0fa50364ac81985c6147c3f37c8364bf301f26c21729c2a0e88107286",
+    "approval_record": "458176e1d30f6c676fc05e7e11a9d166af2b746ba3e23a4c36ddabd80a84fa75",
+    "artifact": "8944a96644d3dad9f18c9dbbae6b48e9d1f3909b842a56d29f0ddbccc63e2cc7",
+    "baseline_digest": "9c721abf40b46df3af9ce76112fbf99c8522a3cece1066a3b8804ec72c2a8d51",
+    "digest": "d93bb68f3ae33dff4a90ec97e22b147e1dd977200679a3099e58e292ba2b26b4",
+    "main": "52ccee58879b10d062476e3ba768d190c8d1c3c32f637f18a3e41a71312446c8",
+    "program_sources": "e91a5cbf8261b29372daf8b6c876610e9b0f983a5d2be1414389fc0efeb0794f",
+    "remaining": "43a1efef0bb909389fda97f7ecd97e7e79ee2c08e18a511f7c32bc604e5bdd27"
+  },
+  "unchanged_native_sources": {
+    "docs/measurements/issue196/compile-proof-v3.json": "8a7c3728657f5f94262db45e9a1fa7cec33bb2a71773cc45d65b23b5ffd9c772",
+    "enodia/tt/bench/issue196_compile.py": "ce6e5d1d51c66d5a03079aa2461f028a225197eef1850e762a65c82c53f5d509",
+    "enodia/tt/bench/issue196_compile_manifest.json": "e77efc50ff27209ed04e57918e0b331db2fd28b8952ad94397162be737c96a70",
+    "enodia/tt/bench/issue30_runtime.py": "73f609b0f3f9b3a0f8e8eea33dd2f9d3f9c7e1682c7d340ee0066cb57c5cf631",
+    "tools/check_issue196_device_kernels.py": "6c52a16e8d63b0efd5de4751960363d47e9595d5662551a9331c16696ecc03c5"
+  }
+}

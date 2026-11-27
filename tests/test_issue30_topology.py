@@ -7,7 +7,7 @@ import json
 import pytest
 
 from enodia.tt.bench import issue30 as m
-from tests.test_issue30 import environment, verdict, xml
+from tests.test_issue30 import environment, log, verdict, xml
 
 
 def policy():
@@ -55,7 +55,8 @@ def records(hypothesis="H1", *, active=None, crossed=False):
 
 
 def report(rows):
-    lines = ["info | Established firmware bundle version: 19.6.0", "info | Found 2 chips in cluster:"]
+    lines = [log('info', 'Established firmware bundle version: 19.6.0', 'UMD', 'topology_discovery.cpp:574'),
+             log('info', 'Found 2 chips in cluster:')]
     warnings = []
     for chip in (0, 1):
         header = f"Chip: {chip} PCIe: {chip} Unique ID: {chip}"
@@ -68,13 +69,13 @@ def report(rows):
             else:
                 text += "DOWN/unconnected (QSFP)"
                 lines.append(text)
-                warnings.append("warning | " + header + text)
+                warnings.append(log('warning', header + text, location='test_system_health.cpp:361'))
     return ("\n".join(lines + warnings) + "\n").encode("ascii")
 
 
 def judge(rows, **kwargs):
     before = kwargs.pop("before", env())
-    return m.evaluate("A", "synthetic-a", before, before, xml(), report(rows), b"",
+    return m.evaluate("A", before['attempt'], before, before, xml(), report(rows), b"",
                       m.GOOD_EXECUTION | kwargs)
 
 
@@ -178,7 +179,7 @@ def test_new_policy_does_not_relax_heartbeat_or_execution():
 
 def test_only_corresponding_down_summary_warning_is_allowed():
     assert judge(records())["verdict"] == "accepted_discovery"
-    raw = report(records()).replace(b"warning | Chip: 0 PCIe: 0", b"warning | Chip: 0 PCIe: 9", 1)
+    raw = report(records()).replace(b"Test | Chip: 0 PCIe: 0", b"Test | Chip: 0 PCIe: 9", 1)
     result = m.evaluate("A", "synthetic-a", env(), env(), xml(), raw, b"", m.GOOD_EXECUTION)
     assert result["reason"] == "diagnostic"
 

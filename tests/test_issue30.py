@@ -22,8 +22,13 @@ def environment():
             "uncabled": [[0, 5], [1, 5]]}
 
 
+def log(level, body, component='Test', location=None):
+    suffix = ' (' + location + ')' if location else ''
+    return f'2026-01-01 00:00:00.000 | {level:<9}| {component:>15} | {body}{suffix}'
+
+
 def transcript():
-    return ("info | Established firmware bundle version: 19.6.0\n"
+    raw = ("info | Established firmware bundle version: 19.6.0\n"
             "info | Found 2 chips in cluster:\n"
             "Chip: 0 PCIe: 0 Unique ID: 0\n"
             " eth channel 4 core 0-4 link UP (QSFP), connected to Chip 1 core 0-4\n"
@@ -34,7 +39,17 @@ def transcript():
             "\tRetrain count: 0\n"
             " eth channel 5 core 0-5 link DOWN/unconnected (QSFP)\n\n"
             "warning | Chip: 0 PCIe: 0 Unique ID: 0 eth channel 5 core 0-5 link DOWN/unconnected (QSFP)\n"
-            "warning | Chip: 1 PCIe: 1 Unique ID: 1 eth channel 5 core 0-5 link DOWN/unconnected (QSFP)\n").encode("ascii")
+            "warning | Chip: 1 PCIe: 1 Unique ID: 1 eth channel 5 core 0-5 link DOWN/unconnected (QSFP)\n")
+    lines = []
+    for line in raw.splitlines():
+        if line.startswith('info | Established'):
+            line = log('info', line.split(' | ', 1)[1], 'UMD', 'topology_discovery.cpp:574')
+        elif line.startswith('warning |'):
+            line = log('warning', line.split(' | ', 1)[1], location='test_system_health.cpp:361')
+        elif line.startswith('info |'):
+            line = log('info', line.split(' | ', 1)[1])
+        lines.append(line)
+    return ('\n'.join(lines) + '\n').encode('ascii')
 
 
 def xml(phase="A"):
@@ -93,7 +108,7 @@ def test_source_report_single_mutation(old, new, reason):
 
 def test_uncabled_warning_must_match_chip_identity():
     assert verdict()["reason"] == "accepted"
-    changed = transcript().replace(b"warning | Chip: 0 PCIe: 0", b"warning | Chip: 0 PCIe: 999", 1)
+    changed = transcript().replace(b"Test | Chip: 0 PCIe: 0", b"Test | Chip: 0 PCIe: 999", 1)
     result = m.evaluate("A", "synthetic-a", environment(), environment(), xml(), changed, b"",
                         m.GOOD_EXECUTION)
     assert result["reason"] == "diagnostic"
@@ -117,13 +132,11 @@ def test_xml_negative_reason(change):
                       m.GOOD_EXECUTION)["reason"] == "test_result"
 
 
-def test_source_warning_location_suffix_is_not_a_health_error():
-    assert verdict()["reason"] == "accepted"
-    lines = transcript().decode("ascii").splitlines()
-    source = "\n".join(line + " (test_system_health.cpp:361)" if line.startswith("warning |") else line
-                       for line in lines).encode("ascii")
-    assert m.evaluate("A", "synthetic-a", environment(), environment(), xml(), source, b"",
-                      m.GOOD_EXECUTION)["reason"] == "accepted"
+def test_source_warning_location_is_required():
+    assert verdict()['reason'] == 'accepted'
+    source = transcript().replace(b' (test_system_health.cpp:361)', b'', 1)
+    assert m.evaluate('A', 'synthetic-a', environment(), environment(), xml(), source, b'',
+                      m.GOOD_EXECUTION)['reason'] == 'diagnostic'
 
 
 def test_no_device_skip_is_not_success():

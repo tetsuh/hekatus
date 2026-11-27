@@ -15,7 +15,7 @@ def env():
     for sample in readings['samples']:
         for index, card in enumerate(sample['cards']):
             card['serial'] = value['cards'][index]['serial']
-    return value | {'dram_admission': readings}
+    return value | {'dram_admission': readings, 'attempt': unit()['A']}
 
 
 def unit():

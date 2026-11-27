@@ -14,14 +14,11 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from xml.etree.ElementTree import ParseError
-
-from defusedxml import ElementTree as ET
-from defusedxml.common import DefusedXmlException
 
 from enodia.tt.bench import issue30_admission as admission
 from enodia.tt.bench import issue30_diagnostics as diagnostics
 from enodia.tt.bench import issue30_evidence as evidence
+from enodia.tt.bench import issue30_formats as formats
 from enodia.tt.bench import issue30_topology as topology
 
 IMAGE = "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
@@ -29,7 +26,9 @@ ROOT = Path(__file__).resolve().parents[3]
 WORK = ROOT / "out/issue30"
 ASSETS = WORK / "g0/assets"
 SOURCE_ROOT = WORK / "tt-metal"
-CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v15.json"
+CURRENT_RECEIPT = ROOT / "docs/measurements/issue30-g0/receipt-v16.json"
+DOCKER_SOCKET = "/var/run/docker.sock"
+DOCKER_CLI = ("docker", "--host", "unix://" + DOCKER_SOCKET)
 OWNER_ACCEPTANCE = "docs/measurements/2026-11-24-issue30-a-owner-acceptance/accepted-a.json"
 SOURCE_COMMIT = "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
 UMD_COMMIT = "bc77ac2f7382ffeb9fa5430055f0854d53979489"
@@ -75,7 +74,10 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "docs/measurements/2026-11-24-issue30-b-smoke/B-native-evidence.tar.gz",
                  "enodia/tt/bench/issue30_evidence.py", "tests/test_issue30_evidence.py",
                  "tests/test_issue30_raw_evidence.py", "tools/replay_issue30_evidence.py",
-                 "tests/test_issue30_replay_paths.py", "tests/test_issue30_final_binding.py")
+                 "tests/test_issue30_replay_paths.py", "tests/test_issue30_final_binding.py",
+                 "enodia/tt/bench/issue30_formats.py", "tests/test_issue200_201.py",
+                 "tests/test_issue200_lifecycle.py", "tests/test_issue201_sweep.py",
+                 "docs/adr/0022-issue30-incomplete-offline-audit.md")
 
 
 def digest(data: bytes) -> str:
@@ -134,8 +136,7 @@ def _verified(path, root, expected):
 
 def _captured(output, execution, name):
     entries = execution.get("artifacts", [])
-    if type(entries) is not list or any(type(entry) is not dict for entry in entries):
-        raise ValueError("capture_artifact")
+    formats.manifest(entries)
     matches = [entry for entry in entries if entry.get("path") == name]
     if len(matches) != 1 or set(matches[0]) != {"path", "bytes", "sha256"}:
         raise ValueError("capture_artifact")
@@ -154,21 +155,32 @@ def publish(path: Path, record: dict) -> None:
     if path.absolute() != path.resolve():
         raise ValueError("redirected publication")
     temporary = path.with_name(path.name + ".tmp")
-    with temporary.open("xb") as output:
-        output.write((json.dumps(record, indent=2, sort_keys=True) + "\n").encode())
-        output.flush()
-        os.fsync(output.fileno())
+    owned, renamed = False, False
+    try:
+        with temporary.open("xb") as output:
+            owned = True
+            output.write((json.dumps(record, indent=2, sort_keys=True, allow_nan=False) + "\n").encode())
+            output.flush()
+            os.fsync(output.fileno())
+        _rename(temporary, path)
+        renamed = True
+    finally:
+        if owned and not renamed:
+            temporary.unlink(missing_ok=True)
+    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _rename(temporary, path):
     rename = ctypes.CDLL(None, use_errno=True).renameat2
     rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
     rename.restype = ctypes.c_int
     if rename(-100, os.fsencode(temporary), -100, os.fsencode(path), 1) != 0:
         code = ctypes.get_errno()
         raise OSError(code, os.strerror(code))
-    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
 
 
 def remaining(start: float, limit: int, now: float) -> float:
@@ -177,7 +189,7 @@ def remaining(start: float, limit: int, now: float) -> float:
 
 def request(phase: str, identity: str, assets: Path, capture: Path, *, uid: int, gid: int) -> dict:
     _identity(identity)
-    if uid <= 0 or gid < 0:
+    if type(uid) is not int or type(gid) is not int or uid <= 0 or gid < 0:
         raise ValueError("non-root identity required")
     scratch = f"rw,nosuid,nodev,noexec,size=256m,mode=0700,uid={uid},gid={gid}"
     return {"Image": IMAGE, "User": f"{uid}:{gid}", "WorkingDir": "/capture",
@@ -224,11 +236,11 @@ def approval_record(phase, identity, env, receipt, head):
 
 def _approval(phase, identity, approval, env, receipt, head):
     expected = approval_record(phase, identity, env, receipt, head)
-    if json.dumps(approval, sort_keys=True) != json.dumps(expected, sort_keys=True):
+    if not formats.equal(approval, expected):
         raise ValueError("approval_binding")
     if receipt.get("schema") != "issue30-g0-v1" or receipt.get("all_passed") is not True:
         raise ValueError("g0_not_ready")
-    if receipt.get("current_wrapper_sources") != program_sources():
+    if not formats.equal(receipt.get("current_wrapper_sources"), program_sources()):
         raise ValueError("receipt_source_binding")
 
 
@@ -245,9 +257,7 @@ def board_request(phase: str, identity: str, assets: Path, output: Path, *,
     _approval(phase, identity, approval, environment, receipt, head)
     _binary_binding(assets, receipt)
     payload = request(phase, identity, assets, output, uid=os.getuid(), gid=os.getgid())
-    nodes = [c.get("node", "") for c in environment["cards"]]
-    if len(set(nodes)) != 2 or any(not re.fullmatch(r"/dev/tenstorrent/\d{1,6}", n, re.ASCII) for n in nodes):
-        raise ValueError("device_mapping")
+    nodes = _approved_nodes(environment)
     host = payload["HostConfig"]
     host["Devices"] = [{"PathOnHost": n, "PathInContainer": n, "CgroupPermissions": "rw"} for n in nodes]
     host["MaskedPaths"] = [p for p in MASKS if p not in ("/sys", "/proc/bus", "/proc/driver")]
@@ -255,6 +265,24 @@ def board_request(phase: str, identity: str, assets: Path, output: Path, *,
     host["Ulimits"] = [{"Name": "memlock", "Soft": -1, "Hard": -1}]
     payload["Env"] += ["TT_VISIBLE_DEVICES=" + ",".join(c[1] for c in CARDS)]
     return payload
+
+
+def _approved_nodes(environment):
+    nodes = [c.get("node", "") for c in environment["cards"]]
+    if (any(type(n) is not str or not re.fullmatch(r"/dev/tenstorrent/[0-9]{1,6}", n) for n in nodes)
+            or len(set(nodes)) != 2):
+        raise ValueError("device_mapping")
+    for card in environment["cards"]:
+        # Resolve links only: never stat/open/read the device node or PCI registers.
+        name = "tenstorrent!" + Path(card["node"]).name
+        associated = Path("/sys/class/tenstorrent") / name / "device"
+        expected = Path("/sys/bus/pci/devices") / card["pci"]
+        try:
+            if associated.resolve(strict=True) != expected.resolve(strict=True):
+                raise ValueError("device_pci_binding")
+        except OSError as exc:
+            raise ValueError("device_pci_binding") from exc
+    return nodes
 
 
 def _bundle_report_name(value):
@@ -274,7 +302,7 @@ def _card(card, phase):
     admission.card_health(card, phase)
     if card.get("dram_healthy") is not True:
         raise ValueError("environment")
-    if type(card.get("aiclk_mhz")) is not int or card["aiclk_mhz"] <= 0 or type(card.get("pcie_index")) is not int:
+    if type(card.get("aiclk_mhz")) is not int or card["aiclk_mhz"] != 800 or type(card.get("pcie_index")) is not int:
         raise ValueError("environment")
 
 
@@ -287,7 +315,7 @@ def _cards(cards, phase, require_arc):
         raise ValueError("environment")
     for c in cards:
         _card(c, phase)
-        if require_arc:
+        if require_arc or 'arc_heartbeat' in c:
             admission.arc_progress(c)
     if len({c["pcie_index"] for c in cards}) != 2 or len({c["bundle"] for c in cards}) != 1:
         raise ValueError("environment")
@@ -309,6 +337,7 @@ def _links(env):
 
 
 def _environment(env, identity, phase="B"):
+    formats.environment(env)
     if (env.get("schema") != "issue30-environment-v1" or env.get("attempt") != identity
             or not isinstance(env.get("boot"), str) or not env["boot"]
             or env.get("image") != IMAGE or env.get("watcher") != "1"):
@@ -318,91 +347,58 @@ def _environment(env, identity, phase="B"):
         raise ValueError("environment")
     _cards(env.get("cards"), phase, "topology" in env)
     admission.dram_gate(env)
+    if 'owner_unit' in env and env['attempt'] != _renewed_unit(env)[phase]:
+        raise ValueError('owner_unit_identity')
     _links(env)
 
 
 def _xml(phase, raw):
-    if len(raw) > 1024 * 1024 or b"<!" in raw:
-        raise ValueError("test_result")
-    try:
-        root = ET.fromstring(raw, forbid_dtd=True)
-    except (ParseError, DefusedXmlException) as exc:
-        raise ValueError("test_result") from exc
-    cases = list(root.iter("testcase"))
-    suite, name = TESTS[phase].split(".")
-    if (root.tag != "testsuites" or root.get("tests") != "1"
-            or len(list(root.iter("testsuite"))) != 1 or len(cases) != 1
-            or len(root) != 1 or root[0].tag != "testsuite"
-            or root[0].get("name") != suite or root[0].get("tests") != "1"
-            or list(root[0].findall("testcase")) != cases):
-        raise ValueError("test_result")
-    if (cases[0].get("name") != name or cases[0].get("classname") != suite
-            or cases[0].get("status") != "run" or cases[0].get("result") != "completed"):
-        raise ValueError("test_result")
-    if (any(list(root.iter(tag)) for tag in ("failure", "error", "skipped"))
-            or any(n.get(k, "0") != "0" for n in root.iter() for k in ("failures", "errors", "disabled", "skipped"))):
-        raise ValueError("test_result")
-
-
-def _number(text):
-    if not re.fullmatch(r"\d{1,10}", text, re.ASCII):
-        raise ValueError("peer_links")
-    return int(text)
+    formats.xml(raw, TESTS[phase])
 
 
 def _strip_source(text):
     body, sep, tail = text.rpartition(" (")
     filename, colon, line = tail.removesuffix(")").rpartition(":")
-    if sep and tail.endswith(")") and colon and line.isdecimal() and len(filename) <= 256:
+    if sep and tail.endswith(")") and colon and re.fullmatch(r'[0-9]+', line) and len(filename) <= 256:
         return body
     return text
 
 
 def _message(line):
-    parts = line.split("|", 3)
-    if len(parts) == 4:
-        if (not re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}", parts[0].strip())
-                or not re.fullmatch(r"[\w:]+", parts[2].strip())):
-            return "", line.strip()
-        return parts[1].strip().casefold(), _strip_source(parts[3].strip())
-    if len(parts) == 2:
-        return parts[0].strip().casefold(), _strip_source(parts[1].strip())
+    envelope = formats.logger(line)
+    if envelope is not None:
+        return envelope['level'].strip(), _strip_source(envelope['body'])
+    if line.count('|') >= 3:
+        raise ValueError('diagnostic')
     return "", line.strip()
 
 
 def _chip(text):
-    t = text.split()
-    if len(t) < 7 or (t[0], t[2], t[4], t[5]) != ("Chip:", "PCIe:", "Unique", "ID:"):
-        raise ValueError("chip_identity")
-    if not re.fullmatch(r"[0-9a-f]{1,16}", t[6]):
-        raise ValueError("chip_identity")
-    return _number(t[1]), _number(t[3])
+    match = re.fullmatch(r'Chip: ([0-9]{1,10}) PCIe: ([0-9]{1,10}) Unique ID: ([0-9a-f]{1,16})', text)
+    if match is None:
+        raise ValueError('chip_identity')
+    return int(match[1]), int(match[2]), match[3]
 
 
 def _link(text):
-    t = text.split()
-    if len(t) < 8 or (t[0], t[1], t[3], t[5]) != ("eth", "channel", "core", "link"):
-        raise ValueError("peer_links")
-    if not re.fullmatch(r"\d{1,3}-\d{1,3}", t[4], re.ASCII):
-        raise ValueError("peer_links")
-    data = {"channel": _number(t[2]), "core": t[4], "state": t[6]}
-    if t[6:] == [DOWN, "(QSFP)"]:
+    core = r'[0-9]{1,3}-[0-9]{1,3}'
+    match = re.fullmatch(r'eth channel ([0-9]{1,10}) core (' + core + r') link (.+)', text)
+    if match is None:
+        raise ValueError('peer_links')
+    data = {'channel': int(match[1]), 'core': match[2], 'state': DOWN}
+    if match[3] == DOWN + ' (QSFP)':
         return data
-    if len(t) < 14 or t[6:10] != ["UP", "(QSFP),", "connected", "to"] or t[-2] != "core":
-        raise ValueError("peer_links")
-    if not re.fullmatch(r"\d{1,3}-\d{1,3}", t[-1], re.ASCII):
-        raise ValueError("peer_links")
-    if t[10] == "Chip":
-        return data | {"peer": _number(t[11]), "peer_core": t[-1]}
-    if t[10:12] == ["Unique", "ID:"] and re.fullmatch(r"[a-f0-9]{1,16}", t[12]):
-        return data | {"peer_unique_id": t[12], "peer_core": t[-1]}
-    raise ValueError("peer_links")
+    peer = re.fullmatch(r'UP \(QSFP\), connected to (Chip [0-9]{1,10}|Unique ID: [a-f0-9]{1,16}) core (' + core + ')', match[3])
+    if peer is None:
+        raise ValueError('peer_links')
+    key, value = ('peer', int(peer[1][5:])) if peer[1].startswith('Chip ') else ('peer_unique_id', peer[1][11:])
+    return data | {'state': 'UP', key: value, 'peer_core': peer[2]}
 
 
-def _warning(env, body):
+def _warning(env, body, line):
     header, sep, link = body.partition(" eth channel ")
     try:
-        chip, pcie = _chip(header)
+        chip, pcie, uid = _chip(header)
         parsed = _link("eth channel " + link)
     except ValueError as exc:
         raise ValueError("diagnostic") from exc
@@ -411,7 +407,10 @@ def _warning(env, body):
                or "topology" in env and parsed["channel"] in topology.CHANNEL_PORT)
     if not sep or parsed["state"] != DOWN or indices.get(chip) != pcie or not allowed:
         raise ValueError("diagnostic")
-    return {"chip": chip} | parsed
+    envelope = formats.logger(line)
+    if envelope is None or envelope['component'] != 'Test' or not line.endswith(' (test_system_health.cpp:361)'):
+        raise ValueError("diagnostic")
+    return {"chip": chip, "unique_id": uid} | parsed
 
 
 def _diagnostic_lines(raw):
@@ -424,7 +423,7 @@ def _diagnostic_lines(raw):
     return text.splitlines()
 
 
-def _messages(env, raw, warnings=None, accepted=None):
+def _messages(env, raw, warnings=None, accepted=None, uids=None):
     messages = []
     lines = _diagnostic_lines(raw)
     for index, line in enumerate(lines):
@@ -433,10 +432,13 @@ def _messages(env, raw, warnings=None, accepted=None):
         if diagnostics.baseline_at(lines, index, env["cards"]):
             continue
         level, body = _message(line)
+        _health_line(env, line, body)
         if level == "warning":
-            warning = _warning(env, body)
+            warning = _warning(env, body, line)
             if accepted is not None:
                 topology.check_warnings(accepted, [warning])
+                if uids is None or uids.get(warning['chip']) != warning['unique_id']:
+                    raise ValueError('diagnostic')
             if warnings is not None:
                 warnings.append(warning)
         elif diagnostics.ALARM.search(line):
@@ -444,6 +446,20 @@ def _messages(env, raw, warnings=None, accepted=None):
         else:
             messages.append(body)
     return messages
+
+
+def _health_line(env, line, body):
+    bundle = 'Established firmware bundle version: '
+    if body.startswith(bundle):
+        envelope = formats.logger(line)
+        expected = bundle + _bundle_report_name(env['cards'][0]['bundle'])
+        if (envelope is None or envelope['level'] != 'info     ' or envelope['component'] != 'UMD'
+                or envelope['body'] != expected + ' (topology_discovery.cpp:574)'):
+            raise ValueError('bundle')
+    if body.startswith('Found '):
+        envelope = formats.logger(line)
+        if envelope is None or envelope['level'] != 'info     ' or envelope['component'] != 'Test':
+            raise ValueError('chip_count')
 
 
 def _observed_link(lines, index, chip):
@@ -464,7 +480,7 @@ def _legacy_links(env, observed):
             if [data["chip"], data["channel"]] not in env.get("uncabled", []):
                 raise ValueError("peer_links")
         else:
-            found.append({k: v for k, v in data.items() if k not in ("state", "retrain_count")})
+            found.append({k: v for k, v in data.items() if k not in ("state", "retrain_count", "unique_id")})
     canonical = lambda xs: sorted(json.dumps(x, sort_keys=True) for x in xs)
     if canonical(found) != canonical(env["links"]):
         raise ValueError("peer_links")
@@ -474,13 +490,16 @@ def _health_records(env, lines, observed, warnings):
     headers, chip = [], None
     for index, body in enumerate(lines):
         if body.startswith("Chip: "):
-            chip, pcie = _chip(body)
-            headers.append((chip, pcie))
+            chip, pcie, uid = _chip(body)
+            headers.append((chip, pcie, uid))
         elif body.startswith("eth channel "):
             observed.append(_observed_link(lines, index, chip))
     expected = {(c["chip"], c["pcie_index"]) for c in env["cards"]}
-    if len(headers) != 2 or set(headers) != expected:
+    if len(headers) != 2 or {(c, p) for c, p, _ in headers} != expected:
         raise ValueError("chip_identity")
+    uids = {c: uid for c, _, uid in headers}
+    if len(set(uids.values())) != 2 or any(w['unique_id'] != uids.get(w['chip']) for w in warnings):
+        raise ValueError("diagnostic")
     if "topology" in env:
         topology.check_warnings(observed, warnings)
         return topology.classify(observed)
@@ -514,12 +533,14 @@ def _execution(execution, phase="B"):
             or type(execution.get("client_exit")) is not int or execution["client_exit"] != 0):
         raise ValueError("execution")
     elapsed = execution.get("elapsed_seconds")
-    if type(elapsed) not in (int, float) or not 0 <= elapsed <= 60:
+    if not formats.finite(elapsed) or not 0 <= elapsed <= 60:
         raise ValueError("execution")
     if phase == "B" and execution.get("watcher_clean") is not True:
         raise ValueError("watcher")
     if execution.get("containers_clean") is not True:
         raise ValueError("containers")
+    if 'error_type' in execution or execution.get('create_status', 'identified') != 'identified':
+        raise ValueError('execution')
 
 
 def _post(env, after, identity, phase):
@@ -529,7 +550,7 @@ def _post(env, after, identity, phase):
         raise ValueError("environment")
 
 
-def _transfer_binding(before, discovery, raw):
+def _transfer_binding(before, discovery, raw, uids=None):
     if not discovery:
         raise ValueError("discovery_binding")
     if "topology" in before:
@@ -538,7 +559,7 @@ def _transfer_binding(before, discovery, raw):
         else:
             admission.owner_links(discovery, baseline_digest(before), digest(before["boot"].encode()),
                                   digest(json.dumps(before["topology"], sort_keys=True).encode()))
-        _messages(before, raw, accepted=discovery["observed_qsfp"])
+        _messages(before, raw, accepted=discovery["observed_qsfp"], uids=uids)
     else:  # Historical CPU fixtures; hardware CLI always requires the frozen topology.
         if (discovery.get("phase") != "A" or discovery.get("verdict") != ACCEPTED["A"]
                 or discovery.get("baseline_sha256") != baseline_digest(before)):
@@ -554,20 +575,32 @@ def _marker_position(lines, bodies, marker):
     return found[0]
 
 
-def _packet_observation(before, raw):
+def _packet_observation(before, raw, stderr=b""):
     if "topology" not in before:
         return None
     lines = _diagnostic_lines(raw)
+    if any(re.search(r"\[\s*(?:RUN|OK|PASSED|FAILED|SKIPPED)\s*\]|Running fabric api tests|Fabric Reliability Mode:",
+                     line) for line in _diagnostic_lines(stderr)):
+        raise ValueError("packet_evidence")
     bodies = [_message(line)[1] for line in lines]
     required = ("Running fabric api tests with fast dispatch",
                 "Fabric Reliability Mode: STRICT_SYSTEM_HEALTH_SETUP_MODE",
                 "[ RUN      ] " + TESTS["B"], "[  PASSED  ] 1 test.")
     positions = [_marker_position(lines, bodies, marker) for marker in required]
+    native = [line for line in lines if re.search(r'\[\s*(?:RUN|OK|PASSED|FAILED|SKIPPED)\s*\]', line)]
+    if len(native) != 3:
+        raise ValueError('packet_evidence')
+    for index, location in zip(positions[:2], ('87', '100'), strict=True):
+        envelope = formats.logger(lines[index])
+        if (envelope is None or envelope['component'] != 'Test'
+                or envelope['body'] != bodies[index] + ' (fabric_fixture.hpp:' + location + ')'):
+            raise ValueError("packet_evidence")
     completed = [i for i, line in enumerate(lines) if re.fullmatch(
-        r"\[       OK \] " + re.escape(TESTS["B"]) + r" \(\d+ ms\)", line)]
+        r"\[       OK \] " + re.escape(TESTS["B"]) + r" \([0-9]+ ms\)", line)]
     if (len(completed) != 1 or sum("[       OK ] " + TESTS["B"] in line for line in lines) != 1
             or sum("Running fabric api tests" in line for line in lines) != 1
             or sum("Fabric Reliability Mode:" in line for line in lines) != 1
+            or int(lines[completed[0]].rsplit('(', 1)[1].split()[0]) > 40000
             or not positions[0] < positions[1] < positions[2] < completed[0] < positions[3]):
         raise ValueError("packet_evidence")
     return {"expected_packets_from_pinned_source": 5,
@@ -588,13 +621,14 @@ def _renewed_unit(env):
 
 
 def _fresh_links(before, record):
+    formats.verdict(record)
     unit = _renewed_unit(before)
     decision = topology.classify(record.get("observed_qsfp"))
     if (record.get("schema") != "issue30-verdict-v3" or record.get("phase") != "A"
             or record.get("attempt") != unit["A"]
             or record.get("verdict") != ACCEPTED["A"] or record.get("reason") != "accepted"
             or record.get("baseline_sha256") != baseline_digest(before)
-            or decision != record.get("topology") or decision.get("hypothesis") != "H1"
+            or not formats.equal(decision, record.get("topology")) or decision.get("hypothesis") != "H1"
             or decision.get("outcome") != "accepted"):
         raise ValueError("fresh_A_binding")
 
@@ -603,11 +637,15 @@ def _fresh_evidence(before, record):
     unit = _renewed_unit(before)
     output, inputs = _slots(unit["A"], True)
     original = _load(output / "result.json")
-    if record != original or record.get("attempt") != unit["A"]:
-        raise ValueError("fresh_A_canonical_result")
     checked = _judgment("A", unit["A"], output, inputs)
-    if checked != original:
-        raise ValueError("fresh_A_revalidation")
+    _fresh_result(before, record, original, checked)
+
+
+def _fresh_result(before, record, original, checked):
+    if not formats.equal(record, original) or record.get('attempt') != _renewed_unit(before)['A']:
+        raise ValueError('fresh_A_canonical_result')
+    if not formats.equal(checked, original):
+        raise ValueError('fresh_A_revalidation')
     _fresh_links(before, record)
 
 
@@ -627,12 +665,13 @@ def _bound_discovery(inputs):
         _fresh_native(before, record)
         return record
     expected = _load(ROOT / OWNER_ACCEPTANCE, ROOT)
-    if json.dumps(record, sort_keys=True) != json.dumps(expected, sort_keys=True):
+    if not formats.equal(record, expected):
         raise ValueError("owner_acceptance_binding")
     return record
 
 
-def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, discovery=None):
+def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, discovery=None,
+             discovery_uids=None):
     reason, decision, observed, packets = "accepted", None, [], None
     firmware = admission.observe_firmware(stdout + b"\n" + stderr)
     try:
@@ -647,8 +686,8 @@ def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, dis
             if decision is not None:
                 reason = decision["reason"]
         else:
-            _transfer_binding(before, discovery, stdout + b"\n" + stderr)
-            packets = _packet_observation(before, stdout)
+            _transfer_binding(before, discovery, stdout + b"\n" + stderr, discovery_uids)
+            packets = _packet_observation(before, stdout, stderr)
         admission.check_reported_versions(firmware)
     except (ValueError, KeyError, TypeError) as exc:
         reason = str(exc) if isinstance(exc, ValueError) else "environment"
@@ -669,33 +708,38 @@ def _api(method, path, body=None, timeout=5):
     if timeout <= 0:
         raise subprocess.TimeoutExpired("docker API budget", timeout)
     command = ["curl", "-fsS", "--noproxy", "*", "--max-time", str(timeout), "--unix-socket",
-               "/var/run/docker.sock", "-X", method, "-H", "Content-Type: application/json"]
+               DOCKER_SOCKET, "-X", method, "-H", "Content-Type: application/json"]
     if body is not None:
         command += ["--data-binary", "@-"]
     command += ["http://localhost/v1.52/" + path]
     done = subprocess.run(command, input=json.dumps(body).encode() if body is not None else None,
                           capture_output=True, timeout=timeout + 0.1, check=True)
-    return json.loads(done.stdout) if done.stdout else {}
+    return formats.load(done.stdout) if done.stdout else {}
 
 
 def _docker_ps(path, timeout):
     if timeout <= 0:
         raise subprocess.TimeoutExpired("docker ps budget", timeout)
-    done = subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}}\t{{.State}}\t{{.Image}}"],
-                          capture_output=True, check=True, timeout=timeout)
+    done = subprocess.run([*DOCKER_CLI, "ps", "-a", "--format", "{{.Names}}\t{{.State}}\t{{.Image}}"],
+                          capture_output=True, check=True, timeout=timeout, env=_docker_environment())
     with path.open("xb") as stream:
         stream.write(done.stdout)
 
 
+def _docker_environment():
+    return {k: v for k, v in os.environ.items() if not k.startswith('DOCKER_')}
+
+
 def _container_id(value):
-    if not re.fullmatch(r"[a-f0-9]{64}", value):
+    if type(value) is not str or not re.fullmatch(r"[a-f0-9]{64}", value):
         raise ValueError("invalid daemon container identity")
     return value
 
 
-def _run_client(name, cid, output, start, state):
+def _run_client(_name, cid, output, start, state):
     with (output / STDOUT_FILE).open("xb") as stdout, (output / STDERR_FILE).open("xb") as stderr:
-        client = subprocess.Popen(["docker", "start", "-a", "--", name], stdout=stdout, stderr=stderr)
+        client = subprocess.Popen([*DOCKER_CLI, "start", "-a", "--", _container_id(cid)],
+                                  stdout=stdout, stderr=stderr, env=_docker_environment())
         state["started"] = True
         try:
             state["client_exit"] = client.wait(timeout=remaining(start, 50, time.monotonic()))
@@ -747,10 +791,11 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
     if observations is not None:
         publish(output / "observations-before.json", observations)
     start, name, cid = time.monotonic(), "issue30-" + identity, None
-    started_wall = time.time()
+    started_wall, create_clock = time.time(), {}
     binary = assets / BINARIES[phase]
     state = {"schema": "issue30-execution-v1", "attempt": identity, "started": False, "exit": None,
-             "timed_out": False, "terminated": False, "device_free": not payload["HostConfig"]["Devices"],
+             "timed_out": False, "terminated": False, "create_status": "not_requested",
+             "device_free": not payload["HostConfig"]["Devices"],
              "watcher_clean": None, "containers_clean": False, "image": IMAGE,
              "binary_sha256": artifact(binary, assets)["sha256"] if binary.is_file() else None,
              "argv": payload["Cmd"], "environment": payload["Env"]}
@@ -761,34 +806,38 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
         if (type(before) is not list or before != []
                 or _read(output / "docker-before.txt", output) != b""):
             raise ValueError("preexisting_containers")
+        if observations is not None:
+            _, inputs = _slots(identity, True)
+            _admit_series(phase, inputs, observations)
+        create_clock = {'create_wall': time.time(), 'create_monotonic': time.monotonic()}
+        state['create_status'] = 'pending'
         created = _api("POST", CONTAINERS + "create?name=" + name, payload, timeout=remaining(start, 15, time.monotonic()))
         cid = _container_id(created["Id"])
+        state['create_status'] = 'identified'
+        if observations is not None:
+            _admit_series(phase, inputs, observations)
+        create_clock |= {'launch_wall': time.time(), 'launch_monotonic': time.monotonic()}
         _run_client(name, cid, output, start, state)
-    except (OSError, subprocess.SubprocessError, KeyError, ValueError) as exc:
+    except (OSError, subprocess.SubprocessError, KeyError, TypeError, ValueError) as exc:
         state["error_type"] = type(exc).__name__
+        if state['create_status'] == 'pending':
+            state['create_status'] = 'unknown'
     finally:
         _cleanup(name, cid, output, start, state)
+        if state['create_status'] == 'unknown':
+            state['containers_clean'] = False
         finished = time.monotonic()
         state["elapsed_seconds"] = finished - start
         publish(output / "capture-clock.json", {"schema": "issue30-capture-clock-v1",
                 "attempt": identity, "start_wall": started_wall, "end_wall": time.time(),
-                "start_monotonic": start, "end_monotonic": finished})
+                "start_monotonic": start, "end_monotonic": finished} | create_clock)
         state["artifacts"] = _captured_files(output)
         publish(output / EXECUTION_FILE, state)
     return state
 
 
-def _unique_json(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate evidence key")
-        result[key] = value
-    return result
-
-
 def _load(path, base=None):
-    value = json.loads(_read(path, base, 4 * 1024 * 1024), object_pairs_hook=_unique_json)
+    value = formats.load(_read(path, base, 4 * 1024 * 1024))
     if not isinstance(value, dict):
         raise TypeError("evidence must be an object")
     return value
@@ -818,12 +867,12 @@ def _renewed_gate(phase, inputs):
 def _admit_series(phase, inputs, env):
     if "owner_unit" not in env:
         return
-    _raw_series(env, phase, "before", inputs)
+    samples = _raw_series(env, phase, "before", inputs)
     if phase == "B":
         _, ain = _slots(env["owner_unit"]["A"], True)
         a_after = _load(ain / "after.json")
-        evidence.ordered(_raw_series(a_after, "A", "after", ain),
-                         _raw_series(env, "B", "before", inputs))
+        evidence.ordered(_raw_series(a_after, "A", "after", ain), samples)
+    evidence.launch_freshness(samples, time.time(), time.monotonic())
 
 
 def _authorize(phase, identity, inputs, output):
@@ -853,9 +902,9 @@ def _authorize(phase, identity, inputs, output):
 
 
 def _observations(inputs, review):
-    return [json.loads(_verified(inputs / (role + ".json"), inputs,
-                                 {"sha256": review.get(role + "_sha256")}),
-                       object_pairs_hook=_unique_json) for role in ("before", "after")]
+    return [formats.load(_verified(inputs / (role + ".json"), inputs,
+                                   {"sha256": review.get(role + "_sha256")}))
+            for role in ("before", "after") ]
 
 
 def _raw_series(env, phase, role, inputs):
@@ -871,7 +920,7 @@ def _series_proof(phase, output, inputs, execution, before, after):
     clock = None
     if ((output / clock_name).exists()
             or any(e.get("path") == clock_name for e in execution["artifacts"])):
-        clock = json.loads(_captured(output, execution, clock_name), object_pairs_hook=_unique_json)
+        clock = formats.load(_captured(output, execution, clock_name))
     evidence.bracket(first, last, _captured(output, execution, "native/gtest.xml"), execution, clock)
     if phase == "B":
         aout, ain = _slots(before["owner_unit"]["A"], True)
@@ -884,7 +933,9 @@ def _series_proof(phase, output, inputs, execution, before, after):
 def _review_execution(phase, identity, output, review):
     raw_execution = _verified(output / EXECUTION_FILE, output,
                               {"sha256": review.get("execution_sha256")})
-    execution = json.loads(raw_execution, object_pairs_hook=_unique_json)
+    execution = formats.load(raw_execution)
+    formats.review(review)
+    formats.execution(execution)
     if execution.get("schema") != "issue30-execution-v1" or execution.get("attempt") != identity:
         raise ValueError("execution schema/attempt mismatch")
     if (review.get("schema") != "issue30-review-v1" or review.get("attempt") != identity
@@ -892,6 +943,7 @@ def _review_execution(phase, identity, output, review):
         raise ValueError("review execution binding")
     if execution.get("device_free") is not False:
         raise ValueError("device-free capture cannot qualify as board evidence")
+    _captured_command(phase, execution)
     receipt = _load(CURRENT_RECEIPT, ROOT)
     if (execution.get("image") != IMAGE
             or execution.get("binary_sha256") != receipt["binaries"][BINARIES[phase]]):
@@ -899,26 +951,46 @@ def _review_execution(phase, identity, output, review):
     return execution
 
 
+def _captured_command(phase, execution):
+    runtime = ['timeout', '--signal=KILL', '40s', 'python3',
+               '/harness/enodia/tt/bench/issue30_runtime.py', phase]
+    original = ['timeout', '--signal=KILL', '40s', '/assets/' + BINARIES[phase],
+                '--gtest_filter=' + TESTS[phase], '--gtest_output=xml:/capture/native/gtest.xml']
+    if not any(formats.equal(execution['argv'], command) for command in (runtime, original)):
+        raise ValueError('execution_provenance')
+    root = dict(item.split('=', 1) for item in execution['environment'])['TT_METAL_RUNTIME_ROOT']
+    expected = '/capture/runtime' if execution['argv'] == runtime else '/opt/venv/lib/python3.12/site-packages/ttnn'
+    if root != expected:
+        raise ValueError('execution_provenance')
+
+
 def _container_observations(output, execution):
     for role in ("before", "after"):
-        listing = json.loads(_captured(output, execution, "docker-" + role + ".json"),
-                             object_pairs_hook=_unique_json)
-        if listing != {"containers": []} or _captured(output, execution, "docker-" + role + ".txt") != b"":
+        listing = formats.load(_captured(output, execution, "docker-" + role + ".json"))
+        if not formats.equal(listing, {"containers": []}) or _captured(output, execution, "docker-" + role + ".txt") != b"":
             raise ValueError("containers")
 
 
-def _review(phase, identity, output, inputs):
+def _review_capture(phase, identity, output, inputs):
     review = _load(inputs / "review.json")
     execution = _review_execution(phase, identity, output, review)
     _container_observations(output, execution)
-    before, after = _observations(inputs, review)
-    captured_before = json.loads(_captured(output, execution, "observations-before.json"),
-                                 object_pairs_hook=_unique_json)
-    if captured_before != before:
+    for entry in execution['artifacts']:
+        if entry['path'] != 'logs/generated/watcher/watcher.log':
+            _captured(output, execution, entry['path'])
+    before, _after = _observations(inputs, review)
+    captured_before = formats.load(_captured(output, execution, "observations-before.json"))
+    if not formats.equal(captured_before, before):
         raise ValueError("captured before observation mismatch")
     clean = _watcher_review(phase, output, execution, review)
-    _series_proof(phase, output, inputs, execution, before, after)
     return execution | {"watcher_clean": clean}, review
+
+
+def _review(phase, identity, output, inputs):
+    execution, review = _review_capture(phase, identity, output, inputs)
+    before, after = _observations(inputs, review)
+    _series_proof(phase, output, inputs, execution, before, after)
+    return execution, review
 
 
 def _watcher_review(phase, output, execution, review):
@@ -928,7 +1000,7 @@ def _watcher_review(phase, output, execution, review):
         raw = _captured(output, execution, "logs/generated/watcher/watcher.log")
     except ValueError:
         return False
-    scan = diagnostics.watcher_observation(raw)
+    scan = diagnostics.watcher_observation(raw, execution.get('elapsed_seconds'))
     return (review.get("watcher_clean") is True
             and review.get("watcher_sha256") == digest(raw) and scan["scan_passed"])
 
@@ -944,9 +1016,25 @@ def _judgment(phase, identity, output, inputs, discovery=None):
     before, after = _observations(inputs, review)
     if phase == "B" and "owner_unit" in before:
         _fresh_evidence(before, discovery)
-    result = evaluate(phase, identity, before, after, *raw, execution, discovery)
+    result = _capture_result(phase, identity, before, after, raw, execution, discovery)
     result["xml_present"] = True
     return result
+
+
+def _discovery_uids(before, discovery):
+    identity = (before['owner_unit']['A'] if 'owner_unit' in before else discovery['attempt'])
+    output, inputs = _slots(identity, True)
+    execution, _ = _review_capture('A', identity, output, inputs)
+    raw = _captured(output, execution, STDOUT_FILE)
+    headers = [_chip(line.strip()) for line in _diagnostic_lines(raw) if line.startswith('Chip: ')]
+    if len(headers) != 2 or len({chip for chip, _, _ in headers}) != 2:
+        raise ValueError('chip_identity')
+    return {chip: uid for chip, _, uid in headers}
+
+
+def _capture_result(phase, identity, before, after, raw, execution, discovery):
+    uids = _discovery_uids(before, discovery) if phase == 'B' and discovery else None
+    return evaluate(phase, identity, before, after, *raw, execution, discovery, uids)
 
 
 def _judge(phase, identity, output, inputs):
@@ -964,9 +1052,13 @@ def _capture_cli(args, output, inputs):
         payload, observation = _authorize(args.phase, args.attempt, inputs, output)
     state = capture(args.phase, args.attempt, ASSETS, output, listing=args.list_tests,
                     approved_payload=payload, observations=observation)
-    success = (args.list_tests and state["exit"] == 0 and state["terminated"]
-               and not state["timed_out"] and state["containers_clean"] and state["elapsed_seconds"] <= 60)
-    return 0 if success else 2  # Capture alone never admits a hardware transfer.
+    if not args.list_tests:
+        return 2  # Capture alone never admits a hardware transfer.
+    try:
+        _execution(state, 'A')  # Listing has no application-Watcher requirement.
+    except ValueError:
+        return 2
+    return 0
 
 
 def main():

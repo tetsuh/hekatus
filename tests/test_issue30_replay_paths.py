@@ -20,7 +20,8 @@ def root():
 
 
 def test_canonical_private_paths_and_baseline(root):
-    value = {'results': []}
+    value = {'results': [{'attempt': identity, 'current_evaluate': conclusion}
+                         for (_, identity), conclusion in zip(r.CASES, r.CONCLUSIONS, strict=True)]}
     (root / 'replay-baseline.json').write_text(json.dumps(value))
     assert r._private_root(root) == root
     assert r._baseline(root / 'replay-baseline.json') == value

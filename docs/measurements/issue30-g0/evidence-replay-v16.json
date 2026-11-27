@@ -1,0 +1,231 @@
+{
+  "baseline_original_files_verified_unchanged": 693,
+  "baseline_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
+  "baseline_scope": "Original-head non-raw conclusions reproduced in a disposable offline harness; no original input or live source changed",
+  "cli_exit": 3,
+  "dram_freshness_counterexample": {
+    "evidence": "Synthetic original-shaped raw fixtures, not recovered measurements",
+    "mutation": "advance wall clock by one day",
+    "phases": [
+      "A",
+      "B"
+    ],
+    "positive_age_seconds": 10,
+    "refusal": "dram_launch_freshness",
+    "test": "tests/test_issue200_201.py::test_stale_dram_admission_has_a_positive_control"
+  },
+  "eligible_for_admission": false,
+  "historical_difference": "A v1 originally rejected/watcher; current baseline accepts discovery. This is the prospective correction in ADR-0021:57-63,80-84, not a rewritten record or a historical-policy branch.",
+  "negatives": [
+    {
+      "actual_refusal": "capture_artifact",
+      "expected_refusal": "capture_artifact",
+      "mutation": "stdout_one_byte"
+    },
+    {
+      "actual_refusal": "watcher",
+      "derived_fingerprints_updated": true,
+      "expected_refusal": "watcher",
+      "mutation": "watcher_completion",
+      "original_data_copy": true
+    },
+    {
+      "actual_refusal": "test_result",
+      "derived_fingerprints_updated": true,
+      "expected_refusal": "test_result",
+      "mutation": "native_xml_exactness",
+      "original_data_copy": true
+    },
+    {
+      "actual_refusal": "diagnostic",
+      "derived_fingerprints_updated": true,
+      "expected_refusal": "diagnostic",
+      "mutation": "down_diagnostic",
+      "original_data_copy": true
+    },
+    {
+      "actual_refusal": "captured before observation mismatch",
+      "derived_fingerprints_updated": true,
+      "expected_refusal": "captured before observation mismatch",
+      "mutation": "canonical_json_types",
+      "original_data_copy": true
+    },
+    {
+      "actual_refusal": "diagnostic",
+      "derived_fingerprints_updated": true,
+      "expected_refusal": "diagnostic",
+      "mutation": "warning_bus"
+    },
+    {
+      "actual_refusal": "fresh_A_canonical_result",
+      "derived_fingerprints_updated": false,
+      "expected_refusal": "fresh_A_canonical_result",
+      "mutation": "discovery_attempt"
+    },
+    {
+      "actual_refusal": "fresh_A_canonical_result",
+      "derived_fingerprints_updated": false,
+      "expected_refusal": "fresh_A_canonical_result",
+      "mutation": "discovery_capture_fingerprint"
+    }
+  ],
+  "original_files_verified_unchanged": 78,
+  "protected_original_sha256": {
+    "observations/issue30-a-discovery-watcher-v1-789de6a8faf8/after.json": "9ce886a1edaceac14e3f6b49946a9eb456754bc060903403da1b3d0961a56b65",
+    "observations/issue30-a-discovery-watcher-v1-789de6a8faf8/approval.json": "8962522d409f341b5a9d2c16d83d5fb73f9293663fbdacb155029a51c336905c",
+    "observations/issue30-a-discovery-watcher-v1-789de6a8faf8/before.json": "4266646ff19e225167a0f9a5bad9408a6307436ea752b111158d0bae1ece7ab0",
+    "observations/issue30-a-discovery-watcher-v1-789de6a8faf8/review.json": "2773ae6950a23a4221eec01697221f6eeaf24f7979d728150fa4ad9fca2866b5",
+    "observations/issue30-a-discovery-watcher-v2-c1f49b70/after.json": "b6b1f1d1c06f3dd850b957472a5d066cab95898aa321a329a66db4eeb0fc2149",
+    "observations/issue30-a-discovery-watcher-v2-c1f49b70/approval.json": "2ff775409ee491906f7d3e0df98b84b44188196fc6b8d54fbff91891b367728d",
+    "observations/issue30-a-discovery-watcher-v2-c1f49b70/before.json": "b438900f2a162d173c1124b0d3c4b25e1e284515d4abc5adfb31feaa34a4e87c",
+    "observations/issue30-a-discovery-watcher-v2-c1f49b70/review.json": "6135d956a4ac9971db4e596bebc7789eee96f1bebc08e777775da9e0a9fcba77",
+    "observations/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/after.json": "1c769ca1a956729c786e1dc369cca9a51637d4c901b7eb34af4bc98565dea594",
+    "observations/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/approval.json": "9c3a7bc1a42ab534b40beb7a19c38789fd604f632523c2b0755ad696f7586958",
+    "observations/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/before.json": "ee084b919fc32b320b79ab2929225c1bd2ebcdd11a8b1814fa8f1a19159ea22e",
+    "observations/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/discovery.json": "8e096593772321077530621669d7c347084a6e2d2ad149ea88d8a13ae6f5703e",
+    "observations/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/review.json": "392b6cc2f3b07f46f306c4622f8e5621fef38d77546f7a12ef5a3699885dd6b1",
+    "observations/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/after.json": "dcba3baaff75040a273ce44eae2486fcc162541b4dd0123922329e7112f27e09",
+    "observations/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/approval.json": "50be5ecf42b976c4a723f98998faddb24482af15570cd89bc41d4c25e35e4ced",
+    "observations/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/before.json": "b4397ae3494d6fcb0c90fcc9ada99757c649a0220b1027510a7b243c24846f98",
+    "observations/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/discovery.json": "a11a5e4461ed6f798eb890c4648e7a2b67fbcedd170a1ec90649b0e2ae68d66f",
+    "observations/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/review.json": "dd6c64a07f83f21a03d97a33dd77eb75a0e844c9351bdd30bc5bff6a5598fc77",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/docker-after.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/docker-after.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/docker-before.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/docker-before.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/execution.json": "9338fa75b6d0182f88a250ac58e2a3f7711d1fd7fcc0c0ee48b956fe5403f7df",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/native/gtest.xml": "047fe648bfc3bf1c07234c4e0f424c073a60006a83fcb59620cc0d0cf1a6dddc",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/observations-before.json": "ec852d6cc6ac23dc8a8d0de69b848680baa686a07b263f8b5b7448b2e3dfea0e",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/result.json": "f5148cd4eb434ce2d46dc5ede7e7a4411dfdffb322e49986bf4e07aa712b143a",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/stderr.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-a-discovery-watcher-v1-789de6a8faf8/stdout.bin": "e3384400bd3fab9c6fea8619ffcee251a998d13b89fbc61d1aa7ea1e30988335",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/docker-after.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/docker-after.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/docker-before.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/docker-before.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/execution.json": "5907d8f0aeef4062cf515a7e69f178127311267fe5d7d2d5f5e22ccb37548a03",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/native/gtest.xml": "933707e420ea77491486ea48afe03b33d4fc299983aa9a0c7dddb84cb745bde8",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/observations-before.json": "b438900f2a162d173c1124b0d3c4b25e1e284515d4abc5adfb31feaa34a4e87c",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/result.json": "a11a5e4461ed6f798eb890c4648e7a2b67fbcedd170a1ec90649b0e2ae68d66f",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/runtime-layout.json": "445d54ac6c12b51f3a0f0a2d36ec25fa6330a7e6998118691f32a53471a6a526",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/stderr.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-a-discovery-watcher-v2-c1f49b70/stdout.bin": "6d4b9c5ea950431447961e93fe16d3408d71f9c024284019dffb499a0439e983",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/docker-after.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/docker-after.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/docker-before.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/docker-before.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/execution.json": "53cc2b9fd9f48568271be9bdb02bad1d1d70717683dd78c28c8decceb699b397",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/logs/generated/inspector/kernels.yaml": "4eea19744c935e75a464d60e713416965be8d3eb1559ebd38f72c57b8d247473",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/logs/generated/inspector/mesh_devices_log.yaml": "982f63ec90c84220a4d8b12042c4835fff6bd15bf6144715de0501ec95f0db3a",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/logs/generated/inspector/mesh_workloads_log.yaml": "d8e1c520e06659bf1f54914f29587886857cf481f0a3501ffbfde42b3412f3fb",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/logs/generated/inspector/programs_log.yaml": "d88fb60b45cc914ede322bd6bee6f568f47761a989e787eac6d60f2e60054958",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/logs/generated/inspector/startup.yaml": "f0c148a10031f5dea11de27580f4c56d8d08065bf83de579b26417219652d132",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/logs/generated/watcher/kernel_elf_paths.txt": "ee4ebfb3b0e0a73bd31da7b2bddf177f255f0b71b6841b3519ff571ba2dfe5c4",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/logs/generated/watcher/kernel_names.txt": "596079cc54d8f83f28485de82c7ab26f8af66a24255d44dbc464733a9881fe20",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/logs/generated/watcher/watcher.log": "44500903fdd23a33bc6c81833ef0c3828ba747529a8a48cbba0a49509e4d4b7b",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/native/gtest.xml": "8611203891f3b0f744e5ca9bc93d6583705cefeeb8365421e480164aa58d32da",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/observations-before.json": "86b327c66b97af2e1fd56a3e4d3893fe3e22831020a2c23905659e0971769dfc",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/result.json": "f639b521bec16814fee799c402cf9b44d87d7631cd01d1efdb5766af8cda5d4a",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/stderr.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba/stdout.bin": "aa4f36643ebcd7b3fe1a8688ec437c20018f2d2828f71d53b55adf4e50f5a20b",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/docker-after.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/docker-after.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/docker-before.json": "134dbe285e684ecea9a473281192f5b6aa31a6c3c01c1a2a9a1bc4917d02d626",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/docker-before.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/execution.json": "25d30113056ce2f236e573a36eb4d0e37891da2f858effb00830f9e3237f32e8",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/logs/generated/inspector/kernels.yaml": "61c3ae431e04d89deb7b4981cd68af87ad699a943b043a415b20708e0fb9a32c",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/logs/generated/inspector/mesh_devices_log.yaml": "ccf80b23f32d1d5cd47dbc2902913ddb225c4a4d172d7d721de68ddb4b100a41",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/logs/generated/inspector/mesh_workloads_log.yaml": "c627c9fb42e0f02aefeabd28d84c18e096f3992a0c2c1ab1d8064c792abd4b9e",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/logs/generated/inspector/programs_log.yaml": "4d3011a69f20d3261162af7b6874a501a1b9381bbcb364ce09b03fb23a609533",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/logs/generated/inspector/startup.yaml": "7cac3a20445bb53f059d08c355eb265dd1b5e7339714790a325a3ce1070b6502",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/logs/generated/watcher/kernel_elf_paths.txt": "ecbbe4749485c27c935056366271332aa454b0c5fd193178d17001d1b2b6c4f4",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/logs/generated/watcher/kernel_names.txt": "596079cc54d8f83f28485de82c7ab26f8af66a24255d44dbc464733a9881fe20",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/logs/generated/watcher/watcher.log": "9c13a91ad321b75909f2e049396519da60286f1e5dac26618983bdcd83eba438",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/native/gtest.xml": "aa168da04d45cdf5498057b394f3d42437d71268a2bd24967a838491fc24c7d9",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/observations-before.json": "b4397ae3494d6fcb0c90fcc9ada99757c649a0220b1027510a7b243c24846f98",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/result.json": "16959b0af1a57083aee126374b21061d141b7e7e9f223d1c81dfb683c4d98a9b",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/runtime-layout.json": "445d54ac6c12b51f3a0f0a2d36ec25fa6330a7e6998118691f32a53471a6a526",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/runtime/generated/fabric/asic_to_fabric_node_mapping_rank_1_of_1.yaml": "3e2c8be81e5279f2089abcbb7c889e38196831ef9377ca2a43f4d13e23bb4b43",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/runtime/generated/fabric/physical_chip_mesh_coordinate_mapping_1_of_1.yaml": "3ea7e68aed91474181e8cfb054bc7b97b80c8b7114713a4a44f649a8dd8e69aa",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/stderr.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runs/issue30-b-fabric1d-smoke-watcher-v2-c1f49b70/stdout.bin": "bf77e0d5bab80b21c4c834e11fd8e74616445639050d6b2151eb2985fe30c1a8"
+  },
+  "recording_process_timezone": "Asia/Tokyo",
+  "results": [
+    {
+      "actual": {
+        "reason": "accepted",
+        "verdict": "accepted_discovery"
+      },
+      "all_checks_passed": true,
+      "attempt": "issue30-a-discovery-watcher-v1-789de6a8faf8",
+      "eligible_for_admission": false,
+      "expected": {
+        "reason": "accepted",
+        "verdict": "accepted_discovery"
+      },
+      "matches": true,
+      "unavailable_checks": [],
+      "validation_complete": true
+    },
+    {
+      "actual": {
+        "reason": "execution",
+        "verdict": "rejected"
+      },
+      "all_checks_passed": false,
+      "attempt": "issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba",
+      "eligible_for_admission": false,
+      "expected": {
+        "reason": "execution",
+        "verdict": "rejected"
+      },
+      "matches": true,
+      "unavailable_checks": [],
+      "validation_complete": true
+    },
+    {
+      "actual": {
+        "reason": "accepted",
+        "verdict": "accepted_discovery"
+      },
+      "all_checks_passed": false,
+      "attempt": "issue30-a-discovery-watcher-v2-c1f49b70",
+      "eligible_for_admission": false,
+      "expected": {
+        "reason": "accepted",
+        "verdict": "accepted_discovery"
+      },
+      "matches": true,
+      "unavailable_checks": [
+        "Original twenty telemetry snapshots were lost with private temporary storage on reboot after the November 27 archive omitted that storage. Raw binding, raw value/clock ordering and raw launch freshness cannot be replayed; public derivatives are not substituted."
+      ],
+      "validation_complete": false
+    },
+    {
+      "actual": {
+        "reason": "accepted",
+        "verdict": "accepted_transfer"
+      },
+      "all_checks_passed": false,
+      "attempt": "issue30-b-fabric1d-smoke-watcher-v2-c1f49b70",
+      "eligible_for_admission": false,
+      "expected": {
+        "reason": "accepted",
+        "verdict": "accepted_transfer"
+      },
+      "matches": true,
+      "unavailable_checks": [
+        "Original twenty telemetry snapshots were lost with private temporary storage on reboot after the November 27 archive omitted that storage. Raw binding, raw value/clock ordering and raw launch freshness cannot be replayed; public derivatives are not substituted."
+      ],
+      "validation_complete": false
+    }
+  ],
+  "schema": "issue30-offline-audit-v2",
+  "scope": "Read-only audit only, not admission; renewed raw-dependent DRAM checks unavailable, not passed",
+  "unavailable_dram": "Original twenty telemetry snapshots were lost with private temporary storage on reboot after the November 27 archive omitted that storage. Raw binding, raw value/clock ordering and raw launch freshness cannot be replayed; public derivatives are not substituted.",
+  "unavailable_negatives": [
+    "Raw role-swap unavailable; launch freshness uses synthetic fixtures"
+  ],
+  "validation_complete": false
+}

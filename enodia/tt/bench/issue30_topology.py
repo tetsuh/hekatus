@@ -1,9 +1,10 @@
 """Pure, precommitted two-hypothesis P150 observation classification; no device IO."""
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
+
+from enodia.tt.bench import issue30_formats as formats
 
 POLICY_FILE = "docs/measurements/issue30-a-topology.json"
 CHANNEL_PORT = {11: 1, 9: 1, 8: 2, 10: 2, 7: 3, 5: 3, 4: 4, 6: 4}
@@ -11,15 +12,22 @@ DOWN = "DOWN/unconnected"
 
 
 def policy():
-    return json.loads((Path(__file__).resolve().parents[3] / POLICY_FILE).read_bytes())
+    return formats.load((Path(__file__).resolve().parents[3] / POLICY_FILE).read_bytes())
 
 
 def validate_input(env):
-    if env.get("topology") != policy() or env.get("links") != [] or env.get("uncabled") != []:
+    if (not formats.equal(env.get("topology"), policy())
+            or not formats.equal(env.get("links"), []) or not formats.equal(env.get("uncabled"), [])):
         raise ValueError("topology_policy")
 
 
 def _check_record(record):
+    if type(record) is not dict:
+        raise ValueError('invalid_observation')
+    state = record.get('state')
+    peer = ('peer_unique_id',) if 'peer_unique_id' in record else ('peer',)
+    extra = (*peer, 'peer_core', 'retrain_count') if state == 'UP' else ()
+    formats.fields(record, ('chip', 'channel', 'core', 'state', *extra), reason='invalid_observation')
     if (type(record["chip"]) is not int or type(record["channel"]) is not int
             or not isinstance(record["core"], str) or record["state"] not in ("UP", DOWN)):
         raise ValueError("invalid_observation")
@@ -32,7 +40,8 @@ def _check_record(record):
 
 
 def _check_peer(record):
-    if not isinstance(record.get("peer_core"), str):
+    if (not isinstance(record.get("peer_core"), str)
+            or not re.fullmatch(r'[0-9]{1,3}-[0-9]{1,3}', record['peer_core'])):
         raise TypeError("invalid_observation")
     if "peer_unique_id" in record:
         uid = record["peer_unique_id"]
@@ -116,7 +125,8 @@ def check_warnings(records, warnings):
 
 
 def require_accepted_discovery(discovery):
+    formats.verdict(discovery)
     decision = classify(discovery.get("observed_qsfp"))
     if (discovery.get("schema") != "issue30-verdict-v3" or decision["outcome"] != "accepted"
-            or discovery.get("topology") != decision):
+            or not formats.equal(discovery.get("topology"), decision)):
         raise ValueError("discovery_binding")

@@ -15,6 +15,21 @@ def no_real_docker_ps(monkeypatch, tmp_path):
     monkeypatch.setattr(m, "_docker_ps", lambda path, timeout: path.write_bytes(b""))
     monkeypatch.setattr(m, "WORK", tmp_path)
     monkeypatch.setattr(m, "ASSETS", tmp_path)
+    mock_admission_identity(monkeypatch)
+
+
+def mock_admission_identity(monkeypatch):
+    monkeypatch.setattr(m.os, 'getuid', lambda: 1000)
+    monkeypatch.setattr(m.os, 'getgid', lambda: 1000)
+    original = m.Path.resolve
+    def resolve(path, *args, **kwargs):
+        if str(path).startswith('/sys/class/tenstorrent/'):
+            index = int(path.parent.name.split('!')[1])
+            return m.Path('/sys/devices') / m.CARDS[index][1]
+        if str(path).startswith('/sys/bus/pci/devices/'):
+            return m.Path('/sys/devices') / path.name
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(m.Path, 'resolve', resolve)
 
 
 def test_cli_defaults_to_the_receipted_assets(tmp_path, monkeypatch, capsys):
@@ -30,7 +45,7 @@ def test_cli_defaults_to_the_receipted_assets(tmp_path, monkeypatch, capsys):
     assert m.main() == 0
     assert json.loads(capsys.readouterr().out)["Image"] == m.IMAGE
     assert observed == [m.ASSETS.as_posix()]
-    assert m.CURRENT_RECEIPT.name == "receipt-v15.json"
+    assert m.CURRENT_RECEIPT.name == "receipt-v16.json"
     assert m.CURRENT_RECEIPT.parent == m.ROOT / "docs/measurements/issue30-g0"
 
 
@@ -48,7 +63,7 @@ def test_capture_preserves_bytes_and_direct_exit(tmp_path, monkeypatch):
             return {"State": {"ExitCode": 7, "Running": False}}
         return {}
 
-    def popen(command, stdout, stderr):
+    def popen(command, stdout, stderr, **kwargs):
         stdout.write(b"\x00\xffafter-result\n"); stderr.write(b"\xfe\n")
         return Mock(wait=Mock(return_value=0))
 

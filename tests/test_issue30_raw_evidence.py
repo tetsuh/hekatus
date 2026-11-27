@@ -126,7 +126,7 @@ def test_cross_series_reuse_order_heartbeat_and_capture_window():
 def test_full_judge_fresh_A_and_B_evidence_chain(tmp_path, monkeypatch):
     from enodia.tt.bench import issue30 as m
     from tests.test_issue30 import xml
-    from tests.test_issue30_owner import smoke_stdout
+    from tests.test_issue30_owner import captured_environment, smoke_stdout
     from tests.test_issue30_topology import records, report
 
     monkeypatch.setattr(m, 'WORK', tmp_path)
@@ -160,11 +160,13 @@ def test_full_judge_fresh_A_and_B_evidence_chain(tmp_path, monkeypatch):
         if phase == 'B':
             watcher = output / 'logs/generated/watcher/watcher.log'
             watcher.parent.mkdir(parents=True)
-            watcher.write_bytes(b'Dump #1 at synthetic time\nsynthetic healthy waypoint\n')
+            watcher.write_bytes(b'Dump #1 at 0.100s\nDevice 0 synthetic waypoint\nDump #1 completed at 0.200s\n')
             review |= {'watcher_clean': True, 'watcher_sha256': m.digest(watcher.read_bytes())}
             m.publish(inputs / 'discovery.json', a_result)
         execution = m.GOOD_EXECUTION | {'schema': 'issue30-execution-v1', 'attempt': identity,
             'device_free': False, 'image': m.IMAGE, 'binary_sha256': receipt['binaries'][m.BINARIES[phase]],
+            'argv': m.request(phase, identity, output, output, uid=1000, gid=1000)['Cmd'],
+            'environment': captured_environment(),
             'artifacts': m._captured_files(output)}
         m.publish(output / 'execution.json', execution)
         for role in ('before', 'after'):
@@ -180,7 +182,14 @@ def test_full_judge_fresh_A_and_B_evidence_chain(tmp_path, monkeypatch):
     monkeypatch.setattr(m, '_approval', lambda *args: None)
     monkeypatch.setattr(m, '_git', lambda *args: 'synthetic-head')
     assert m._bound_discovery(inputs) == a_result
-    aout, _ = m._slots(unit()['A'], True)
+    aout, ain = m._slots(unit()['A'], True)
+    raw_path = ain / 'telemetry/before-A/snapshot1.stdout'
+    saved = raw_path.read_bytes()
+    raw_path.unlink()
+    with pytest.raises(ValueError, match='missing, redirected or oversized evidence'):
+        m._judgment('A', unit()['A'], aout, ain)
+    raw_path.write_bytes(saved)
+    assert m._bound_discovery(inputs) == a_result
     (aout / 'stdout.bin').write_bytes(b'changed')
     with pytest.raises(ValueError, match='capture_artifact'):
         m._bound_discovery(inputs)
