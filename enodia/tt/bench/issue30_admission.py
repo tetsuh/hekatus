@@ -110,7 +110,7 @@ def observe_firmware(raw):
     prefix = "Established ETH FW version from first discovered ETH core: "
     for line in lines:
         if prefix in line:
-            token = re.sub(r' \([A-Za-z0-9_./-]+:[0-9]+\)$', '', line.partition(prefix)[2])
+            token = re.sub(r' \([A-Za-z0-9_./-]+:\d+\)$', '', line.partition(prefix)[2], flags=re.ASCII)
             found.append({"scope": "first_core_only", "version": token, "line": line})
     return {"reported_versions": found, "per_core_versions": [],
             "erisc_health": "unknown", "eth_heartbeat_health": "unknown",

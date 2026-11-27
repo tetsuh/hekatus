@@ -161,9 +161,13 @@ def test_capture_metadata_is_closed_and_phase_bound(change, reason):
         value['create_status'] = 'unknown'
     else:
         value['artifacts'][0]['bytes'] = False
-    with pytest.raises(ValueError, match=reason):
+    if change == 'argv':
         f.execution(value)
-        m._captured_command('B', value)
+        with pytest.raises(ValueError, match=reason):
+            m._captured_command('B', value)
+    else:
+        with pytest.raises(ValueError, match=reason):
+            f.execution(value)
 
 
 def test_legacy_capture_enclosure_cannot_hide_a_stale_launch():

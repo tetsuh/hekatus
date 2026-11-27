@@ -29,7 +29,8 @@ def test_lost_create_response_is_explicitly_unknown_not_clean(tmp_path, monkeypa
     monkeypatch.setattr(m, '_run_client', lambda name, cid, out, start, state: state.update(
         started=True, terminated=True, exit=0, client_exit=0))
     positive = m.capture('A', 'positive', tmp_path, tmp_path / 'positive')
-    assert positive['create_status'] == 'identified' and positive['containers_clean']
+    assert positive['create_status'] == 'identified'
+    assert positive['containers_clean']
     lost[0] = True
     calls.clear()
     state = m.capture('A', 'synthetic', tmp_path, tmp_path / 'attempt')
@@ -56,12 +57,13 @@ def test_start_and_ps_pin_the_api_socket_and_start_id(tmp_path, monkeypatch):
     assert m.DOCKER_CLI == ('docker', '--host', 'unix://' + m.DOCKER_SOCKET)
 
 
-def test_sysfs_resolution_binds_node_to_approved_pci(monkeypatch):
+@pytest.mark.parametrize('first_node', ['0', '000000'])
+def test_sysfs_resolution_binds_node_to_approved_pci(monkeypatch, first_node):
     from tests.test_issue30 import environment
     env = environment()
-    for i, card in enumerate(env['cards']):
-        card['node'] = f'/dev/tenstorrent/{i}'
-    actual = {'0': '0000:06:00.0', '1': '0000:09:00.0'}
+    for card, component in zip(env['cards'], (first_node, '1'), strict=True):
+        card['node'] = f'/dev/tenstorrent/{component}'
+    actual = {first_node: '0000:06:00.0', '1': '0000:09:00.0'}
     original = m.Path.resolve
     def resolve(path, *args, **kwargs):
         if str(path).startswith('/sys/class/tenstorrent/'):
@@ -71,7 +73,7 @@ def test_sysfs_resolution_binds_node_to_approved_pci(monkeypatch):
             return m.Path('/sys/devices/pci0000:00') / path.name
         return original(path, *args, **kwargs)
     monkeypatch.setattr(m.Path, 'resolve', resolve)
-    assert m._approved_nodes(env) == ['/dev/tenstorrent/0', '/dev/tenstorrent/1']
+    assert m._approved_nodes(env) == [f'/dev/tenstorrent/{first_node}', '/dev/tenstorrent/1']
     actual['1'] = '0000:ff:00.0'
     with pytest.raises(ValueError, match='device_pci_binding'):
         m._approved_nodes(env)
@@ -155,7 +157,8 @@ def test_dram_is_rechecked_after_prelaunch_work_before_create(tmp_path, monkeypa
         started=True, terminated=True, exit=0, client_exit=0))
     identity = before['attempt']
     positive = m.capture('A', identity, tmp_path, tmp_path / 'positive', observations=before)
-    assert positive['create_status'] == 'identified' and not errors
+    assert positive['create_status'] == 'identified'
+    assert not errors
     delay[0] = True
     calls.clear()
     negative = m.capture('A', identity, tmp_path, tmp_path / 'negative', observations=before)

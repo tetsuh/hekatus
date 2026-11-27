@@ -11,7 +11,7 @@ from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
 SHA = r'[a-f0-9]{64}'
-STAMP = r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}'
+STAMP = r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}'
 LOGGER = re.compile(r'(?P<date>[0-9-]{10} [0-9:.]{12}) \| '
                     r'(?P<level>info     |warning  |debug    |trace    |error    |critical )'
                     r'\| +(?P<component>[A-Za-z0-9_:]+) +\| (?P<body>[^\r\n]+)')
@@ -118,7 +118,7 @@ def _card_fields(card):
     if 'unobservable' in card:
         fields(card['unobservable'], (), ('erisc', 'eth_heartbeat_healthy'), 'unobservable_reason')
     if 'node' in card and (type(card['node']) is not str
-            or not re.fullmatch(r'/dev/tenstorrent/[0-9]{1,6}', card['node'])):
+            or not re.fullmatch(r'/dev/tenstorrent/\d{1,6}', card['node'], re.ASCII)):
         raise ValueError('environment')
 
 
@@ -128,7 +128,7 @@ def legacy_links(env):
     for link in env['links']:
         fields(link, ('chip', 'channel', 'core', 'peer', 'peer_core'), reason='environment')
         if (any(type(link[k]) is not int or link[k] < 0 for k in ('chip', 'channel', 'peer'))
-                or any(type(link[k]) is not str or not re.fullmatch(r'[0-9]{1,3}-[0-9]{1,3}', link[k])
+                or any(type(link[k]) is not str or not re.fullmatch(r'\d{1,3}-\d{1,3}', link[k], re.ASCII)
                        for k in ('core', 'peer_core'))):
             raise ValueError('environment')
     for pair in env['uncabled']:
@@ -265,7 +265,7 @@ def _xml_values(node):
             raise ValueError('test_result')
     if 'time' in node.attrib:
         value = node.get('time')
-        if not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', value) or not 0 <= float(value) <= 40:
+        if not re.fullmatch(r'\d+(?:\.\d+)?', value, re.ASCII) or not 0 <= float(value) <= 40:
             raise ValueError('test_result')
     if 'timestamp' in node.attrib:
         stamp(node.get('timestamp'), reason='test_result')
@@ -296,7 +296,7 @@ def xml(raw, selector):
     if (root.get('name', 'AllTests') != 'AllTests' or root[0].get('name') != suite
             or case.get('name') != name or case.get('classname') != suite
             or case.get('status') != 'run' or case.get('result') != 'completed'
-            or 'line' in case.attrib and not re.fullmatch(r'[0-9]+', case.get('line'))):
+            or 'line' in case.attrib and not re.fullmatch(r'\d+', case.get('line'), re.ASCII)):
         raise ValueError('test_result')
     for node in root.iter():
         _xml_values(node)

@@ -22,6 +22,7 @@ CASES = (("A", "issue30-a-discovery-watcher-v1-789de6a8faf8"),
          ("B", "issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba"),
          ("A", "issue30-a-discovery-watcher-v2-c1f49b70"),
          ("B", "issue30-b-fabric1d-smoke-watcher-v2-c1f49b70"))
+DISCOVERY_FILE = 'discovery.json'
 CONCLUSIONS = ({'verdict': 'accepted_discovery', 'reason': 'accepted'},
                {'verdict': 'rejected', 'reason': 'execution'},
                {'verdict': 'accepted_discovery', 'reason': 'accepted'},
@@ -73,7 +74,7 @@ def _audit_capture(phase, identity):
     output, inputs = m._slots(identity, True)
     execution, review = m._review_capture(phase, identity, output, inputs)
     before, after = m._observations(inputs, review)
-    discovery = m._load(inputs / 'discovery.json', inputs) if phase == 'B' else None
+    discovery = m._load(inputs / DISCOVERY_FILE, inputs) if phase == 'B' else None
     if phase == 'B':
         aid = before['owner_unit']['A']
         aout, _ = m._slots(aid, True)
@@ -89,7 +90,7 @@ def _judge(phase, identity):
     before = m._load(inputs / 'before.json', inputs)
     if 'owner_unit' in before and not (inputs / 'telemetry').exists():
         return _audit_capture(phase, identity)
-    discovery = m._load(inputs / 'discovery.json', inputs) if phase == 'B' else None
+    discovery = m._load(inputs / DISCOVERY_FILE, inputs) if phase == 'B' else None
     if phase == 'B' and 'owner_unit' not in before:
         expected = m._load(m.ROOT / m.OWNER_ACCEPTANCE, m.ROOT)
         if not formats.equal(discovery, expected):
@@ -123,7 +124,7 @@ def _positives(expected):
 def _negative(label, phase, identity, expected):
     staged, inputs = m._slots(identity, True)
     telemetry = label == 'wrong_telemetry_role'
-    path = inputs / 'telemetry/before-B/snapshot1.stdout' if telemetry else staged / 'stdout.bin'
+    path = inputs / 'telemetry/before-B/snapshot1.stdout' if telemetry else staged / m.STDOUT_FILE
     old = path.read_bytes()
     changed = ((inputs / 'telemetry/after-B/snapshot1.stdout').read_bytes() if telemetry
                else bytes([old[0] ^ 1]) + old[1:])
@@ -159,7 +160,7 @@ def _coherent_capture(path, output, inputs):
 def _identity_negative(label, expected):
     phase, identity = CASES[3]
     output, inputs = m._slots(identity, True)
-    path = output / 'stdout.bin' if label == 'warning_bus' else inputs / 'discovery.json'
+    path = output / m.STDOUT_FILE if label == 'warning_bus' else inputs / DISCOVERY_FILE
     saved = {path: path.read_bytes()}
     if label == 'warning_bus':
         changed, count = re.subn(rb'bus_id=0x[0-9a-fA-F]+', b'bus_id=0xff', saved[path], count=1)
@@ -196,7 +197,7 @@ def _finding_negative(label, expected):
     phase, identity = CASES[2] if label == 'down_diagnostic' else CASES[3]
     output, inputs = m._slots(identity, True)
     names = {'watcher_completion': 'logs/generated/watcher/watcher.log',
-             'native_xml_exactness': 'native/gtest.xml', 'down_diagnostic': 'stdout.bin',
+             'native_xml_exactness': 'native/gtest.xml', 'down_diagnostic': m.STDOUT_FILE,
              'canonical_json_types': 'observations-before.json'}
     path = output / names[label]
     saved = {path: path.read_bytes()}
@@ -209,7 +210,7 @@ def _finding_negative(label, expected):
     elif label == 'native_xml_exactness':
         changed = raw.replace(b' />', b'><x:failure xmlns:x="urn:counterexample"/></testcase>', 1)
     elif label == 'down_diagnostic':
-        changed, count = re.subn(rb'(\| warning  \| +)Test( +\| Chip:)', rb'\g<1>UMD\2', raw, count=1)
+        changed, count = re.subn(rb'(\| warning {2}\| +)Test( +\| Chip:)', rb'\g<1>UMD\2', raw, count=1)
         if count != 1:
             raise ValueError('missing positive DOWN evidence')
     else:

@@ -41,7 +41,7 @@ def _check_record(record):
 
 def _check_peer(record):
     if (not isinstance(record.get("peer_core"), str)
-            or not re.fullmatch(r'[0-9]{1,3}-[0-9]{1,3}', record['peer_core'])):
+            or not re.fullmatch(r'\d{1,3}-\d{1,3}', record['peer_core'], re.ASCII)):
         raise TypeError("invalid_observation")
     if "peer_unique_id" in record:
         uid = record["peer_unique_id"]

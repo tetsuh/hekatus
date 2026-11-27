@@ -97,8 +97,8 @@ intentionally changed lifecycle is AST-identical.
   an unrelated initial lifecycle test fixture lacked a timed_out key and was
   corrected, not counted as a demonstrated production defect.
 - Focused GREEN: `uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py
-  tests/test_issue201_sweep.py tests/test_issue196.py` —321 passed.
-- The same selection passed321 with UID0 using `unshare --user --map-root-user`;
+  tests/test_issue201_sweep.py tests/test_issue196.py` —322 passed after analyzer corrections.
+- The same selection passed322 with UID0 using `unshare --user --map-root-user`;
   this is a user-namespace test, not host-root hardware authority.
 - Scoped original-data audit: four conclusion matches, eight coherent copy
   refusals,78 selected original files unchanged. DRAM freshness is shown only
@@ -107,6 +107,19 @@ intentionally changed lifecycle is AST-identical.
   [evidence-replay-v16.json](issue30-g0/evidence-replay-v16.json).
 - Full suite, lint and exact-head CI/public Sonar outcomes are recorded in the
   carrying PR/report. No acceptance/muting or formal review is performed here.
+
+## Analyzer corrections before merge
+
+The operator permits regeneration of this PR's new, unmerged v16 artifacts;
+PR195-and-earlier evidence remains immutable. Analyzer findings are corrected,
+not accepted/muted/excluded: regex decimal classes retain `re.ASCII`; sysfs
+components are built from bounded numeric node data and the fixed approved PCI
+inventory, preserving node spelling (including padding); warning comparison is
+factored without changing refusal conditions; test assertions and exception
+boundaries are explicit. AST fingerprints use function/SHA256 records rather
+than a function-name-to-hash map, avoiding a credential false positive without
+changing digest values. The same controls and scoped original-data audit are
+rerun. The60s proposal remains pending owner approval.
 
 ## Operator decision: unavailable raw telemetry
 

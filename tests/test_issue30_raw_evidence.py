@@ -186,8 +186,9 @@ def test_full_judge_fresh_A_and_B_evidence_chain(tmp_path, monkeypatch):
     raw_path = ain / 'telemetry/before-A/snapshot1.stdout'
     saved = raw_path.read_bytes()
     raw_path.unlink()
+    a_identity = unit()['A']
     with pytest.raises(ValueError, match='missing, redirected or oversized evidence'):
-        m._judgment('A', unit()['A'], aout, ain)
+        m._judgment('A', a_identity, aout, ain)
     raw_path.write_bytes(saved)
     assert m._bound_discovery(inputs) == a_result
     (aout / 'stdout.bin').write_bytes(b'changed')

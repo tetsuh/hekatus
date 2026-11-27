@@ -15,7 +15,7 @@
   "compared_source_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
   "cpu_tests": {
     "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue196.py",
-    "outcome": "321 passed in 0.75s"
+    "outcome": "322 passed in 1.21s"
   },
   "dram_freshness_proposal": {
     "basis": "see docs/measurements/issue30-evidence-replay.md; exact old create/start intervals not retained",
@@ -30,7 +30,7 @@
   },
   "full_tests": {
     "command": "uv run --with pytest-xdist pytest -n 4 -q",
-    "outcome": "7174 passed, 1057 skipped, 8 subtests passed in 231.11s (0:03:51)"
+    "outcome": "7175 passed, 1057 skipped, 8 subtests passed in 230.99s (0:03:50)"
   },
   "intentional_changes": [
     "Fixed CLI/API endpoint and ID start; explicit unknown create failure",
@@ -55,7 +55,7 @@
   },
   "root_tests": {
     "method": "UID0 in unprivileged user namespace, same focused selection; production UID0 refusal retained",
-    "outcome": "321 passed in 0.74s"
+    "outcome": "322 passed in 0.74s"
   },
   "run_client_proof": {
     "method": "Restore only the former start argv/environment and unused parameter name; watchdog/wait/inspect AST otherwise equal",
@@ -76,38 +76,128 @@
     "TESTS": "7541ae31cae8dc087364b5d34e009830d615822dc07d37a2fa33f45c501cf362",
     "UMD_COMMIT": "595be35f16843be2f9a9876a937e36aef75cfa26f16b36f26758d5de4393be8e"
   },
-  "unchanged_functions": {
-    "_authorize": "42457dc2138829757a373f4c7df5cfb586bd02c250cc825ddc37e398b0faa755",
-    "_binary_binding": "9200b7056444229eca943c2813ce7b880522254cf202cafdae4fa733921e6915",
-    "_bundle_report_name": "f63835ec798f8ded8b3f52debef0161548a5564a08ddb1cef6cb4cc13531c892",
-    "_captured_files": "568dfc34175f10e9ae319c60abdd88925287f0908a3fd3ea0e8527aec707f43b",
-    "_cleanup": "b942a31a7ebb71a958413eeebdbe9cf2988e94ae37252141f00396bce71f36a2",
-    "_diagnostic_lines": "17e1177e98b7ebb6571b84ac9a8e190c0f9c50db0ba68c35b82b7ed1c1e4463a",
-    "_fresh_native": "fc12a104d70ac9bd42d23e7f1e2801eed3cc4b7629063820805a5f265a7a0cab",
-    "_git": "36a0908b806d76fc1b24398d4f27632511eccf9d2d4c62ff9efb492c9a43ddff",
-    "_health": "b046f7a518c85ee6ab7922dafdc9dd15024e916678f1145d3d8d9656c6af1510",
-    "_identity": "99dea85809f314527ab99eebe5b71d0691b3770628892585237e72fef74f2447",
-    "_judge": "7b9ec2d2c26b3ba245ca1ab92767765cfe134e79dbc3bef627fdb126e20c8437",
-    "_links": "54e2610256a4729c05738ae7542b714d0826763f3cd0ec9cfa715587db54ac80",
-    "_marker_position": "4a97d37822a95d03c280971f154e42e7a5c89edb664e25cdf444c569b8493e63",
-    "_native": "6619869211dad0640db9f0ddac655ef467ed293bb870e493b0f169086e132748",
-    "_observed_link": "29fedc6f162232ff097dff078b83f06829256ce64ee6030f61e06b44c9162178",
-    "_owned": "a3cf0936d27103471bd78cb56ef78f48fa05930551138013a0618241c8051de1",
-    "_post": "cba3c96fe43d2482e98a72a38cc20b1c5416c6e74a6f30367f74575527d350e0",
-    "_raw_series": "6d9f02cfcd9bb32cff7facc147a5cde028ef76ba58296f9721e0b253505952cd",
-    "_read": "44fe2b99b12ee1f36a502c7a0a83a8bdc6eb1db5ad18ae277047e013c04b9532",
-    "_renewed_gate": "6a4ede513025476d3a691e7e80e7d751436c6915b6505a0e87b07c4d39c15bd2",
-    "_renewed_unit": "39bcd19be4346924bbb85538fb88712bca556451b281e47e7c882901db77ef16",
-    "_slots": "195c2568a47f1b82e91b4747108565207949feaf781502a60809af372b7c9603",
-    "_verified": "a8c301e0fa50364ac81985c6147c3f37c8364bf301f26c21729c2a0e88107286",
-    "approval_record": "458176e1d30f6c676fc05e7e11a9d166af2b746ba3e23a4c36ddabd80a84fa75",
-    "artifact": "8944a96644d3dad9f18c9dbbae6b48e9d1f3909b842a56d29f0ddbccc63e2cc7",
-    "baseline_digest": "9c721abf40b46df3af9ce76112fbf99c8522a3cece1066a3b8804ec72c2a8d51",
-    "digest": "d93bb68f3ae33dff4a90ec97e22b147e1dd977200679a3099e58e292ba2b26b4",
-    "main": "52ccee58879b10d062476e3ba768d190c8d1c3c32f637f18a3e41a71312446c8",
-    "program_sources": "e91a5cbf8261b29372daf8b6c876610e9b0f983a5d2be1414389fc0efeb0794f",
-    "remaining": "43a1efef0bb909389fda97f7ecd97e7e79ee2c08e18a511f7c32bc604e5bdd27"
-  },
+  "unchanged_functions": [
+    {
+      "function": "_authorize",
+      "sha256": "42457dc2138829757a373f4c7df5cfb586bd02c250cc825ddc37e398b0faa755"
+    },
+    {
+      "function": "_binary_binding",
+      "sha256": "9200b7056444229eca943c2813ce7b880522254cf202cafdae4fa733921e6915"
+    },
+    {
+      "function": "_bundle_report_name",
+      "sha256": "f63835ec798f8ded8b3f52debef0161548a5564a08ddb1cef6cb4cc13531c892"
+    },
+    {
+      "function": "_captured_files",
+      "sha256": "568dfc34175f10e9ae319c60abdd88925287f0908a3fd3ea0e8527aec707f43b"
+    },
+    {
+      "function": "_cleanup",
+      "sha256": "b942a31a7ebb71a958413eeebdbe9cf2988e94ae37252141f00396bce71f36a2"
+    },
+    {
+      "function": "_diagnostic_lines",
+      "sha256": "17e1177e98b7ebb6571b84ac9a8e190c0f9c50db0ba68c35b82b7ed1c1e4463a"
+    },
+    {
+      "function": "_fresh_native",
+      "sha256": "fc12a104d70ac9bd42d23e7f1e2801eed3cc4b7629063820805a5f265a7a0cab"
+    },
+    {
+      "function": "_git",
+      "sha256": "36a0908b806d76fc1b24398d4f27632511eccf9d2d4c62ff9efb492c9a43ddff"
+    },
+    {
+      "function": "_health",
+      "sha256": "b046f7a518c85ee6ab7922dafdc9dd15024e916678f1145d3d8d9656c6af1510"
+    },
+    {
+      "function": "_identity",
+      "sha256": "99dea85809f314527ab99eebe5b71d0691b3770628892585237e72fef74f2447"
+    },
+    {
+      "function": "_judge",
+      "sha256": "7b9ec2d2c26b3ba245ca1ab92767765cfe134e79dbc3bef627fdb126e20c8437"
+    },
+    {
+      "function": "_links",
+      "sha256": "54e2610256a4729c05738ae7542b714d0826763f3cd0ec9cfa715587db54ac80"
+    },
+    {
+      "function": "_marker_position",
+      "sha256": "4a97d37822a95d03c280971f154e42e7a5c89edb664e25cdf444c569b8493e63"
+    },
+    {
+      "function": "_native",
+      "sha256": "6619869211dad0640db9f0ddac655ef467ed293bb870e493b0f169086e132748"
+    },
+    {
+      "function": "_observed_link",
+      "sha256": "29fedc6f162232ff097dff078b83f06829256ce64ee6030f61e06b44c9162178"
+    },
+    {
+      "function": "_owned",
+      "sha256": "a3cf0936d27103471bd78cb56ef78f48fa05930551138013a0618241c8051de1"
+    },
+    {
+      "function": "_post",
+      "sha256": "cba3c96fe43d2482e98a72a38cc20b1c5416c6e74a6f30367f74575527d350e0"
+    },
+    {
+      "function": "_raw_series",
+      "sha256": "6d9f02cfcd9bb32cff7facc147a5cde028ef76ba58296f9721e0b253505952cd"
+    },
+    {
+      "function": "_read",
+      "sha256": "44fe2b99b12ee1f36a502c7a0a83a8bdc6eb1db5ad18ae277047e013c04b9532"
+    },
+    {
+      "function": "_renewed_gate",
+      "sha256": "6a4ede513025476d3a691e7e80e7d751436c6915b6505a0e87b07c4d39c15bd2"
+    },
+    {
+      "function": "_renewed_unit",
+      "sha256": "39bcd19be4346924bbb85538fb88712bca556451b281e47e7c882901db77ef16"
+    },
+    {
+      "function": "_slots",
+      "sha256": "195c2568a47f1b82e91b4747108565207949feaf781502a60809af372b7c9603"
+    },
+    {
+      "function": "_verified",
+      "sha256": "a8c301e0fa50364ac81985c6147c3f37c8364bf301f26c21729c2a0e88107286"
+    },
+    {
+      "function": "approval_record",
+      "sha256": "458176e1d30f6c676fc05e7e11a9d166af2b746ba3e23a4c36ddabd80a84fa75"
+    },
+    {
+      "function": "artifact",
+      "sha256": "8944a96644d3dad9f18c9dbbae6b48e9d1f3909b842a56d29f0ddbccc63e2cc7"
+    },
+    {
+      "function": "baseline_digest",
+      "sha256": "9c721abf40b46df3af9ce76112fbf99c8522a3cece1066a3b8804ec72c2a8d51"
+    },
+    {
+      "function": "digest",
+      "sha256": "d93bb68f3ae33dff4a90ec97e22b147e1dd977200679a3099e58e292ba2b26b4"
+    },
+    {
+      "function": "main",
+      "sha256": "52ccee58879b10d062476e3ba768d190c8d1c3c32f637f18a3e41a71312446c8"
+    },
+    {
+      "function": "program_sources",
+      "sha256": "e91a5cbf8261b29372daf8b6c876610e9b0f983a5d2be1414389fc0efeb0794f"
+    },
+    {
+      "function": "remaining",
+      "sha256": "43a1efef0bb909389fda97f7ecd97e7e79ee2c08e18a511f7c32bc604e5bdd27"
+    }
+  ],
   "unchanged_native_sources": {
     "docs/measurements/issue196/compile-proof-v3.json": "8a7c3728657f5f94262db45e9a1fa7cec33bb2a71773cc45d65b23b5ffd9c772",
     "enodia/tt/bench/issue196_compile.py": "ce6e5d1d51c66d5a03079aa2461f028a225197eef1850e762a65c82c53f5d509",

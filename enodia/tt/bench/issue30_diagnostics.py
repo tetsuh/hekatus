@@ -69,12 +69,12 @@ def baseline_at(lines, index, cards):
 
 def _watcher_event(line):
     if line.startswith('At '):
-        match = re.fullmatch(r'At ([0-9]+\.[0-9]{3})s (?:starting|(?:attach|detach) device [01])', line)
+        match = re.fullmatch(r'At (\d+\.\d{3})s (?:starting|(?:attach|detach) device [01])', line, re.ASCII)
         if match is None:
             raise ValueError('watcher_time')
         return 'event', None, float(match[1])
     if line.startswith('Dump #'):
-        match = re.fullmatch(r'Dump #([0-9]+)( completed)? at ([0-9]+\.[0-9]{3})s', line)
+        match = re.fullmatch(r'Dump #(\d+)( completed)? at (\d+\.\d{3})s', line, re.ASCII)
         if match is None:
             raise ValueError('watcher_dump')
         return 'end' if match[2] else 'start', int(match[1]), float(match[3])
@@ -117,7 +117,7 @@ def watcher_observation(raw, elapsed=40):
     try:
         text = raw.decode('utf-8')
         count = _watcher_dumps(text, min(40, elapsed))
-    except (UnicodeError, ValueError):
+    except ValueError:
         return refused
     result, _ = checks.watcher_check(None, raw, modified_after_start=True)
     extra = re.search(rb"\b(?:fatal|critical|hung|timeout|mismatch)\b", raw, re.IGNORECASE)

@@ -269,14 +269,19 @@ def board_request(phase: str, identity: str, assets: Path, output: Path, *,
 
 def _approved_nodes(environment):
     nodes = [c.get("node", "") for c in environment["cards"]]
-    if (any(type(n) is not str or not re.fullmatch(r"/dev/tenstorrent/[0-9]{1,6}", n) for n in nodes)
+    if (any(type(n) is not str or not re.fullmatch(r"/dev/tenstorrent/\d{1,6}", n, re.ASCII) for n in nodes)
             or len(set(nodes)) != 2):
         raise ValueError("device_mapping")
-    for card in environment["cards"]:
-        # Resolve links only: never stat/open/read the device node or PCI registers.
-        name = "tenstorrent!" + Path(card["node"]).name
-        associated = Path("/sys/class/tenstorrent") / name / "device"
-        expected = Path("/sys/bus/pci/devices") / card["pci"]
+    for serial, pci in CARDS:
+        matches = [c for c in environment['cards'] if (c.get('serial'), c.get('pci')) == (serial, pci)]
+        if len(matches) != 1:
+            raise ValueError('device_pci_binding')
+        # Only numeric data crosses into the fixed sysfs class namespace. Keep
+        # display padding, so this construction preserves the admitted spelling.
+        component = matches[0]['node'].rsplit('/', 1)[1]
+        index, width = int(component), len(component)
+        associated = Path('/sys/class/tenstorrent') / f'tenstorrent!{index:0{width}d}' / 'device'
+        expected = Path('/sys/bus/pci/devices') / pci  # From CARDS, never file content.
         try:
             if associated.resolve(strict=True) != expected.resolve(strict=True):
                 raise ValueError("device_pci_binding")
@@ -359,7 +364,7 @@ def _xml(phase, raw):
 def _strip_source(text):
     body, sep, tail = text.rpartition(" (")
     filename, colon, line = tail.removesuffix(")").rpartition(":")
-    if sep and tail.endswith(")") and colon and re.fullmatch(r'[0-9]+', line) and len(filename) <= 256:
+    if sep and tail.endswith(")") and colon and re.fullmatch(r'\d+', line, re.ASCII) and len(filename) <= 256:
         return body
     return text
 
@@ -374,21 +379,21 @@ def _message(line):
 
 
 def _chip(text):
-    match = re.fullmatch(r'Chip: ([0-9]{1,10}) PCIe: ([0-9]{1,10}) Unique ID: ([0-9a-f]{1,16})', text)
+    match = re.fullmatch(r'Chip: (\d{1,10}) PCIe: (\d{1,10}) Unique ID: ([0-9a-f]{1,16})', text, re.ASCII)
     if match is None:
         raise ValueError('chip_identity')
     return int(match[1]), int(match[2]), match[3]
 
 
 def _link(text):
-    core = r'[0-9]{1,3}-[0-9]{1,3}'
-    match = re.fullmatch(r'eth channel ([0-9]{1,10}) core (' + core + r') link (.+)', text)
+    core = r'\d{1,3}-\d{1,3}'
+    match = re.fullmatch(r'eth channel (\d{1,10}) core (' + core + r') link (.+)', text, re.ASCII)
     if match is None:
         raise ValueError('peer_links')
     data = {'channel': int(match[1]), 'core': match[2], 'state': DOWN}
     if match[3] == DOWN + ' (QSFP)':
         return data
-    peer = re.fullmatch(r'UP \(QSFP\), connected to (Chip [0-9]{1,10}|Unique ID: [a-f0-9]{1,16}) core (' + core + ')', match[3])
+    peer = re.fullmatch(r'UP \(QSFP\), connected to (Chip \d{1,10}|Unique ID: [a-f0-9]{1,16}) core (' + core + ')', match[3], re.ASCII)
     if peer is None:
         raise ValueError('peer_links')
     key, value = ('peer', int(peer[1][5:])) if peer[1].startswith('Chip ') else ('peer_unique_id', peer[1][11:])
@@ -435,10 +440,7 @@ def _messages(env, raw, warnings=None, accepted=None, uids=None):
         _health_line(env, line, body)
         if level == "warning":
             warning = _warning(env, body, line)
-            if accepted is not None:
-                topology.check_warnings(accepted, [warning])
-                if uids is None or uids.get(warning['chip']) != warning['unique_id']:
-                    raise ValueError('diagnostic')
+            _accepted_warning(accepted, uids, warning)
             if warnings is not None:
                 warnings.append(warning)
         elif diagnostics.ALARM.search(line):
@@ -446,6 +448,14 @@ def _messages(env, raw, warnings=None, accepted=None, uids=None):
         else:
             messages.append(body)
     return messages
+
+
+def _accepted_warning(records, uids, warning):
+    if records is None:
+        return
+    topology.check_warnings(records, [warning])
+    if uids is None or uids.get(warning['chip']) != warning['unique_id']:
+        raise ValueError('diagnostic')
 
 
 def _health_line(env, line, body):
@@ -596,7 +606,7 @@ def _packet_observation(before, raw, stderr=b""):
                 or envelope['body'] != bodies[index] + ' (fabric_fixture.hpp:' + location + ')'):
             raise ValueError("packet_evidence")
     completed = [i for i, line in enumerate(lines) if re.fullmatch(
-        r"\[       OK \] " + re.escape(TESTS["B"]) + r" \([0-9]+ ms\)", line)]
+        r"\[       OK \] " + re.escape(TESTS["B"]) + r" \(\d+ ms\)", line, re.ASCII)]
     if (len(completed) != 1 or sum("[       OK ] " + TESTS["B"] in line for line in lines) != 1
             or sum("Running fabric api tests" in line for line in lines) != 1
             or sum("Fabric Reliability Mode:" in line for line in lines) != 1
@@ -958,7 +968,8 @@ def _captured_command(phase, execution):
                 '--gtest_filter=' + TESTS[phase], '--gtest_output=xml:/capture/native/gtest.xml']
     if not any(formats.equal(execution['argv'], command) for command in (runtime, original)):
         raise ValueError('execution_provenance')
-    root = dict(item.split('=', 1) for item in execution['environment'])['TT_METAL_RUNTIME_ROOT']
+    pairs = [item.split('=', 1) for item in execution['environment']]
+    root = {key: value for key, value in pairs}['TT_METAL_RUNTIME_ROOT']
     expected = '/capture/runtime' if execution['argv'] == runtime else '/opt/venv/lib/python3.12/site-packages/ttnn'
     if root != expected:
         raise ValueError('execution_provenance')
