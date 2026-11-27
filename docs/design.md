@@ -381,6 +381,17 @@ bring-up. Neither a generic FPGA MAC nor successful TT-to-TT traffic proves
 compatibility. No receive architecture or production backpressure contract
 is selected here; downstream still never makes enodia wait.
 
+**Host-only evidence hardening (Issues 200/201):** strict type/format/time checks
+and attempt-ID/daemon/node binding do not change the measured workload or native
+assets. The twenty renewed raw telemetry snapshots were omitted from the durable
+archive and lost with temporary storage on reboot; restored native artifacts
+support only an explicitly incomplete offline audit ([ADR-0022](adr/0022-issue30-incomplete-offline-audit.md)).
+Live raw binding remains mandatory. The proposed60s pre-launch age bound is
+pending owner approval; exact historical create/start times were not retained,
+so only conservative native/capture-derived bounds can be reported. Future
+fingerprint-bound raw inputs and capture/create clocks require durable retention.
+No receipt or audit supplies another hardware authorization.
+
 **B3 correction:** continuous arrival is not a sufficient condition to prevent
 routing/context-switch calls. Legacy's idle branch tests **local progress**, not
 line activity (threshold comparison is `counter++ > 4000000`). Fabric has

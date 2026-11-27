@@ -22,6 +22,27 @@ Refs #30; related #13 and #105 stage 3. Source authority and all T/U reference
 pins are in [the source study](issue30-source-study.md). This is not a runtime
 training success claim, latency measurement, or selection of the FPGA protocol.
 
+## Host-only corrections after completion (Issues 200/201)
+
+Current qualification is [G0 receipt v16](issue30-g0/receipt-v16.json). See the
+[format/type/time inventory](issue200-201-validation.md) and
+[incomplete replay procedure](issue30-evidence-replay.md). Restored original
+captures can be audited, but the renewed unit's twenty original raw telemetry
+snapshots were omitted from durable retention and lost on reboot. Their public
+metadata-removed derivatives do not satisfy raw binding. That limitation is
+reported explicitly, never treated as a passed live gate.
+
+A prospective **60-second maximum pre-launch DRAM age** is implemented for both
+phases at admission and immediately before create, **pending owner approval**.
+The replay document gives remaining timestamps, conservative bounds and why
+exact original container create/start times cannot be recovered. No old record,
+health baseline or authority is changed; another run still requires new owner
+scope and approval of that parameter. Preserve all future fingerprint-bound raw
+inputs and actual capture/create clocks in durable evidence, not only temporary
+task storage. Current container start is by returned ID on the same fixed
+API/CLI endpoint; unknown create completion fails closed without deleting
+unidentified containers. All historical procedures below remain historical.
+
 ## Invariants before procedures
 
 1. Use the digest-pinned runtime image and the exact source/submodule pins in

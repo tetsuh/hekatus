@@ -24,7 +24,12 @@ checkout, so source-root-relative tests/... includes failed after .cpp discovery
 |tt_metal, runtime, build, optional ttnn|links to immutable audited pinned image assets|
 |tests|link to unchanged readonly pinned source/tests|
 |generated/fabric|fresh owned writable output directory, never an image write|
-|runtime-layout.json|attempt-root provenance, not a hardware observation|
+
+The layout record is **ATTEMPT/runtime-layout.json**, alongside `execution.json`,
+not inside ATTEMPT/runtime. In the container this is `/capture/runtime-layout.json`;
+`issue30_runtime.prepare()` writes it before exec, and capture includes its bytes
+in the artifact manifest. It is host filesystem provenance, not a hardware
+observation.
 
 Set TT_METAL_RUNTIME_ROOT to this program-owned view and retain the normal
 TT_METAL_KERNEL_PATH source-file search. No source-root `-I` is individually
@@ -77,6 +82,28 @@ processor includes/architecture/stack flags and optimization are reconstructed
 from pinned source, not claimed to be independently captured full argv for every
 successful Bv1 compilation. Router opt is O3 (VC1 inactive), dispatch-S Os,
 compute O3, worker dispatch/prefetch/RX/TX O2. No extra source-root include patch.
+
+### RX command provenance addendum (Issues 200/201)
+
+`captured-rx` describes the origin of the specialization, not an assertion that
+its replay command is byte-identical to B v1's original compiler argv. The
+immutable manifest retains `failed_argv`; the immutable compiler proofs retain
+the commands actually replayed. Comparing that original with the v3 GREEN RX row:
+
+- The normal wheel-root `-I` paths and firmware driver path become the equivalent
+  attempt-runtime roles. The source kernel-parent include is retained, not an
+  added source-root include workaround.
+- The original hashed JIT object/dependency filenames become the checker's fresh
+  `captured-rx/brisc/kernel.o` and `kernel.d` slots.
+- Captured `-D` options precede `-c/-o/-MF` in replay instead of following them;
+  their values and the RX nonbenchmark common flags are unchanged.
+
+Thus the checker demonstrates object compilation under its recorded layout and
+inputs, not a verbatim original invocation, full linking or hardware dispatch.
+No immutable compile proof, original argv or official source was edited for this
+addendum. Current host qualification is selected by
+[G0 receipt v16](../issue30-g0/receipt-v16.json); earlier v8/v9 evidence below is
+historical native/layout qualification reused only as explicitly documented.
 
 **Limits:** TX uses the official shared RX/TX CTA vector and unchanged config;
 its FULL_KERNEL_NAME is an explicit role surrogate, not a future JIT key. Future
