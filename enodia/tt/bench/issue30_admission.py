@@ -56,10 +56,34 @@ def arc_progress(card):
 
 
 def stable_environment(env):
+    # Rejected JSON still needs a fingerprint; preserve malformed container types
+    # instead of dereferencing them or normalizing them into valid card objects.
+    if type(env) is not dict:
+        return env
     result = {k: v for k, v in env.items() if k not in ("attempt", "dram_admission")}
-    result["cards"] = [{k: v for k, v in c.items() if k not in ("arc_heartbeat", "temperature_c")}
-                       for c in env.get("cards", [])]
+    cards = env.get('cards', [])
+    if type(cards) is list:
+        result['cards'] = [_stable_card(c) for c in cards]
     return result
+
+
+def _stable_card(card):
+    if type(card) is not dict:
+        return card
+    return {k: v for k, v in card.items() if k not in ('arc_heartbeat', 'temperature_c')}
+
+
+def _dram_card(card):
+    formats.fields(card, ('serial', 'dram_status', 'raw_ddr_status', 'uncorrectable_errors',
+                          'arc_heartbeat', 'aiclk_mhz'), reason='dram_gate_reading')
+    if type(card['serial']) is not str:
+        raise ValueError('dram_gate_cards')
+    heartbeat = card['arc_heartbeat']
+    if (card['dram_status'] is not True or card['raw_ddr_status'] != '0x5555'
+            or type(card['uncorrectable_errors']) is not int or card['uncorrectable_errors'] != 0
+            or type(card['aiclk_mhz']) is not int or card['aiclk_mhz'] != 800
+            or type(heartbeat) is not int or heartbeat < 0):
+        raise ValueError('dram_gate_reading')
 
 
 def _dram_sample(sample, serials):
@@ -67,21 +91,17 @@ def _dram_sample(sample, serials):
     stamp = sample.get("monotonic_seconds")
     if not formats.finite(stamp) or stamp < 0:
         raise ValueError("dram_gate_timestamp")
-    if not re.fullmatch(r"[a-f0-9]{64}", sample.get("raw_sha256", "")):
-        raise ValueError("dram_gate_raw")
-    cards = sample.get("cards", [])
-    if type(cards) is not list or len(cards) != 2 or {c.get("serial") for c in cards} != serials:
-        raise ValueError("dram_gate_cards")
+    raw_hash = sample['raw_sha256']
+    if type(raw_hash) is not str or not re.fullmatch(r'[a-f0-9]{64}', raw_hash):
+        raise ValueError('dram_gate_raw')
+    cards = sample['cards']
+    if type(cards) is not list or len(cards) != 2:
+        raise ValueError('dram_gate_cards')
     for card in cards:
-        formats.fields(card, ('serial', 'dram_status', 'raw_ddr_status', 'uncorrectable_errors',
-                              'arc_heartbeat', 'aiclk_mhz'), reason='dram_gate_reading')
-        heartbeat = card.get("arc_heartbeat")
-        if (card.get("dram_status") is not True or card.get("raw_ddr_status") != "0x5555"
-                or type(card.get("uncorrectable_errors")) is not int or card["uncorrectable_errors"] != 0
-                or type(card.get("aiclk_mhz")) is not int or card['aiclk_mhz'] != 800
-                or type(heartbeat) is not int or heartbeat < 0):
-            raise ValueError("dram_gate_reading")
-    return {c["serial"]: c["arc_heartbeat"] for c in cards}
+        _dram_card(card)
+    if {card['serial'] for card in cards} != serials:
+        raise ValueError('dram_gate_cards')
+    return {c['serial']: c['arc_heartbeat'] for c in cards}
 
 
 def dram_gate(env):
@@ -143,6 +163,8 @@ def owner_links(record, baseline_sha, boot_sha, cabling_sha):
                 "baseline_sha256": baseline_sha, "cabling_policy_sha256": cabling_sha,
                 "bundle": ".".join(map(str, (19, 6, 0, 0)))}
     original = record.get("original_verdict", {})
+    if type(original) is not dict:
+        raise ValueError('discovery_binding')
     decision = topology.classify(record.get("observed_qsfp"))
     if (any(not formats.equal(record.get(k), v) for k, v in required.items())
             or original.get("phase") != "A" or original.get("verdict") != "rejected"

@@ -12,6 +12,9 @@ from enodia.tt.bench import issue30_formats as formats
 
 # Proposal pending owner approval; never extends the native 40/50/60s caps.
 DRAM_LAUNCH_MAX_AGE_SECONDS = 60
+# Native root timestamps carry exactly three fractional digits (formats.STAMP).
+# One quantum covers representation precision, not clock drift or freshness slack.
+NATIVE_TIMESTAMP_RESOLUTION_SECONDS = 0.001
 
 
 def _integer(value):
@@ -126,7 +129,7 @@ def ordered(*groups):
 def _sample_clock(group, boundary, offset, before):
     for sample in group:
         stamp = sample['reported_monotonic_seconds']
-        if (type(stamp) not in (int, float) or not math.isfinite(stamp)
+        if (not formats.finite(stamp)
                 or sample['monotonic_seconds'] > stamp + offset
                 or (stamp >= boundary if before else stamp <= boundary)):
             raise ValueError('dram_summary_clock')
@@ -138,7 +141,7 @@ def _clock_bounds(clock, execution, native, before, after):
                    ('create_wall', 'create_monotonic', 'launch_wall', 'launch_monotonic'), 'dram_capture_clock')
     if (type(clock) is not dict or clock.get('schema') != 'issue30-capture-clock-v1'
             or clock.get('attempt') != execution.get('attempt')
-            or any(type(clock.get(k)) not in (int, float) or not math.isfinite(clock[k]) for k in fields)):
+            or any(not formats.finite(clock[k]) for k in fields)):
         raise ValueError('dram_capture_clock')
     lower, upper = clock['start_wall'], clock['end_wall']
     start, end = clock['start_monotonic'], clock['end_monotonic']
@@ -146,13 +149,13 @@ def _clock_bounds(clock, execution, native, before, after):
             or end - start != execution['elapsed_seconds']
             or abs((upper - lower) - (end - start)) > 1):
         raise ValueError('dram_capture_clock')
-    _launch_clocks(clock, before)
+    _launch_clocks(clock, before, native)
     _sample_clock(before, start, lower - start, True)
     _sample_clock(after, end, lower - start, False)
     return lower, upper
 
 
-def _launch_clocks(clock, before):
+def _launch_clocks(clock, before, native):
     low_wall, low_mono = clock['start_wall'], clock['start_monotonic']
     offset = low_wall - low_mono
     for event in ('create', 'launch'):
@@ -163,7 +166,8 @@ def _launch_clocks(clock, before):
         if (not formats.finite(wall) or not formats.finite(mono)
                 or not low_wall <= wall <= clock['end_wall']
                 or not low_mono <= mono <= clock['end_monotonic']
-                or abs((wall - mono) - offset) > 1):
+                or abs((wall - mono) - offset) > 1
+                or wall > native + NATIVE_TIMESTAMP_RESOLUTION_SECONDS):
             raise ValueError('dram_capture_clock')
         launch_freshness(before, wall, mono)
         low_wall, low_mono = wall, mono
@@ -178,7 +182,7 @@ def bracket(before, after, xml, execution, clock=None):
     root = ET.fromstring(xml, forbid_dtd=True)
     native = formats.stamp(root.get('timestamp', ''), reason='dram_capture_window')
     elapsed = execution.get('elapsed_seconds')
-    if type(elapsed) not in (int, float) or not math.isfinite(elapsed) or not 0 <= elapsed <= 60:
+    if not formats.finite(elapsed) or not 0 <= elapsed <= 60:
         raise ValueError('dram_capture_window')
     lower, upper = native - elapsed, native + elapsed
     if clock is not None:

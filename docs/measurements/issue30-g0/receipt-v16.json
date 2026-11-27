@@ -84,17 +84,18 @@
     "enodia/tt/bench/issue120_runtime.py": "210afd012839f381297904c8fb13a059d6273a0280ac647141a08dcce8dc7d7a",
     "enodia/tt/bench/issue196_compile.py": "ce6e5d1d51c66d5a03079aa2461f028a225197eef1850e762a65c82c53f5d509",
     "enodia/tt/bench/issue196_compile_manifest.json": "e77efc50ff27209ed04e57918e0b331db2fd28b8952ad94397162be737c96a70",
-    "enodia/tt/bench/issue30.py": "2062892f2d8d08f4dae8406ba6a1a83050dbd32ff687909675ee9e83e4af794c",
-    "enodia/tt/bench/issue30_admission.py": "8d594282937e18bf345edc986bbd46eef6533dafa828d1c49f66fcbaebc23e39",
+    "enodia/tt/bench/issue30.py": "09dafe68739b4ae4c3a9503bd129410156ebb9202e27c19be796c47ac9bfba97",
+    "enodia/tt/bench/issue30_admission.py": "9c6d9eb321b55c70f9bb9e6d1b3cca99f014c158ba145d07ceede48f80ef3738",
     "enodia/tt/bench/issue30_build/CMakeLists.txt": "39ff5eae166f87e0d2b7d631d9fe3ba0871e8eea9b880ddcc589dccb07bf1ce2",
-    "enodia/tt/bench/issue30_diagnostics.py": "98743c7d768ac8d61db10bed38474381896ad08ac5533e8eea3a59a072be047d",
-    "enodia/tt/bench/issue30_evidence.py": "79b0de84b330004ca95c26d54763ee449a97c13e23e79cbbf19a31e78259afa3",
-    "enodia/tt/bench/issue30_formats.py": "443079e33bf85d9391c6af5701557d99d97cbae7aa01cdf6dbdc2b2f5f949e94",
+    "enodia/tt/bench/issue30_diagnostics.py": "1f61a623f9b5316b8798cb6d54f39c1f3697bdd2e691396ad8818134d8536bc1",
+    "enodia/tt/bench/issue30_evidence.py": "0d1be9b1f5d4abe6dc38651515f60595592702911f9098082760e553b6980b0b",
+    "enodia/tt/bench/issue30_formats.py": "29e9bc2aae1afe797499f64e8ce77fb8ba2e4204069d20aa9853c296161b2e33",
     "enodia/tt/bench/issue30_runtime.py": "73f609b0f3f9b3a0f8e8eea33dd2f9d3f9c7e1682c7d340ee0066cb57c5cf631",
     "enodia/tt/bench/issue30_topology.py": "287bec33454b418f7f0f819b5514db51f23df31dff5ef4b7ba71c8fd7f436c48",
     "pyproject.toml": "69636528b6bbbe805f2e4e64e66b9db49e52bc0a6dd6e1aa957971a28580415d",
     "tests/test_issue196.py": "abcc1a229c729531bb5df5ec92145ed68698bb60d3fc66c6d65aa35ae0363579",
     "tests/test_issue200_201.py": "c69e6ee95b2ff6c233872981e133bc3823f0fda563e44d62f1d3cb34c50e5abc",
+    "tests/test_issue200_201_loop1.py": "be8d50cef7c8fd117a2496780e27e13ae3262a7cc35a5382632f25f64d1c1bf7",
     "tests/test_issue200_lifecycle.py": "c28086534ffa7daa59415f4becfd493ff1820f608e478dc70c12dcafd4bd61b1",
     "tests/test_issue201_sweep.py": "44d60b378fdb3c51b35fd9f7f6e3e71e3160fc63f63ce5a881c7c1f41ff87c5c",
     "tests/test_issue30.py": "76229419f616971789099350f3e989f4258f4d151370db745257eeecefead946",
@@ -110,12 +111,12 @@
     "tests/test_issue30_topology.py": "a35ba639540ad4cc5981157c0ec528eec3a7d58bf25876830b2d79a846f2b1e7",
     "tools/build_issue30.py": "4d66359150bc5355472c12e6e0b7d6ec8673d35ebab653f88e31cddd07a61e17",
     "tools/check_issue196_device_kernels.py": "6c52a16e8d63b0efd5de4751960363d47e9595d5662551a9331c16696ecc03c5",
-    "tools/replay_issue30_evidence.py": "54c8094b80e9b4474580481b195e18f7bc682f7d88b2b21c9ba4928b69c64d88",
+    "tools/replay_issue30_evidence.py": "cff9f6e09aa0e1997e06f8cbcc8cbc571ac11220c7b63b7883b8337badb0b28b",
     "uv.lock": "38280f1eb5db500af067b776d0fa2608a827c688ec69cefeef49539c967f7b63"
   },
   "host_input_qualification": {
     "path": "docs/measurements/issue30-g0/host-input-qualification-v16.json",
-    "sha256": "331bbf865ec9ddb73d695907b9465b8f9f0c2feb4a5524198b1e3b7d5433ba07"
+    "sha256": "c98d0681f403ce4f65724991b6df4193a73dfb25f2b0236e2a99fc03edb7b318"
   },
   "host_snapshot_sha256": "e2ae91f24dc3bfa4a12c9055a4036e27ad9c78e73ea3365b4ec4f85c5ccd6712",
   "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
@@ -132,7 +133,7 @@
     "Fresh original raw series and exact phase/head/boot/receipt approval before any future mapping",
     "Clean pushed/tested head, all CI and public Sonar0/0/OK before any separately authorized run"
   ],
-  "review_limit": "No formal PR review performed; operator will request it separately. No finding acceptance or muting.",
+  "review_limit": "Prior-head convergence returned NEEDS DECISION. Loop1 independent corrections authorized; no post-correction review run. Adversarial/safety gates not run; no finding acceptance or muting.",
   "runtime_library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
   "sandbox": {
     "capabilities": "all dropped",
@@ -153,5 +154,5 @@
   "scope": "G0 host-only CPU/AST qualification, not a complete historical replay or board approval. Unchanged native build/list/absence evidence reused; no native/container rerun.",
   "source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
   "supersedes": "receipt-v15.json",
-  "wrapper_probe_binding": "V16 strict format/type/time and mocked lifecycle/publication/sysfs qualification. Intentional transport changes are enumerated, not claimed AST-identical. Renewed historical DRAM raw proof is unavailable, not passed."
+  "wrapper_probe_binding": "V16 strict format/type/time, loop1 regression and mocked lifecycle/publication/sysfs qualification. Intentional transport changes are enumerated, not claimed AST-identical. Renewed historical DRAM raw proof is unavailable, not passed."
 }

@@ -92,12 +92,20 @@ def _dump_step(state, kind, number):
         state.update(active=None, count=state['count'] + 1)
 
 
+def _device_row(line):
+    if not line.startswith('Device '):
+        return False
+    if not line.removeprefix('Device ').strip():
+        raise ValueError('watcher_dump')
+    return True
+
+
 def _watcher_dumps(text, bound):
     state, previous = {'active': None, 'count': 0, 'body': False}, 0.0
     for line in text.splitlines():
         event = _watcher_event(line)
         if event is None:
-            if state['active'] is not None and line.startswith('Device '):
+            if state['active'] is not None and _device_row(line):
                 state['body'] = True
             continue
         kind, number, stamp = event

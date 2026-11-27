@@ -390,7 +390,14 @@ Live raw binding remains mandatory. The proposed60s pre-launch age bound is
 pending owner approval; exact historical create/start times were not retained,
 so only conservative native/capture-derived bounds can be reported. Future
 fingerprint-bound raw inputs and capture/create clocks require durable retention.
-No receipt or audit supplies another hardware authorization.
+No receipt or audit supplies another hardware authorization. Loop1 additionally
+requires non-whitespace Watcher row payloads, UTF-8 XML declarations with XML
+whitespace recognized, and typed nested evidence before lookup. Each recorded
+create/pre-start boundary must be no later than native root time plus1ms: one
+quantum of the native timestamp's three fractional digits, not clock-drift or
+freshness slack. Existing outer capture bounds and the pending60s proposal are
+unchanged. The repaired object/range paths produce named refusals rather than
+type tracebacks; malformed rejection fingerprints do not become valid evidence.
 
 **B3 correction:** continuous arrival is not a sufficient condition to prevent
 routing/context-switch calls. Legacy's idle branch tests **local progress**, not

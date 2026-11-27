@@ -106,7 +106,8 @@ intentionally changed lifecycle is AST-identical.
   The CLI intentionally exits3 for incomplete evidence. Public proof:
   [evidence-replay-v16.json](issue30-g0/evidence-replay-v16.json).
 - Full suite, lint and exact-head CI/public Sonar outcomes are recorded in the
-  carrying PR/report. No acceptance/muting or formal review is performed here.
+  carrying PR/report. This records the pre-review checkpoint; no finding was
+  accepted or muted. The later convergence result and loop1 are described below.
 
 ## Analyzer corrections before merge
 
@@ -120,6 +121,48 @@ boundaries are explicit. AST fingerprints use function/SHA256 records rather
 than a function-name-to-hash map, avoiding a credential false positive without
 changing digest values. The same controls and scoped original-data audit are
 rerun. The60s proposal remains pending owner approval.
+
+## Loop1: operator-authorized corrections while60s remains pending
+
+The preliminary convergence gate at46a2754 returned NEEDS DECISION, including the
+unapproved60s parameter. The operator separately authorized these independent
+format/type/time corrections, not approval of that value or a review restart.
+
+| Finding | Correction and evidence |
+| --- | --- |
+| WATCHER-EMPTY-DEVICE-ROW | Require non-whitespace `Device ` payload. Positive complete dump; one empty/whitespace payload mutation. Hash-bound B review shares the reader. Other logger/header/packet/firmware prefixes already route to exact parsing/comparison rather than proving payload by presence. |
+| XML-DECLARATION-ENCODING | Recognize XML whitespace around equals and both quote forms, reject non-UTF-8 declarations. A/B source-shaped positives and one encoding mutation. Validate native XML before full-judge clock consumption too. |
+| CLOCK-NATIVE-ORDER | Each recorded create/pre-start request is no later than native root plus1ms. Native timestamps have three fractional digits; this is one representation quantum, not drift/freshness slack. Inclusive boundary, next-float and coherent five-second controls; outer bounds and60s are unchanged. |
+| DRAM-SAMPLE-CARD-TYPE | Validate each nested card object before lookup/set construction; malformed members return `dram_gate_reading`. Serial/hash types have their specific named refusals. |
+
+One same-class path sweep covered capture admission, environment/summary/raw
+validation, judge, fresh-A reevaluation, B admission, full replay and incomplete
+audit. Additional uncovered sites corrected: owner `original_verdict` mapping;
+discovery reported-version list; replay row/attempt types; receipt root/binary
+mapping; review objects before hash lookup and observations before proof use;
+direct evaluate execution root; rejection fingerprinting of malformed
+environment/card containers; overflowing mandatory capture/elapsed/reported
+clock integers. Existing guarded schemas were retained, not replaced by broad
+exception catches. Valid stable baselines are unchanged; invalid shapes remain
+rejected and cannot become discovery evidence.
+
+- Review-driven behavioral RED: `uv run pytest -q tests/test_issue200_201_loop1.py`
+  initially65 failed/8 passed before correction. Additional targeted pre-fix RED:
+  `-k overflow`6 failed, `-k validates_xml_before_clock`1 failed, and
+  `-k 'review_object or judge_receipt or capture_observation'`15 failed. These are
+  separate chronology checkpoints, not a claim all98 tests existed initially.
+- Two co-developed XML guard-preservation controls failed on an interim anchored
+  implementation. The final rule extends the prior lexical refusal with XML
+  whitespace; it does not admit previously refused XML-like directives in PIs
+  or comments. This is implementation-regression provenance, not original RED.
+- Latest focused selection (same command above, whose issue200 glob includes the
+  new loop1 file):420 passed normally and at verified UID0 in a user namespace.
+- Co-developed integration coverage separately binds Watcher bytes/review hashes
+  and exercises the early judge XML check. It is not fabricated original RED.
+- Scoped audit is rerun against copies: four unchanged conclusions and eight
+  unchanged specific refusal reasons, exit3, unavailable raw still not passed.
+- New unmerged v16 qualification is regenerated after full tests; prior evidence
+  remains immutable. No post-correction review is authorized by this loop.
 
 ## Operator decision: unavailable raw telemetry
 

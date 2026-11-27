@@ -76,6 +76,7 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "tests/test_issue30_raw_evidence.py", "tools/replay_issue30_evidence.py",
                  "tests/test_issue30_replay_paths.py", "tests/test_issue30_final_binding.py",
                  "enodia/tt/bench/issue30_formats.py", "tests/test_issue200_201.py",
+                 "tests/test_issue200_201_loop1.py",
                  "tests/test_issue200_lifecycle.py", "tests/test_issue201_sweep.py",
                  "docs/adr/0022-issue30-incomplete-offline-audit.md")
 
@@ -238,13 +239,16 @@ def _approval(phase, identity, approval, env, receipt, head):
     expected = approval_record(phase, identity, env, receipt, head)
     if not formats.equal(approval, expected):
         raise ValueError("approval_binding")
-    if receipt.get("schema") != "issue30-g0-v1" or receipt.get("all_passed") is not True:
+    if (type(receipt) is not dict or receipt.get("schema") != "issue30-g0-v1"
+            or receipt.get("all_passed") is not True):
         raise ValueError("g0_not_ready")
     if not formats.equal(receipt.get("current_wrapper_sources"), program_sources()):
         raise ValueError("receipt_source_binding")
 
 
 def _binary_binding(assets, receipt):
+    if type(receipt) is not dict or type(receipt.get('binaries')) is not dict:
+        raise ValueError('binary_binding')
     for name in BINARIES.values():
         path = assets / name
         if path.is_symlink() or digest(path.read_bytes()) != receipt.get("binaries", {}).get(name):
@@ -537,7 +541,7 @@ def baseline_digest(env):
 
 
 def _execution(execution, phase="B"):
-    if (type(execution.get("exit")) is not int or execution["exit"] != 0
+    if (type(execution) is not dict or type(execution.get("exit")) is not int or execution["exit"] != 0
             or execution.get("timed_out") is not False or execution.get("terminated") is not True
             or execution.get("started") is not True
             or type(execution.get("client_exit")) is not int or execution["client_exit"] != 0):
@@ -705,7 +709,7 @@ def evaluate(phase, identity, before, after, xml, stdout, stderr, execution, dis
               "verdict": ACCEPTED[phase] if reason == "accepted" else "rejected", "reason": reason,
               "scope": SCOPES[phase], "baseline_sha256": baseline_digest(before),
               "evidence_sha256": {"xml": digest(xml), "stdout": digest(stdout), "stderr": digest(stderr)}}
-    if "topology" in before:
+    if type(before) is dict and "topology" in before:
         result |= {"schema": "issue30-verdict-v3", "topology": decision, "observed_qsfp": observed,
                    "firmware_observation": firmware, "packet_observation": packets}
         if decision is not None and decision["reason"] == reason:
@@ -931,7 +935,9 @@ def _series_proof(phase, output, inputs, execution, before, after):
     if ((output / clock_name).exists()
             or any(e.get("path") == clock_name for e in execution["artifacts"])):
         clock = formats.load(_captured(output, execution, clock_name))
-    evidence.bracket(first, last, _captured(output, execution, "native/gtest.xml"), execution, clock)
+    native_xml = _captured(output, execution, "native/gtest.xml")
+    _xml(phase, native_xml)
+    evidence.bracket(first, last, native_xml, execution, clock)
     if phase == "B":
         aout, ain = _slots(before["owner_unit"]["A"], True)
         _, areview = _review("A", before["owner_unit"]["A"], aout, ain)
@@ -941,10 +947,10 @@ def _series_proof(phase, output, inputs, execution, before, after):
 
 
 def _review_execution(phase, identity, output, review):
-    raw_execution = _verified(output / EXECUTION_FILE, output,
-                              {"sha256": review.get("execution_sha256")})
-    execution = formats.load(raw_execution)
     formats.review(review)
+    raw_execution = _verified(output / EXECUTION_FILE, output,
+                              {"sha256": review['execution_sha256']})
+    execution = formats.load(raw_execution)
     formats.execution(execution)
     if execution.get("schema") != "issue30-execution-v1" or execution.get("attempt") != identity:
         raise ValueError("execution schema/attempt mismatch")
@@ -955,7 +961,8 @@ def _review_execution(phase, identity, output, review):
         raise ValueError("device-free capture cannot qualify as board evidence")
     _captured_command(phase, execution)
     receipt = _load(CURRENT_RECEIPT, ROOT)
-    if (execution.get("image") != IMAGE
+    if (type(receipt) is not dict or type(receipt.get('binaries')) is not dict
+            or execution.get("image") != IMAGE
             or execution.get("binary_sha256") != receipt["binaries"][BINARIES[phase]]):
         raise ValueError("execution_provenance")
     return execution
@@ -989,7 +996,9 @@ def _review_capture(phase, identity, output, inputs):
     for entry in execution['artifacts']:
         if entry['path'] != 'logs/generated/watcher/watcher.log':
             _captured(output, execution, entry['path'])
-    before, _after = _observations(inputs, review)
+    before, after = _observations(inputs, review)
+    formats.environment(before)
+    formats.environment(after)
     captured_before = formats.load(_captured(output, execution, "observations-before.json"))
     if not formats.equal(captured_before, before):
         raise ValueError("captured before observation mismatch")

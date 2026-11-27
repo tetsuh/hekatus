@@ -15,7 +15,7 @@
   "compared_source_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
   "cpu_tests": {
     "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue196.py",
-    "outcome": "322 passed in 0.74s"
+    "outcome": "420 passed in 0.85s"
   },
   "dram_freshness_proposal": {
     "basis": "see docs/measurements/issue30-evidence-replay.md; exact old create/start intervals not retained",
@@ -30,20 +30,57 @@
   },
   "full_tests": {
     "command": "uv run --with pytest-xdist pytest -n 4 -q",
-    "outcome": "7175 passed, 1057 skipped, 8 subtests passed in 233.15s (0:03:53)"
+    "outcome": "7273 passed, 1057 skipped, 8 subtests passed in 230.00s (0:03:49)"
   },
   "intentional_changes": [
     "Fixed CLI/API endpoint and ID start; explicit unknown create failure",
     "Owned pre-rename staging cleanup, without removing later staging after success",
     "Sysfs association and exact evidence type/format/time/freshness checks",
-    "Separate explicitly incomplete offline audit; live raw proof unchanged"
+    "Separate explicitly incomplete offline audit; live raw proof unchanged",
+    "Loop1: non-whitespace Watcher rows; UTF-8 declaration whitespace; early judge XML validation",
+    "Loop1: request-to-native ordering within one millisecond representation quantum; no freshness slack",
+    "Loop1: nested object/scalar guards, shape-preserving rejection fingerprints and clock overflow refusals"
   ],
   "limits": [
     "Historical raw-dependent renewed DRAM proof unavailable, not passed",
     "No board authority, hardware health, jitter or latency assertion",
     "Historical records, archives, assets and previous receipts unchanged"
   ],
+  "loop1_red": {
+    "classification": "review-driven regression with behavioral RED before each correction",
+    "early_xml": {
+      "command": "uv run pytest -q tests/test_issue200_201_loop1.py -k validates_xml_before_clock",
+      "outcome": "1 failed before early XML correction",
+      "sha256": "22e40f3011ea7391716121c331fc2685b415e8865ad0e9cb8d91e6ecfb0b0ef2"
+    },
+    "guard_preservation": {
+      "command": "uv run pytest -q tests/test_issue200_201_loop1.py -k retains_prior",
+      "outcome": "2 failed on interim anchored implementation; prior refusal scope retained before publication",
+      "sha256": "c6a56c8dcd5055a73e94ca075f91f2bed285ad656785c48db6b25decb2b41243"
+    },
+    "initial": {
+      "command": "uv run pytest -q tests/test_issue200_201_loop1.py",
+      "outcome": "65 failed, 8 passed before correction",
+      "sha256": "f64d8957c887ebd8e66724a4b0da3510b8d6aca443903cfbfe43ac61fcfedec4"
+    },
+    "integration": "Additional hash-bound Watcher and XML guard-preservation coverage was co-developed; not claimed as original RED",
+    "overflow": {
+      "command": "uv run pytest -q tests/test_issue200_201_loop1.py -k overflow",
+      "outcome": "6 failed before range correction",
+      "sha256": "9e19ea637caf26eb71aa745861b3abe94ee55fc430db24278d08725e9f8d3f46"
+    },
+    "projection": {
+      "command": "uv run pytest -q tests/test_issue200_201_loop1.py -k \"review_object or judge_receipt or capture_observation\"",
+      "outcome": "15 failed before projection correction",
+      "sha256": "16023eeb345a1626b203550f31f3ff116044082a2ba5eaf4635cefd27ac1e51a"
+    }
+  },
+  "loop1_review_status": "Prior-head convergence NEEDS DECISION; independent corrections operator-authorized, no post-correction gate run",
   "method": "Host-only CPU/AST qualification and incomplete offline audit; no native/container rerun",
+  "native_order_precision": {
+    "basis": "Native XML root timestamp grammar has exactly three fractional digits; one representation quantum, not drift or freshness slack",
+    "seconds": 0.001
+  },
   "red": {
     "command": "uv run pytest -q tests/test_issue200_201.py",
     "outcome": "21 failed, 1 passed before implementation",
@@ -55,7 +92,7 @@
   },
   "root_tests": {
     "method": "UID0 in unprivileged user namespace, same focused selection; production UID0 refusal retained",
-    "outcome": "322 passed in 0.74s"
+    "outcome": "420 passed in 0.85s"
   },
   "run_client_proof": {
     "method": "Restore only the former start argv/environment and unused parameter name; watchdog/wait/inspect AST otherwise equal",
@@ -80,10 +117,6 @@
     {
       "function": "_authorize",
       "sha256": "42457dc2138829757a373f4c7df5cfb586bd02c250cc825ddc37e398b0faa755"
-    },
-    {
-      "function": "_binary_binding",
-      "sha256": "9200b7056444229eca943c2813ce7b880522254cf202cafdae4fa733921e6915"
     },
     {
       "function": "_bundle_report_name",

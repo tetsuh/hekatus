@@ -281,11 +281,15 @@ def _validate_baseline(value):
                    'replay_baseline_schema')
     expected = {identity: conclusion for (_, identity), conclusion in zip(CASES, CONCLUSIONS, strict=True)}
     rows = value['results']
-    if (type(rows) is not list or len(rows) != 4
-            or {row.get('attempt') for row in rows} != expected.keys()):
+    if type(rows) is not list or len(rows) != 4:
         raise ValueError('replay_baseline_schema')
     for row in rows:
         formats.fields(row, ('attempt', 'current_evaluate'), reason='replay_baseline_schema')
+        if type(row['attempt']) is not str:
+            raise ValueError('replay_baseline_schema')
+    if {row['attempt'] for row in rows} != expected.keys():
+        raise ValueError('replay_baseline_schema')
+    for row in rows:
         if not formats.equal(row['current_evaluate'], expected[row['attempt']]):
             raise ValueError('replay_baseline_schema')
 

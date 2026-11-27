@@ -118,6 +118,31 @@ ASCII display-padding support. The original snapshots and summary800 were not
 changed to fit the parser. All same-class numeric representations were inspected
 in one pass and covered, rather than special-casing that individual sample.
 
+## Loop1 format/type/order corrections
+
+The shared Watcher reader requires non-whitespace payload after `Device ` inside
+a dump, not merely the prefix. Native XML accepts only UTF-8 bytes and any XML
+declaration must name UTF-8, including when XML whitespace surrounds `=`. Full
+judgment validates XML before consuming its capture timestamp, so an alternate
+encoding fails as `test_result` rather than escaping via a parser exception.
+
+Every supplied create/pre-start wall boundary must be at most native root time
+plus **0.001 seconds**. `issue30_formats.STAMP` fixes the native timestamp to three
+fractional digits; one millisecond is therefore one representation quantum. The
+comparison is inclusive at `native + 0.001`, with a next-representable-float
+negative and a coherent five-second negative (both wall/monotonic fields of the
+same event are moved). This is not a clock-drift allowance. Capture enclosure,
+wall/monotonic consistency and the proposed60s freshness limit are not widened.
+Legacy evidence without those request boundaries retains its existing enclosure
+and conservative freshness checks; no timestamps are invented.
+
+Nested JSON objects are checked before field access or set construction in DRAM
+summaries, discovery records, receipts and replay baselines. Rejected evaluate
+inputs preserve malformed container shapes for their rejection fingerprint;
+this is not normalization into acceptable evidence. Overflowing clock integers
+produce named clock refusals. These checks are shared by the full judge/fresh-A/B
+paths and, where the evidence is available, the separate incomplete audit.
+
 ## Pre-launch time analysis and proposal (owner approval pending)
 
 Raw snapshot `time` is recording-host local naive ISO (JST); public derivatives

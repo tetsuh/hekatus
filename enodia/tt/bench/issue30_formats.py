@@ -251,6 +251,8 @@ def verdict(value):
             or type(observation['diagnostic_lines']) is not list
             or any(type(line) is not str for line in observation['diagnostic_lines'])):
         raise ValueError('discovery_binding')
+    if type(observation['reported_versions']) is not list:
+        raise ValueError('discovery_binding')
     for item in observation['reported_versions']:
         fields(item, ('scope', 'version', 'line'), reason='discovery_binding')
         if item['scope'] != 'first_core_only' or any(type(v) is not str for v in item.values()):
@@ -271,14 +273,22 @@ def _xml_values(node):
         stamp(node.get('timestamp'), reason='test_result')
 
 
+def _xml_text(raw):
+    text = raw.decode('utf-8')
+    # Extend the prior lexical refusal with XML whitespace, rather than narrowing
+    # its scope to the leading declaration and admitting previously refused PIs.
+    encoding = re.search(r'<\?xml[^>]*encoding[ \t\r\n]*=[ \t\r\n]*[\'"](?!UTF-8[\'"])[^\'"]+',
+                         text, re.IGNORECASE)
+    if encoding is not None:
+        raise ValueError('test_result')
+    return text
+
+
 def xml(raw, selector):
     if len(raw) > 1024 * 1024:
         raise ValueError('test_result')
     try:
-        text = raw.decode('utf-8')
-        if re.search(r'<\?xml[^>]*encoding=[\'"](?!UTF-8[\'"])[^\'"]+', text, re.IGNORECASE):
-            raise ValueError('test_result')
-        root = ET.fromstring(text, forbid_dtd=True)
+        root = ET.fromstring(_xml_text(raw), forbid_dtd=True)
     except (UnicodeError, ParseError, DefusedXmlException) as exc:
         raise ValueError('test_result') from exc
     suite, name = selector.split('.')
