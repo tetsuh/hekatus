@@ -1,0 +1,140 @@
+{
+  "all_passed": true,
+  "benchmark_mode": false,
+  "binaries": {
+    "fabric_smoke_tests": "dbdda98ffbd566f845ead7a2bbf759545dc07fbe2d8aa000f55ce47f77cb5cf5",
+    "test_system_health": "10acd9257a39ab5bf8998bcdd87a1a926d3d9bbc5d9b0545b4368f85d43cc741"
+  },
+  "binary_bytes_unchanged_from_original": true,
+  "build_driver_sha256": "4d66359150bc5355472c12e6e0b7d6ec8673d35ebab653f88e31cddd07a61e17",
+  "command_path_normalization": "CXX/RECIPE/BUILD are roles, not literal argv; full exact argv retained in raw receipt",
+  "commands": [
+    [
+      "CXX",
+      "--version"
+    ],
+    [
+      "cmake",
+      "-S",
+      "RECIPE",
+      "-B",
+      "BUILD/native",
+      "-G",
+      "Ninja",
+      "-DCMAKE_CXX_COMPILER=CXX",
+      "-DCMAKE_BUILD_TYPE=Release"
+    ],
+    [
+      "cmake",
+      "--build",
+      "BUILD/native",
+      "--parallel",
+      "2"
+    ]
+  ],
+  "compile_commands_sha256": "22663a1cd707b56571e7dd75c537d46703753db0ae0f84123d213cdaafa67a0a",
+  "compile_flags": [
+    "-O3",
+    "-DNDEBUG",
+    "-std=gnu++20",
+    "-Wno-narrowing",
+    "-DFMT_HEADER_ONLY",
+    "-DNTEST",
+    "-DSPDLOG_FMT_EXTERNAL"
+  ],
+  "compiler": {
+    "sha256": "1547f85ae19319a273088034ecc7541f2563bb77af4f3b32da8059885710430e",
+    "version": "Ubuntu GCC 14.3.0-12ubuntu1~24~ppa1"
+  },
+  "diagnostics": {
+    "compile.stderr.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compile.stdout.bin": "c01ce2f27b8fd622e876aa7029da09a578c7431b796e4e91917e7b3a3e55d578",
+    "compiler.stdout.bin": "d156e163be8b53fe976fae13a16e519d571f111a9e156ebff5bcaad949691a38",
+    "configure.stderr.bin": "9b617d580cca6f66d91bd52454bb10f7fc3997853c1e15b9d61465a5064a22c2",
+    "configure.stdout.bin": "369f4cf08ab340c7f120493b2519facf62e0390cbc6d839dd92a15fa5740600c",
+    "container-state.json": "85decec9ca25f72ef699e32428a225e2defc6a695fcc435a76f18e0f35c132b7"
+  },
+  "generated_hal": {
+    "native/generated/hal/generated/dev_msgs.hpp": "c205406deb1f37bab990962d599fb874f9454dc498a01a97e3478979f34851cd",
+    "native/generated/hal/generated/dev_msgs_impl.hpp": "59a24f5a93d7900d4c4ff98256c5b4d22f640d2383130c9e143c87f30afca1ac",
+    "native/generated/hal/generated/fabric_telemetry.hpp": "2237abc331fe48fee485bf1729fcbe70ff126542d94fb0a9a6eb64f10c67d38a",
+    "native/generated/hal/generated/fabric_telemetry_impl.hpp": "9ebe06348c5b001ee93274da2e65c4c0176dae89e726b28977262840ce47a400",
+    "native/generated/hal/generated/realtime_profiler_msgs.hpp": "ebf5a9abed8b89e6b71c1a1b8570ae66e383c6427e81b2ed7cbb2c0650595b6e",
+    "native/generated/hal/generated/realtime_profiler_msgs_impl.hpp": "9ac965ecd29320fa13148ef4a124b0d2b3215d05e7a9f073ad4ebbd5cface5b8"
+  },
+  "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+  "isolation_revision": "private scratch 0700 owned by sandbox UID; no shared writable temporary directory",
+  "link_inputs": [
+    "gmock_main",
+    "gmock",
+    "gtest",
+    "pinned libtt_metal",
+    "pinned libtt_stl",
+    "pinned libtt-umd",
+    "pthread"
+  ],
+  "linker_sha256": "e9ceb054c12207970f2726dfc07e9a66b411602748628baf27399f02a9bbb31b",
+  "not_established": [
+    "device dispatch or kernel correctness on a board",
+    "timing or link training",
+    "per-card firmware compatibility"
+  ],
+  "primary_inputs": {
+    "source/tests/CMakeLists.txt": "96de88a921b59f37b59c3258ec86c4e44f0dcf1c53283692d0c4ebac69a47283",
+    "source/tests/tt_metal/tt_fabric/fabric_data_movement/test_basic_fabric_smoke.cpp": "9a8418a86f820c695ec9788f542b5bd59676392f90772d2824844ff45f6ab6e7",
+    "source/tests/tt_metal/tt_fabric/system_health/test_system_health.cpp": "373699a07827c54fedc0922d2084799055f272f9c1c002e62bc26150fe95136b",
+    "source/third_party/CMakeLists.txt": "26f7b723274ceff1e067466c9a8b480023953ade25fc10d2cf10b321dd93966c"
+  },
+  "prior_attempts": [
+    {
+      "attempt": 1,
+      "outcome": "container did not start: nested mount under read-only recipe; no compiler ran"
+    },
+    {
+      "attempt": 2,
+      "outcome": "missing enchantum include root; compiler stopped"
+    },
+    {
+      "attempt": 3,
+      "outcome": "missing pinned reflect dependency; compiler stopped"
+    },
+    {
+      "attempt": 4,
+      "outcome": "direct UMD DSO missing from link command; linker stopped"
+    },
+    {
+      "attempt": 5,
+      "outcome": "successful original receipt; original bytes and assets retained"
+    }
+  ],
+  "raw_receipt": {
+    "input_count": 1749,
+    "output_count": 51,
+    "role": "out/issue30/g0/build-attempt6/build-receipt.json",
+    "sha256": "7cad6d3bb2d627a216c188b3f82ea7802577470dc34bf6fb8dc75ab004aaba6e"
+  },
+  "recipe_sha256": "39ff5eae166f87e0d2b7d631d9fe3ba0871e8eea9b880ddcc589dccb07bf1ce2",
+  "revisions": {
+    "descriptors": "7b2176e2fe913089f8cd2be9dfb738ead6e7aa27",
+    "enchantum": "8ca5b0eb7e7ebe0252e5bc6915083f1dd1b8294e",
+    "fmt": "123913715afeb8a437e6388b4473fcc4753e1c9a",
+    "googletest": "b796f7d44681514f58a683a3a71ff17c94edb0c1",
+    "json": "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03",
+    "reflect": "1dbce7ae71fc1d32ad786642d9f1e1994a3efafe",
+    "source": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "spdlog": "48bcf39a661a13be22666ac64db8a7f886f2637e",
+    "tracy": "27221a69789f24d492135093e096b978b4ca3a68",
+    "tt-logger": "359183f6549c65f8b1a4aee7940fa9d966c2b626",
+    "umd": "bc77ac2f7382ffeb9fa5430055f0854d53979489"
+  },
+  "runtime_libraries": {
+    "libtt-umd.so": "6502ce9b2e5fb85a539f78dce6c2e7c287192f9208a09c2d63cb55b83c043783",
+    "libtt_metal.so": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+    "libtt_stl.so": "d3f86c04a218cdb2128f9b6de5270b1514728981346a5ad292621afd3edcee87"
+  },
+  "schema": "issue30-public-build-v1",
+  "scope": "unmodified upstream test translation units, pinned runtime libraries",
+  "source_state": "clean pinned checkout and required submodules verified inside sandbox",
+  "supersedes": "build-receipt.json",
+  "upstream_sources_modified": false
+}

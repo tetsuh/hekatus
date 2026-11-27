@@ -1,0 +1,351 @@
+{
+  "acceptance_reasons": [
+    "Four NUMA lines exactly match #176/#120 known baseline modulo invocation fields; see baseline-match.json",
+    "Watcher output not applicable to cluster-only A: no application kernel dispatch"
+  ],
+  "allows_B_consideration": true,
+  "attempt": "issue30-a-discovery-watcher-v1-789de6a8faf8",
+  "baseline_match_sha256": "cce07f138451af1b8a103f87e67857e185c28a94a8830fc9de569bc17f2e518e",
+  "baseline_sha256": "f335c895ee6a0d511a35909bdbcb7edb75064eed8beb4efd79d9ed28dcb96395",
+  "boot_sha256": "a44024442c3f13ca366666bc2616353e8b7fd5f16fd9740c754951ae3f275c13",
+  "bundle": "19.6.0.0",
+  "cabling": "same owner-reported symmetric two cables, no intervening operation; no re-discovery before B",
+  "cabling_policy_sha256": "4162de908ceee908ee48fcdd70aad2244281e75e1882c481a42cff53ab4801b2",
+  "cards_before_after": [
+    {
+      "aiclk_mhz": 800,
+      "arc_heartbeat": {
+        "first": 97112,
+        "second": 97128
+      },
+      "bundle": "19.6.0.0",
+      "chip": 0,
+      "cmfw": "0.28.0.0",
+      "dram_healthy": true,
+      "erisc": null,
+      "eth_heartbeat_healthy": null,
+      "pci": "0000:06:00.0",
+      "serial": "000004033191411c",
+      "stage": "before",
+      "temperature_c": 55.9,
+      "unobservable": {
+        "erisc": {
+          "reason": "blackhole_pre_19_9_telemetry_unavailable",
+          "sources": [
+            "umd/device/firmware/firmware_info_provider.cpp:217-229",
+            "umd/device/firmware/firmware_utils.cpp:80-99",
+            "umd/device/topology/topology_discovery.cpp:302-306"
+          ]
+        },
+        "eth_heartbeat_healthy": {
+          "reason": "blackhole_pre_19_9_telemetry_unavailable",
+          "sources": [
+            "umd/device/firmware/firmware_info_provider.cpp:217-229",
+            "umd/device/firmware/firmware_utils.cpp:80-99",
+            "umd/device/topology/topology_discovery.cpp:302-306"
+          ]
+        }
+      }
+    },
+    {
+      "aiclk_mhz": 800,
+      "arc_heartbeat": {
+        "first": 97118,
+        "second": 97134
+      },
+      "bundle": "19.6.0.0",
+      "chip": 1,
+      "cmfw": "0.28.0.0",
+      "dram_healthy": true,
+      "erisc": null,
+      "eth_heartbeat_healthy": null,
+      "pci": "0000:09:00.0",
+      "serial": "0000040331914124",
+      "stage": "before",
+      "temperature_c": 59.3,
+      "unobservable": {
+        "erisc": {
+          "reason": "blackhole_pre_19_9_telemetry_unavailable",
+          "sources": [
+            "umd/device/firmware/firmware_info_provider.cpp:217-229",
+            "umd/device/firmware/firmware_utils.cpp:80-99",
+            "umd/device/topology/topology_discovery.cpp:302-306"
+          ]
+        },
+        "eth_heartbeat_healthy": {
+          "reason": "blackhole_pre_19_9_telemetry_unavailable",
+          "sources": [
+            "umd/device/firmware/firmware_info_provider.cpp:217-229",
+            "umd/device/firmware/firmware_utils.cpp:80-99",
+            "umd/device/topology/topology_discovery.cpp:302-306"
+          ]
+        }
+      }
+    },
+    {
+      "aiclk_mhz": 800,
+      "arc_heartbeat": {
+        "first": 98966,
+        "second": 98981
+      },
+      "bundle": "19.6.0.0",
+      "chip": 0,
+      "cmfw": "0.28.0.0",
+      "dram_healthy": true,
+      "erisc": null,
+      "eth_heartbeat_healthy": null,
+      "pci": "0000:06:00.0",
+      "serial": "000004033191411c",
+      "stage": "after",
+      "temperature_c": 55.7,
+      "unobservable": {
+        "erisc": {
+          "reason": "blackhole_pre_19_9_telemetry_unavailable",
+          "sources": [
+            "umd/device/firmware/firmware_info_provider.cpp:217-229",
+            "umd/device/firmware/firmware_utils.cpp:80-99",
+            "umd/device/topology/topology_discovery.cpp:302-306"
+          ]
+        },
+        "eth_heartbeat_healthy": {
+          "reason": "blackhole_pre_19_9_telemetry_unavailable",
+          "sources": [
+            "umd/device/firmware/firmware_info_provider.cpp:217-229",
+            "umd/device/firmware/firmware_utils.cpp:80-99",
+            "umd/device/topology/topology_discovery.cpp:302-306"
+          ]
+        }
+      }
+    },
+    {
+      "aiclk_mhz": 800,
+      "arc_heartbeat": {
+        "first": 98972,
+        "second": 98987
+      },
+      "bundle": "19.6.0.0",
+      "chip": 1,
+      "cmfw": "0.28.0.0",
+      "dram_healthy": true,
+      "erisc": null,
+      "eth_heartbeat_healthy": null,
+      "pci": "0000:09:00.0",
+      "serial": "0000040331914124",
+      "stage": "after",
+      "temperature_c": 59.3,
+      "unobservable": {
+        "erisc": {
+          "reason": "blackhole_pre_19_9_telemetry_unavailable",
+          "sources": [
+            "umd/device/firmware/firmware_info_provider.cpp:217-229",
+            "umd/device/firmware/firmware_utils.cpp:80-99",
+            "umd/device/topology/topology_discovery.cpp:302-306"
+          ]
+        },
+        "eth_heartbeat_healthy": {
+          "reason": "blackhole_pre_19_9_telemetry_unavailable",
+          "sources": [
+            "umd/device/firmware/firmware_info_provider.cpp:217-229",
+            "umd/device/firmware/firmware_utils.cpp:80-99",
+            "umd/device/topology/topology_discovery.cpp:302-306"
+          ]
+        }
+      }
+    }
+  ],
+  "decision_by": "owner",
+  "decision_date": "2026-11-24",
+  "does_not_assert": [
+    "healthy per-core firmware",
+    "healthy independent ETH heartbeat",
+    "receiver payload delivery",
+    "training trigger or time",
+    "B3/B4 timing"
+  ],
+  "erisc_version": "unknown",
+  "eth_heartbeat_health": "unknown",
+  "logical_unit": "issue30-a-discovery-watcher-v1",
+  "not_a_rejudgment": true,
+  "observed_qsfp": [
+    {
+      "channel": 4,
+      "chip": 1,
+      "core": "0-4",
+      "peer": 0,
+      "peer_core": "0-4",
+      "retrain_count": 0,
+      "state": "UP"
+    },
+    {
+      "channel": 5,
+      "chip": 1,
+      "core": "0-5",
+      "peer": 0,
+      "peer_core": "0-5",
+      "retrain_count": 0,
+      "state": "UP"
+    },
+    {
+      "channel": 6,
+      "chip": 1,
+      "core": "0-6",
+      "peer": 0,
+      "peer_core": "0-6",
+      "retrain_count": 0,
+      "state": "UP"
+    },
+    {
+      "channel": 7,
+      "chip": 1,
+      "core": "0-7",
+      "peer": 0,
+      "peer_core": "0-7",
+      "retrain_count": 0,
+      "state": "UP"
+    },
+    {
+      "channel": 8,
+      "chip": 1,
+      "core": "0-8",
+      "state": "DOWN/unconnected"
+    },
+    {
+      "channel": 9,
+      "chip": 1,
+      "core": "0-9",
+      "state": "DOWN/unconnected"
+    },
+    {
+      "channel": 10,
+      "chip": 1,
+      "core": "0-10",
+      "state": "DOWN/unconnected"
+    },
+    {
+      "channel": 11,
+      "chip": 1,
+      "core": "0-11",
+      "state": "DOWN/unconnected"
+    },
+    {
+      "channel": 4,
+      "chip": 0,
+      "core": "0-4",
+      "peer": 1,
+      "peer_core": "0-4",
+      "retrain_count": 0,
+      "state": "UP"
+    },
+    {
+      "channel": 5,
+      "chip": 0,
+      "core": "0-5",
+      "peer": 1,
+      "peer_core": "0-5",
+      "retrain_count": 0,
+      "state": "UP"
+    },
+    {
+      "channel": 6,
+      "chip": 0,
+      "core": "0-6",
+      "peer": 1,
+      "peer_core": "0-6",
+      "retrain_count": 0,
+      "state": "UP"
+    },
+    {
+      "channel": 7,
+      "chip": 0,
+      "core": "0-7",
+      "peer": 1,
+      "peer_core": "0-7",
+      "retrain_count": 0,
+      "state": "UP"
+    },
+    {
+      "channel": 8,
+      "chip": 0,
+      "core": "0-8",
+      "state": "DOWN/unconnected"
+    },
+    {
+      "channel": 9,
+      "chip": 0,
+      "core": "0-9",
+      "state": "DOWN/unconnected"
+    },
+    {
+      "channel": 10,
+      "chip": 0,
+      "core": "0-10",
+      "state": "DOWN/unconnected"
+    },
+    {
+      "channel": 11,
+      "chip": 0,
+      "core": "0-11",
+      "state": "DOWN/unconnected"
+    }
+  ],
+  "original_record": "docs/measurements/2026-11-24-issue30-a-discovery/A-discovery.json",
+  "original_record_sha256": "a965a6934f9180cc5205687f55c93d600e6b1b6146cd09e12041a5003eef3df7",
+  "original_verdict": {
+    "attempt": "issue30-a-discovery-watcher-v1-789de6a8faf8",
+    "baseline_sha256": "f335c895ee6a0d511a35909bdbcb7edb75064eed8beb4efd79d9ed28dcb96395",
+    "evidence_sha256": {
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "e3384400bd3fab9c6fea8619ffcee251a998d13b89fbc61d1aa7ea1e30988335",
+      "xml": "047fe648bfc3bf1c07234c4e0f424c073a60006a83fcb59620cc0d0cf1a6dddc"
+    },
+    "firmware_observation": {
+      "diagnostic_lines": [
+        "2026-11-24 14:17:41.206 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)"
+      ],
+      "erisc_health": "unknown",
+      "eth_heartbeat_health": "unknown",
+      "per_core_versions": [],
+      "reported_versions": [],
+      "truncated": false
+    },
+    "observed_qsfp": [],
+    "phase": "A",
+    "reason": "watcher",
+    "schema": "issue30-verdict-v3",
+    "scope": "one discovery",
+    "topology": null,
+    "verdict": "rejected",
+    "xml_present": true
+  },
+  "original_verdict_sha256": "f5148cd4eb434ce2d46dc5ede7e7a4411dfdffb322e49986bf4e07aa712b143a",
+  "raw_evidence": {
+    "file": "A-native-evidence.tar.gz",
+    "members": {
+      "gtest.xml": {
+        "bytes": 562,
+        "sha256": "047fe648bfc3bf1c07234c4e0f424c073a60006a83fcb59620cc0d0cf1a6dddc"
+      },
+      "result.json": {
+        "bytes": 967,
+        "sha256": "f5148cd4eb434ce2d46dc5ede7e7a4411dfdffb322e49986bf4e07aa712b143a"
+      },
+      "stderr.bin": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout.bin": {
+        "bytes": 6139,
+        "sha256": "e3384400bd3fab9c6fea8619ffcee251a998d13b89fbc61d1aa7ea1e30988335"
+      }
+    },
+    "privacy": "Raw native members are byte-exact. XML contains only the fixed compile-time container source role, not a machine-specific host path. Private telemetry/approval/execution inputs remain unchanged outside Git.",
+    "sha256": "91535dd7f2820ed28183f256255948202d2fffb9d515a0cea5a863f0a86de92e"
+  },
+  "schema": "issue30-owner-accepted-A-v1",
+  "stable_card_state": "identity, bundle/CMFW, clock800MHz, DRAM and responsive advancing ARC retained; temperatures/counters are observations, not invariant values",
+  "topology": {
+    "hypothesis": "H1",
+    "outcome": "accepted",
+    "reason": "accepted"
+  }
+}

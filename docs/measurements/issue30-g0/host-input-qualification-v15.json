@@ -1,0 +1,86 @@
+{
+  "allowed_changes": "Owner-authorized final evidence-binding class closure only; #200 lifecycle/publication/device-node/document/root-test work deferred.",
+  "capture_transport_proof": {
+    "compared_revision": "45bd12e",
+    "method": "Remove only clock metadata writes/locals, restore identical elapsed expression and preexisting-container predicate; remaining capture AST exactly equal. Request AST unchanged.",
+    "normalized_capture_sha256": "c46af48b1e70d33d56aace4192ec7df878c51d72aa73653a8bb883d7c50f603b",
+    "request_sha256": "852bf9f340eb03bb694c4e453ff9a169f6d29ca22dd4cfb1082f216be6d760fa"
+  },
+  "compared_source_revision": "20175f769c01b797a9a9cf0099963d21f28c3138",
+  "constant_normalized_functions": {
+    "_run_client": {
+      "method": "Only replace STDOUT_FILE/STDERR_FILE Name nodes with their fixed original literal values; all AST otherwise equal",
+      "sha256": "770121418c95712e465ac6a6725932c627d209ce33c8b0096c634a13e7826cfe"
+    }
+  },
+  "cpu_tests": {
+    "command": "uv run --no-sync pytest -q -p no:cacheprovider tests/test_issue30*.py tests/test_issue196.py",
+    "outcome": "250 passed in 0.54s"
+  },
+  "evidence_replay": {
+    "path": "docs/measurements/issue30-g0/evidence-replay-v15.json",
+    "sha256": "80ebe888ca1d6d8cde6b99c447a9c6771d34a60fc7fe8760fde557c697de90c9"
+  },
+  "limits": [
+    "No historical measurement/receipt/binary/image changes",
+    "No hardware authority, firmware health, jitter or latency assertion",
+    "Prior native compiler/bootstrap/layout evidence reused; new code is host-only qualification"
+  ],
+  "method": "V15 binds warning chip/bus and canonical discovery evidence, selects OS temporary storage with unchanged private bounds; no native/container execution for qualification.",
+  "offline_proof": {
+    "path": "docs/measurements/issue196/compile-proof-v3.json",
+    "sha256": "8a7c3728657f5f94262db45e9a1fa7cec33bb2a71773cc45d65b23b5ffd9c772"
+  },
+  "predicate_normalized_functions": {
+    "_cleanup": {
+      "method": "Restore only the intentionally unused parameter name and containers_clean predicate; other AST equals20175f7",
+      "new_predicate_ast": "BoolOp(op=And(), values=[Compare(left=Call(func=Name(id='type', ctx=Load()), args=[Name(id='after', ctx=Load())]), ops=[Is()], comparators=[Name(id='list', ctx=Load())]), Compare(left=Name(id='after', ctx=Load()), ops=[Eq()], comparators=[List(ctx=Load())]), Compare(left=Call(func=Name(id='_read', ctx=Load()), args=[BinOp(left=Name(id='output', ctx=Load()), op=Div(), right=Constant(value='docker-after.txt')), Name(id='output', ctx=Load())]), ops=[Eq()], comparators=[Constant(value=b'')])])",
+      "sha256": "fc3a3ad661d02e6bb5afc1294177235e7ce64dd0d0c75838d79532b8f55d439f"
+    }
+  },
+  "red": {
+    "command": "uv run --no-sync pytest -q -p no:cacheprovider tests/test_issue30_final_binding.py",
+    "outcome": "3 failed before implementation",
+    "sha256": "3c2b00d3ab6e61c8b5b9fd8f42770e1ece9bf79542975468cb3dc5a4e1b1efdd"
+  },
+  "schema": "issue30-host-input-qualification-v1",
+  "supersedes": "host-input-qualification-v14.json",
+  "unchanged_constants": {
+    "ACCEPTED": "388392ce95f3478e155e2872fc34a719573a19a7c25e96ae1ccb64d11265baa3",
+    "ASSETS": "0a4e75aa83e76d2d80b102c705fb6ecc0dc134054a68d6de01785f02be6dae51",
+    "BEFORE_FILE": "8cec2a5cc5d2f3e44410e6cc4b87b407cfe746ea25c2456bec4e4ce6d0ef502d",
+    "BINARIES": "95d43a2f247271b40fed4c7d1e3a3482c3dc017cebd8bedb064ee4537ba55263",
+    "CARDS": "c3bf7800ea2814665bf49dd7359cfbbf6124f29737a850c19984f40a0895d4c9",
+    "CONTAINERS": "7f25f09910627adabad724e87e90d4d8ef0158ae092d75b788649ce2072ba374",
+    "DEADLINES": "1b6673a8af8c8348d96eefe0cd8117563a2fef62430dc8b7e800ace902513ed1",
+    "DOWN": "53a9d5032bf55b90473e5f70150b1456dd78a8e909351c62004f1fe4d0134572",
+    "EXECUTION_FILE": "062af47803eae5519c061f05266c2ef2ba9abb8ba682c1bb010df04ff2d61a9d",
+    "IMAGE": "702072a017afe7c39a9a22b678d58ba12b9a46419639b079aa4f37310eb190e0",
+    "LIBRARY_SHA256": "cf3ca0c89869ac0b065e61b666f77cc13f056b142b8c4f38328c01c274873c39",
+    "MASKS": "3a99b7fc3718d7e84c1b353aa416cdedf1db6bec17d27c91ecfc3482f0efecf4",
+    "ROOT": "1fdb9655d355f076050e4abaeb3d9d66183e0e169f9145ec35b79f9f443de948",
+    "SCOPES": "40e699b9ffe5494cbc7938dcebb05c5e40c45ac6c02800f1e3a1784865afa157",
+    "SOURCE_COMMIT": "82da10644c5b85aa5f180127684101dc7ebea75bca2602043f7e4c7e932bcb40",
+    "SOURCE_ROOT": "b1097912e075e8f35d0ba32e876bbde8ee3bf129e146fd0120b98c65bc1c9e0d",
+    "TESTS": "8e813800e247de569f1a75c15afc8e88d7ffe2dad2ca37580b3891be4aba9d3d",
+    "UMD_COMMIT": "040f0ab61d85a8e3f95201a8a6886012993b892f437d3cac99c46d217b199908",
+    "WORK": "37bf7faa78cd8ee3dc1199cb742ec38cd404efe88569f111d0a1d2afec7f1388"
+  },
+  "unchanged_functions": {
+    "_api": "5cb5824a6c9274bb485809964fd4430c501748666ba548dee195ff4d8c21b1bb",
+    "_binary_binding": "9200b7056444229eca943c2813ce7b880522254cf202cafdae4fa733921e6915",
+    "_capture_cli": "07f0317bfb2f2dabf152da72d06a39ddb41956ceeab4655170938687d679fafa",
+    "_container_id": "50a5ff0fa83b59ebcb16a9632dacf889b25de548ccde76d2fafedac75348900a",
+    "_docker_ps": "666671ecf07498d361088e50599d0a5b84e5dd8e0d4efe3d7c2b7252adede68f",
+    "_git": "36a0908b806d76fc1b24398d4f27632511eccf9d2d4c62ff9efb492c9a43ddff",
+    "_identity": "99dea85809f314527ab99eebe5b71d0691b3770628892585237e72fef74f2447",
+    "_load": "d642144d7479e2c23b2e057ad60ab33df43d501d2ae39fb94da8f526bd3edcf2",
+    "_owned": "a3cf0936d27103471bd78cb56ef78f48fa05930551138013a0618241c8051de1",
+    "_read": "44fe2b99b12ee1f36a502c7a0a83a8bdc6eb1db5ad18ae277047e013c04b9532",
+    "_slots": "195c2568a47f1b82e91b4747108565207949feaf781502a60809af372b7c9603",
+    "_unique_json": "210abafa977dcd7117d681015914141e0fe22ea0c0702eab7e5ba8830d4901fb",
+    "artifact": "8944a96644d3dad9f18c9dbbae6b48e9d1f3909b842a56d29f0ddbccc63e2cc7",
+    "publish": "eb39a10b32ccdfd575e308e797f676d671aaec62186edea373424df664b3d8ec",
+    "remaining": "43a1efef0bb909389fda97f7ecd97e7e79ee2c08e18a511f7c32bc604e5bdd27"
+  }
+}

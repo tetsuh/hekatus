@@ -1,0 +1,238 @@
+"""Replay retained Issue30 bytes in private copies; never issue board authority."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import stat
+import tempfile
+import time
+from pathlib import Path
+
+from enodia.tt.bench import issue30 as m
+
+CASES = (("A", "issue30-a-discovery-watcher-v1-789de6a8faf8"),
+         ("B", "issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba"),
+         ("A", "issue30-a-discovery-watcher-v2-c1f49b70"),
+         ("B", "issue30-b-fabric1d-smoke-watcher-v2-c1f49b70"))
+
+
+class Copies:
+    def __init__(self, source, snapshots):
+        self.source, self.snapshots, self.protected = source, snapshots, {}
+
+    def copy(self, path, target):
+        root = self.source if path.is_relative_to(self.source) else self.snapshots
+        raw = m._read(path, root, limit=m.diagnostics.checks.MAX_WATCHER_BYTES)
+        self.protected[str(path)] = m.digest(raw)
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with target.open('xb') as stream:
+            stream.write(raw)
+        target.chmod(0o600)
+
+    def verify_originals(self):
+        for name, sha in self.protected.items():
+            if m.digest(Path(name).read_bytes()) != sha:
+                raise RuntimeError('original evidence changed: ' + name)
+
+
+def _stage_case(copies, phase, identity):
+    original = copies.source / 'runs' / identity
+    inputs = copies.source / 'observations' / identity
+    staged, observations = m._slots(identity, True)
+    execution = json.loads(m._read(original / m.EXECUTION_FILE, copies.source))
+    for name in [m.EXECUTION_FILE, 'result.json'] + [e['path'] for e in execution['artifacts']]:
+        if Path(name).is_absolute() or '..' in Path(name).parts:
+            raise ValueError('unsafe replay member')
+        copies.copy(original / name, staged / name)
+    for path in inputs.glob('*.json'):
+        copies.copy(path, observations / path.name)
+    if '-v2-' not in identity:
+        return
+    for role in ('before', 'after'):
+        for index in range(1, 6):
+            name = f'snapshot{index}.stdout'
+            copies.copy(copies.snapshots / f'{role}-{phase}' / name,
+                        observations / 'telemetry' / f'{role}-{phase}' / name)
+
+
+def _judge(phase, identity):
+    staged, inputs = m._slots(identity, True)
+    discovery = m._load(inputs / 'discovery.json', inputs) if phase == 'B' else None
+    return m._judgment(phase, identity, staged, inputs, discovery)
+
+
+def _conclusion(result):
+    return {k: result[k] for k in ('verdict', 'reason')}
+
+
+def _positives(expected):
+    results = []
+    for phase, identity in CASES:
+        try:
+            actual = _conclusion(_judge(phase, identity))
+        except (ValueError, KeyError, TypeError) as exc:
+            results.append({'attempt': identity, 'expected': expected[identity],
+                            'reader_error': str(exc), 'matches': False})
+            continue
+        results.append({'attempt': identity, 'expected': expected[identity],
+                        'actual': actual, 'matches': actual == expected[identity]})
+    return results
+
+
+def _negative(label, phase, identity, expected):
+    staged, inputs = m._slots(identity, True)
+    telemetry = label == 'wrong_telemetry_role'
+    path = inputs / 'telemetry/before-B/snapshot1.stdout' if telemetry else staged / 'stdout.bin'
+    old = path.read_bytes()
+    changed = ((inputs / 'telemetry/after-B/snapshot1.stdout').read_bytes() if telemetry
+               else bytes([old[0] ^ 1]) + old[1:])
+    required = 'dram_raw_binding' if telemetry else 'capture_artifact'
+    path.write_bytes(changed)
+    try:
+        try:
+            reason = _judge(phase, identity)['reason']
+        except ValueError as exc:
+            reason = str(exc)
+        if reason != required:
+            raise ValueError('replay negative failed: ' + label + ': ' + reason)
+    finally:
+        path.write_bytes(old)
+    if _conclusion(_judge(phase, identity)) != expected[identity]:
+        raise ValueError('restored positive failed: ' + label)
+    return {'mutation': label, 'expected_refusal': required, 'actual_refusal': reason}
+
+
+def _coherent_capture(path, output, inputs):
+    execution_path, review_path = output / 'execution.json', inputs / 'review.json'
+    saved = {p: p.read_bytes() for p in (execution_path, review_path)}
+    execution, review = json.loads(saved[execution_path]), json.loads(saved[review_path])
+    name = path.relative_to(output).as_posix()
+    entry = next(e for e in execution['artifacts'] if e['path'] == name)
+    entry.update({'bytes': path.stat().st_size, 'sha256': m.digest(path.read_bytes())})
+    execution_path.write_text(json.dumps(execution))
+    review['execution_sha256'] = m.digest(execution_path.read_bytes())
+    review_path.write_text(json.dumps(review))
+    return saved
+
+
+def _identity_negative(label, expected):
+    phase, identity = CASES[3]
+    output, inputs = m._slots(identity, True)
+    path = output / 'stdout.bin' if label == 'warning_bus' else inputs / 'discovery.json'
+    saved = {path: path.read_bytes()}
+    if label == 'warning_bus':
+        changed, count = re.subn(rb'bus_id=0x[0-9a-fA-F]+', b'bus_id=0xff', saved[path], count=1)
+        if count != 1:
+            raise ValueError('missing positive bus evidence')
+        path.write_bytes(changed)
+        saved.update(_coherent_capture(path, output, inputs))
+        required = 'diagnostic'
+    else:
+        discovery = json.loads(saved[path])
+        if label == 'discovery_attempt':
+            discovery['attempt'] = 'other-attempt'
+        else:
+            discovery['evidence_sha256']['stdout'] = '0' * 64
+        path.write_text(json.dumps(discovery))
+        required = 'fresh_A_canonical_result'
+    try:
+        try:
+            reason = _judge(phase, identity)['reason']
+        except ValueError as exc:
+            reason = str(exc)
+        if reason != required:
+            raise ValueError('identity negative failed: ' + label + ': ' + reason)
+    finally:
+        for item, raw in saved.items():
+            item.write_bytes(raw)
+    if _conclusion(_judge(phase, identity)) != expected[identity]:
+        raise ValueError('restored identity positive failed')
+    return {'mutation': label, 'actual_refusal': reason, 'expected_refusal': required,
+            'derived_fingerprints_updated': label == 'warning_bus'}
+
+
+def _private_root(value):
+    candidate = value.absolute()
+    temporary = Path(tempfile.gettempdir()).resolve()
+    if (candidate.is_relative_to(m.ROOT) or temporary.is_relative_to(m.ROOT)
+            or candidate.parent != temporary
+            or not re.fullmatch(r'(?:tidd-195-|pi30-)[A-Za-z0-9_-]+', candidate.name, re.ASCII)):
+        raise ValueError('replay_private_root')
+    root = temporary / candidate.name
+    m._owned(root, root)
+    mode = root.lstat()
+    if (not stat.S_ISDIR(mode.st_mode) or mode.st_uid != os.getuid()
+            or stat.S_IMODE(mode.st_mode) != 0o700):
+        raise ValueError('replay_private_root')
+    return root
+
+
+def _source_root(value):
+    root = m.ROOT / 'out/issue30'
+    if value.absolute() != root:
+        raise ValueError('replay_source_scope')
+    return m._owned(root, root)
+
+
+def _output_path(value):
+    root = _private_root(value.parent)
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', value.name, re.ASCII):
+        raise ValueError('replay_output_scope')
+    return m._owned(root / value.name, root)
+
+
+def _baseline(value):
+    if value.name != 'replay-baseline.json':
+        raise ValueError('replay_baseline_scope')
+    root = _private_root(value.parent)
+    return json.loads(m._read(root / 'replay-baseline.json', root))
+
+
+def replay(source, snapshots, output, baseline):
+    source, snapshots = _source_root(source), _private_root(snapshots)
+    output = _output_path(output)
+    output.mkdir(mode=0o700, exist_ok=False)
+    copies, original_work = Copies(source, snapshots), m.WORK
+    try:
+        m.WORK = output / 'bundle'
+        for phase, identity in CASES:
+            _stage_case(copies, phase, identity)
+        expected = {r['attempt']: r['current_evaluate'] for r in baseline['results']}
+        results = _positives(expected)
+        m.publish(output / 'positive-replay.json', {'results': results})
+        if any(not r['matches'] for r in results):
+            raise ValueError('baseline replay disagreement; see positive-replay.json')
+        negatives = [_negative('stdout_one_byte', *CASES[0], expected),
+                     _negative('wrong_telemetry_role', *CASES[3], expected)]
+        negatives += [_identity_negative(label, expected) for label in
+                      ('warning_bus', 'discovery_attempt', 'discovery_capture_fingerprint')]
+        record = {'results': results, 'negatives': negatives,
+                  'historical_difference': 'A v1 originally rejected/watcher; current baseline accepts discovery. '
+                  'This is the prospective correction in ADR-0021:57-63,80-84, not a rewritten record '
+                  'or a historical-policy branch.', 'recording_process_timezone': os.environ.get('TZ'),
+                  'protected_original_sha256': copies.protected}
+        m.publish(output / 'replay-result.json', record)
+        return record
+    finally:
+        m.WORK = original_work
+        copies.verify_originals()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ('source', 'snapshots', 'output', 'baseline'):
+        parser.add_argument('--' + name, type=Path, required=True)
+    args = parser.parse_args()
+    # Metadata decoder only: these retained snapshots were recorded in JST.
+    # This changes this Python process, never host timezone/settings or policy.
+    os.environ['TZ'] = 'Asia/Tokyo'
+    time.tzset()
+    record = replay(args.source.absolute(), args.snapshots.absolute(), args.output.absolute(),
+                    _baseline(args.baseline))
+    print(json.dumps({'matches': len(record['results']), 'refused_negatives': len(record['negatives'])}))
+
+
+if __name__ == '__main__':
+    main()

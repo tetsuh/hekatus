@@ -1,0 +1,135 @@
+{
+  "all_passed": true,
+  "binaries": {
+    "fabric_smoke_tests": "dbdda98ffbd566f845ead7a2bbf759545dc07fbe2d8aa000f55ce47f77cb5cf5",
+    "test_system_health": "10acd9257a39ab5bf8998bcdd87a1a926d3d9bbc5d9b0545b4368f85d43cc741"
+  },
+  "build_receipt_sha256": "2425108300415aa298e7c0d9bbb5819df8dcc191ff6ee9f0f9782719a1d525fd",
+  "checks": [
+    {
+      "capture_cli_exit": 0,
+      "client_exit": 0,
+      "containers_clean": true,
+      "device_free": true,
+      "direct_container_exit": 0,
+      "elapsed_to_cleanup_seconds": 0.1736099059926346,
+      "environment": {
+        "LD_BIND_NOW": "1",
+        "TT_METAL_WATCHER": "1"
+      },
+      "execution_sha256": "05fb7c8c2c2da7c48ac9c07dcd8c9a2415e33f3996ac2cc04aced7090d61abf1",
+      "kind": "list",
+      "phase": "A",
+      "qualified": true,
+      "reason": "listed exact selector with eager runtime symbol binding",
+      "role": "out/issue30/g0/checks/a-list-v2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "2ba35b9c269f7973221c03382d50ad376bf3549ef0706ac645b934af9a347385",
+      "terminated": true,
+      "timed_out": false
+    },
+    {
+      "capture_cli_exit": 2,
+      "client_exit": 1,
+      "containers_clean": true,
+      "device_free": true,
+      "direct_container_exit": 1,
+      "elapsed_to_cleanup_seconds": 0.18989162999787368,
+      "environment": {
+        "LD_BIND_NOW": "1",
+        "TT_METAL_WATCHER": "1"
+      },
+      "execution_sha256": "f4be498561475744fb598ae21f0f27d51016c504c9fc36a26f653eae70440917",
+      "kind": "absent",
+      "phase": "A",
+      "qualified": true,
+      "reason": "empty local chip/PCIe enumeration; TT_FATAL No chips detected in the cluster at T tt_metal/llrt/tt_cluster.cpp:122",
+      "role": "out/issue30/g0/checks/a-absent-v2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "640bb9d92c3c2fc313b18474195d02cad44875e1f876fd3df1ae7ada3e59595d",
+      "terminated": true,
+      "timed_out": false,
+      "xml_sha256": "d79b0c76847a7b7b4f6d11992d18bc41948001bf65ef6d962e0c046f6f4c85e6"
+    },
+    {
+      "capture_cli_exit": 0,
+      "client_exit": 0,
+      "containers_clean": true,
+      "device_free": true,
+      "direct_container_exit": 0,
+      "elapsed_to_cleanup_seconds": 0.1702145150047727,
+      "environment": {
+        "LD_BIND_NOW": "1",
+        "TT_METAL_WATCHER": "1"
+      },
+      "execution_sha256": "220ea850fb9ac8d11a509cdb8903c92020ebff5823f9b025677f7ade9d1dadc7",
+      "kind": "list",
+      "phase": "B",
+      "qualified": true,
+      "reason": "listed exact selector with eager runtime symbol binding",
+      "role": "out/issue30/g0/checks/b-list-v2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "f308e491624f1ce96d002e3a503f34ba7332aacee3c0eda3124f03f7087092d1",
+      "terminated": true,
+      "timed_out": false
+    },
+    {
+      "capture_cli_exit": 2,
+      "client_exit": 1,
+      "containers_clean": true,
+      "device_free": true,
+      "direct_container_exit": 1,
+      "elapsed_to_cleanup_seconds": 0.1733042850100901,
+      "environment": {
+        "LD_BIND_NOW": "1",
+        "TT_METAL_WATCHER": "1"
+      },
+      "execution_sha256": "979846f7bf3e29712fcd7c00905fb27e27ebbb6fc1b0181cd8d58f544e2f4a0f",
+      "kind": "absent",
+      "phase": "B",
+      "qualified": true,
+      "reason": "empty local chip/PCIe enumeration; TT_FATAL No chips detected in the cluster at T tt_metal/llrt/tt_cluster.cpp:122",
+      "role": "out/issue30/g0/checks/b-absent-v2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "4834e762361f348cc2d9e1498adaf936e50e8e084d74125b122431ff21c93aab",
+      "terminated": true,
+      "timed_out": false,
+      "xml_sha256": "8639f02a2a5b54b22f8bbc48b2f7447dce90561002f5019b6b7c26cab8fc9907"
+    }
+  ],
+  "current_wrapper_sources": {
+    "enodia/tt/bench/issue30.py": "eeb285dfc103bacb8f3476003ebf4f8f8ed04e78a900d5c2f623e0703e722c12",
+    "pyproject.toml": "69636528b6bbbe805f2e4e64e66b9db49e52bc0a6dd6e1aa957971a28580415d",
+    "tests/test_issue30.py": "0b9056c22f695bde605feb6e947e92498975d6a0f910d11bff7fd7f1f9409e5e",
+    "tests/test_issue30_capture.py": "df4fa4d6c48f157847ff5ddfd3634eb1e05b72664d8dc3aea3e53b4888f3c59e",
+    "uv.lock": "38280f1eb5db500af067b776d0fa2608a827c688ec69cefeef49539c967f7b63"
+  },
+  "host_snapshot_sha256": "e2ae91f24dc3bfa4a12c9055a4036e27ad9c78e73ea3365b4ec4f85c5ccd6712",
+  "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+  "remaining_hardware_gates": [
+    "fresh two-card observations including independent heartbeat health (BH discovery skips heartbeat check)",
+    "owner A approval then owner B approval at the clean tested pushed head",
+    "matching-head CI/Sonar and actual loaded KMD/boot/cabling checks"
+  ],
+  "review_limit": "CodeRabbit CLI reauthentication_required; no CLI review result, no auth change or fallback",
+  "runtime_library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
+  "sandbox": {
+    "capabilities": "all dropped",
+    "devices": [],
+    "discovery_masks": [
+      "sys",
+      "proc-bus",
+      "proc-driver"
+    ],
+    "implementation": "Docker Engine MaskedPaths; no privileged/systempaths-unconfined fallback",
+    "network": "none",
+    "no_new_privileges": true,
+    "rootfs": "read-only",
+    "uid": "non-root"
+  },
+  "schema": "issue30-g0-v1",
+  "scope": "device-free build/loader/list/absence only; not hardware authority or dispatch proof",
+  "source_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+  "unqualified_prior_checks": "v1 list succeeded but absence reached missing runtime root; not admitted as absence evidence",
+  "wrapper_probe_binding": "explicit argv/environment and binary SHA recorded per immutable execution; current request environment checked equal. Later parser/default-only changes have CPU tests; no whole-process source attestation is claimed."
+}

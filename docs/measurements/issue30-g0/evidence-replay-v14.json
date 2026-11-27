@@ -1,0 +1,70 @@
+{
+  "baseline": "pre-correction current evaluator at45bd12e, operator decision",
+  "format_inventory": "docs/measurements/issue30-evidence-replay.md",
+  "historical_difference": "A v1 originally rejected/watcher; current baseline accepts discovery. This is the prospective correction in ADR-0021:57-63,80-84, not a rewritten record or a historical-policy branch.",
+  "negatives": [
+    {
+      "actual_refusal": "capture_artifact",
+      "expected_refusal": "capture_artifact",
+      "mutation": "stdout_one_byte"
+    },
+    {
+      "actual_refusal": "dram_raw_binding",
+      "expected_refusal": "dram_raw_binding",
+      "mutation": "wrong_telemetry_role"
+    }
+  ],
+  "original_files_verified_unchanged": 98,
+  "results": [
+    {
+      "actual": {
+        "reason": "accepted",
+        "verdict": "accepted_discovery"
+      },
+      "attempt": "issue30-a-discovery-watcher-v1-789de6a8faf8",
+      "expected": {
+        "reason": "accepted",
+        "verdict": "accepted_discovery"
+      },
+      "matches": true
+    },
+    {
+      "actual": {
+        "reason": "execution",
+        "verdict": "rejected"
+      },
+      "attempt": "issue30-b-fabric1d-smoke-watcher-v1-82c9b462d5ba",
+      "expected": {
+        "reason": "execution",
+        "verdict": "rejected"
+      },
+      "matches": true
+    },
+    {
+      "actual": {
+        "reason": "accepted",
+        "verdict": "accepted_discovery"
+      },
+      "attempt": "issue30-a-discovery-watcher-v2-c1f49b70",
+      "expected": {
+        "reason": "accepted",
+        "verdict": "accepted_discovery"
+      },
+      "matches": true
+    },
+    {
+      "actual": {
+        "reason": "accepted",
+        "verdict": "accepted_transfer"
+      },
+      "attempt": "issue30-b-fabric1d-smoke-watcher-v2-c1f49b70",
+      "expected": {
+        "reason": "accepted",
+        "verdict": "accepted_transfer"
+      },
+      "matches": true
+    }
+  ],
+  "schema": "issue30-offline-evidence-replay-v1",
+  "scope": "Offline verification only; no hardware authority or rewritten measurement"
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "issue30-topology-expectations-v1",
+  "owner_statement": {
+    "numbering": "ports 1,2,3,4 in increasing distance from the motherboard",
+    "cables": [[1, 1], [2, 2]],
+    "cable_count": 2,
+    "physical_card_to_serial_mapping": "unknown; symmetric connections make the card swap immaterial",
+    "cable_type": "not supplied"
+  },
+  "conversion": {
+    "vendor_numbering": "port 1 furthest from motherboard; port 4 nearest",
+    "H1": "owner 1=vendor 4, owner 2=vendor 3; vendor 4-to-4 and 3-to-3",
+    "H2": "owner numbering instead agrees with vendor; vendor 1-to-1 and 2-to-2",
+    "vendor_reference": "https://docs.tenstorrent.com/aibs/blackhole/multi-card-topologies.html",
+    "pinned_channel_source": "tools/scaleout/board/board.cpp:330-350 at d9a68815f5fcf08a5bfbffb6f1f811823fba8edd"
+  },
+  "port_channels": {"1": [11, 9], "2": [8, 10], "3": [7, 5], "4": [4, 6]},
+  "hypotheses": [
+    {"id": "H1", "priority": "primary", "connected_channels": [4, 5, 6, 7], "uncabled_channels": [8, 9, 10, 11], "port_pairs": [[3, 3], [4, 4]]},
+    {"id": "H2", "priority": "alternative", "connected_channels": [8, 9, 10, 11], "uncabled_channels": [4, 5, 6, 7], "port_pairs": [[1, 1], [2, 2]]}
+  ],
+  "rules": {
+    "cards": 2,
+    "links_per_cable_assumption": 2,
+    "expected_undirected_links": 4,
+    "require_reciprocal_peers": true,
+    "exact_channel_lane_pairs": "not preassigned; resolve peer cores through the observed channel/core table and require reciprocity plus the declared port pairs",
+    "incomplete_report": "reject as incomplete evidence, never infer absent channels are down"
+  },
+  "uncertainties": [
+    "Vendor near/far explanation is supplemental public documentation outside the pinned release.",
+    "Riser/extension-board geometry may make owner near/far differ from bracket ordering; neither orientation is yet verified.",
+    "Pinned source does not establish channel-to-channel lane crossing; do not preassign 4-to-4 rather than 4-to-6.",
+    "Two links per cable depends on cable type, which the owner has not supplied. Fewer observed links stop the plan without proving a training defect."
+  ]
+}

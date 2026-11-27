@@ -15,19 +15,32 @@ closing it; the record in `design.md` is what persists.
 
 | # | Item | Who | State |
 |---|---|---|---|
-| B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | blocked until a chip-to-chip transfer runs (#30) |
+| B1 | ERISC receive-path development and first link/transfer | Track B | #30 source study distinguishes retained legacy CCL EDM from current persistent TT-Fabric; no universal fabric-on default. Host discovery waits for firmware training and skips BH host retrain; first-training trigger/base-firmware source and FPGA interoperability remain open. 2026-11-24 [owner-accepted A observations](measurements/2026-11-24-issue30-a-owner-acceptance/README.md): four reciprocal UP links on bundle19.6.0.0 (H1, channels4-7), zero retrains,8-11 unconnected. Runtime/firmware links needed no added host training command; first cause/time unknown. Original rejected verdict unchanged; per-core firmware/ETH health unknown. [B](measurements/2026-11-24-issue30-b-smoke/README.md) reported strict1D initialized on both devices, then RX JIT header lookup failed before packet assertions; new readonly export warnings, exit1, clean close/after-state, no retry. #196 corrected layout subsequently enabled the [2026-11-25 renewed Bv2](measurements/2026-11-25-issue30-ab-v2/README.md): fresh H1, five source-bound PRNG/status/byte checks, reviewed Watcher5 dumps/clean close in6.031s, all20 scoped pre/post DRAM readings normal. Earlier anomaly/cause uncertainty and firmware/FPGA/sustained-traffic questions remain; first content-verified TT-to-TT smoke established, not timing; [study](measurements/issue30-source-study.md) / [plan](measurements/issue30-first-transfer-plan.md) |
 | B2 | Effective efficiency is measured for both stock and hand-written Newton-Schulz rows: stock reaches 3.024% on its best BF16 row, while Issue #63 reaches 15.6% at L=32 and 3.24% at packed L=16. The result is between 3.2% and 30%; the residual planning gap remains open | Track B | measured; residual gap open |
-| B3 | `run_routing()` firing conditions and their jitter impact | Track B | blocked until a link carries traffic; it is an idle-loop property of the Ethernet core |
-| B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
+| B3 | `run_routing()` / fabric context-switch conditions and jitter | Track B | source-resolved in #30: local-progress idle test, configurable periodic path, BH two-ERISC coordination; continuous arrival does not exclude calls. Actual cost/jitter unmeasured: five-packet smoke has no receive-interval series/helper timestamps or overhead controls. Proposed B3-J0 needs finite sustained packet trains/gaps, card-side receive/helper cycles, loss/content checks and generated-policy provenance; first instrumented run Watcher on,40/50/60s, separate owner approval per invocation/control. See design.md §3 measurement prerequisites; [study section 4](measurements/issue30-source-study.md#4-b3-can-a-routingcontext-switch-call-occur-during-a-continuous-stream) |
+| B4 | Card-to-card latency/jitter measurement | Track B | unmeasured; owner accepts #30 A's four reciprocal UP links (19.6.0.0/H1, zero retrains), not content delivery or latency. The single approved B stopped at RX JIT before payload validation; no timing authority follows and its approval is consumed. A later fresh-A/scoped-DRAM-gated [Bv2](measurements/2026-11-25-issue30-ab-v2/README.md) verified receiver content, not latency/jitter; Bv2 authority is consumed. Smoke body/fixture/capture durations are not inter-card latency. Proposed B4-L0 needs card-side boundary definitions, same-clock echo RTT/overhead checks first; one-way requires B6 calibration, host visibility requires B5. First instrumented run Watcher on,40/50/60s, separately approved, not #13 same-card port loopback. See design.md §3. #30 has a bounded official-smoke [plan](measurements/issue30-first-transfer-plan.md), with separate one-use owner B scope but no timing authority |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
 | B6 | Clock calibration between the TT cycle counter and host CLOCK_MONOTONIC | Track B | open |
 | B7 | Issue #12 resident producer/consumer timing protocol on pinned v0.75.0 | Track B | Final authority is `2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json` with companion power CSV, N=499,999, P50/P99/P99.9/P99.99 1,349,988/1,350,061/1,350,065/1,350,065 ticks, work min/max 1,062–1,087 ticks, zero overflow, zero paired outliers, and wrap-tracked clock metadata; `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` is the intermediate controlled comparison, superseded after eaf6632 corrected the resident drain decision. Issue #104's three sampler-mode runs and board-free wrap analysis are recorded in `docs/measurements/README.md`. |
 
 The Ethernet items above were blocked on a board without ports; that is no
-longer the constraint. Two target boards are cabled together, but no link
-has trained, and this generation trains from the runtime rather than from a
-flashing step (design.md §2) — so each of them now waits on the same thing:
-a transfer that actually crosses the wire.
+longer the constraint. The owner accepts A's four reported reciprocal UP links
+on the two cabled target boards (bundle19.6.0.0, H1). The original B did not
+verify receiver content, stopping at RX JIT (#196); corrected-layout
+[Bv2](measurements/2026-11-25-issue30-ab-v2/README.md) later completed the official
+five-packet PRNG/status/byte checks after fresh H1 and scoped DRAM admission.
+Initial preparation for the renewed2026-11-25 unit [stopped before A](measurements/2026-11-25-issue30-ab-v2-preflight-stop/README.md):
+card...4124 DRAM telemetry false/0x0 then true/0x5555, cause/persistence unknown;
+no waiver/further operation at that stop and no link/content/jitter/latency result
+from that stop. The owner then changed scoped admission before the later run;
+old A remained invalid for new-boot admission. Issue #30's board-free source
+findings do not need a board: the legacy/fabric distinction and context-switch conditions are
+now documented. The source shows runtime observation/cooperation with base
+firmware, not a guaranteed host first-training command (design.md §2–§3).
+The first verified receiver-content gate for #13/B4 is now passed by one
+bounded official smoke, not their own loopback/latency acceptance criteria;
+B3's measured cost still needs sustained traffic/instrumentation. B5/B6 remain open,
+and #105 stage 3 also needs its own acceptance criteria before implementation.
 
 **B2 still matters most**, but the question has changed shape. The #65
 0.75.0 full sweep found 190 successful rows and 94 failed rows out of 284.

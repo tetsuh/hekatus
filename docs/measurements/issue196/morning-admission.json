@@ -1,0 +1,9 @@
+{
+  "schema": "issue196-morning-admission-v1",
+  "owner_approved": false,
+  "logical_unit": "issue30-b-fabric1d-smoke-watcher-v2",
+  "fresh_A_handling": "Owner decision required before any new A or B v2; a combined conditional A-once then B-v2-once unit is only a proposal.",
+  "previous_A_status": "Invalid for new admission after owner-reported card power-off, even if the host boot UUID alone remains unchanged.",
+  "previous_B_status": "One-use B v1 authorization consumed; no retry or fallback authority.",
+  "scope": "Device-free layout/compiler qualification only. This file grants no board, telemetry, device, reset or firmware operation."
+}

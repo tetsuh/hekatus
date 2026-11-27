@@ -229,11 +229,36 @@ the image that produced it, which is what makes a moved pin readable rather
 than confusing, and whether
 the toolchain moves the figures at all is measured rather than assumed.
 
-Ethernet is present but no link was up as delivered, and the topology tool
-does not support this generation — Blackhole trains its links from the
-runtime rather than from a flashing step. Establishing an actual chip-to-chip
-transfer is the first step of the receive-path work, not an assumption it can
-start from.
+Ethernet is present but no link was up as delivered. TT-Topology explicitly
+excludes Blackhole PCIe cards. The pinned source shows runtime discovery
+waiting for firmware training status and application ERISC cooperation with
+base firmware. A single official discovery on 2026-11-24 reported four reciprocal
+UP links on bundle 19.6.0.0 (channels 4-7 on each card, H1), zero retrains and
+channels 8-11 unconnected, with stable before/after card identity, clock and DRAM.
+The owner subsequently [accepted these observations](measurements/2026-11-24-issue30-a-owner-acceptance/README.md):
+NUMA lines match the #176 baseline and Watcher is not applicable to cluster-only A.
+Its original rejected verdict is unchanged. Links were up on the runtime/firmware
+side without an added host-directed training command in this configuration;
+why/when they first became UP is unknown. No receiver content was tested and
+there is no evidence A caused first training. See the original
+[A record](measurements/2026-11-24-issue30-a-discovery/README.md). The source
+still does **not** establish a host call guaranteed to start first
+training on these cards (Issue #30's [source study](measurements/issue30-source-study.md),
+section 2). Establishing an actual chip-to-chip transfer remains the first
+board step, not an assumption the receive-path work can start from.
+
+The renewed owner-authorized A/Bv2 unit on2026-11-25 [stopped in read-only
+preflight](measurements/2026-11-25-issue30-ab-v2-preflight-stop/README.md): card...4124
+reported DRAM status false/rawDDR_STATUS0x0, then true/0x5555. Cause/persistence
+are unknown; the second reading did not waive the stop. Neither A nor Bv2 ran.
+
+The same owner then required five fresh raw DRAMtrue/DDR_STATUS0x5555 samples
+at>=5s spacing before each phase, with zero uncorrectable errors and progressing
+ARC. The [renewed A/Bv2](measurements/2026-11-25-issue30-ab-v2/README.md) subsequently
+accepted fresh H1 and one official strict1D five-packet content-checked transfer;
+all20 before/after snapshots met the scoped rule. This does not erase the earlier
+false reading/cause uncertainty, establish continuous health, or identify when/
+why links first trained. No reset/firmware/cable/host setting change occurred.
 
 ### What limits this workload
 
@@ -286,31 +311,119 @@ not remotely suffice.
 
 ### The Ethernet receive path
 
-`erisc_datamover.cpp` in tt-metal has been reviewed. The ERISC delivers
-received payloads over the NoC directly into worker Tensix cores' L1 and
-signals with semaphores.
+**Pinned source result (Issue #30, board-free):** tt-metal v0.75.0,
+`d9a68815f5fcf08a5bfbffb6f1f811823fba8edd`, retains two distinct paths.
+The [source study](measurements/issue30-source-study.md) supplies immutable
+file/line references, UMD/image pins and explicit open questions.
 
-- Receive flow: `RECEIVER_WAITING_FOR_ETH` → `RECEIVER_SIGNALING_WORKER`
-  → `RECEIVER_WAITING_FOR_WORKER`
-- Semaphore-based credit control
-- `num_buffers_per_channel` provides built-in multi-buffering; no
-  hand-rolled double buffering needed to overlap receive and compute
-- Each channel can have independent buffers and worker groups, so 256
-  channels can be spread across several receive channels into different
-  Tensix core groups
+- The earlier `erisc_datamover.cpp` reading describes **legacy non-persistent
+  CCL EDM**. Its `RECEIVER_WAITING_FOR_ETH` → worker signalling → worker
+  completion sequence uses semaphores, per-channel buffering and separate
+  receipt/completion acknowledgements. Workers consume receive buffers;
+  this is not evidence that this kernel pushes every payload into worker L1.
+- **TT-Fabric uses a persistent packet router/EDM**, with a different magic/
+  identity handshake, generated buffer/credit layout, routing fields and NoC
+  command headers. Its receive side can deliver packets over NoC locally or
+  forward them. The split handshake is explicitly deprecated for legacy CCL,
+  not supported with TT-Fabric. Current all-gather and fabric sockets have
+  traced fabric paths; MeshDevice alone does not universally enable fabric
+  (the default configuration is disabled, with a remote-dispatch exception).
+- The two-card official 1D fabric smoke is the first transfer candidate, not
+  a new kernel. Discovery, physical link readiness, logical mesh mapping and
+  application handshake are separate gates. No link or transfer was tested
+  by the source study; the [first-transfer plan](measurements/issue30-first-transfer-plan.md)
+  requires separate owner approvals for both-card discovery and transfer.
+  The [G0 follow-up](measurements/issue30-g0/README.md) supplies built official
+  binaries, isolated loader/list/zero-chip refusal evidence and a tested wrapper;
+  none is evidence of a trained link or a successful device transfer. The later
+  [A discovery record](measurements/2026-11-24-issue30-a-discovery/README.md)
+  reports four reciprocal UP links on 19.6.0.0, matching H1, zero retrains and
+  channels8-11 unconnected. The [owner acceptance](measurements/2026-11-24-issue30-a-owner-acceptance/README.md)
+  preserves the original rejected verdict, recognizes #176 NUMA baseline and
+  A Watcher non-applicability, and approves one B at unchanged boot/cabling.
+  No added host-directed training was needed; the runtime/firmware-side links
+  were already reported UP, with first cause/time unknown. A is not a
+  content-verified transfer, FPGA proof, training-trigger attribution or B3/B4
+  timing result. Per-core firmware/ETH health remains unknown, not healthy.
+  B requires the separately bound owner scope and all execution/evidence gates.
+  The [single B record](measurements/2026-11-24-issue30-b-smoke/README.md) then
+  reported strict FABRIC_1D initialized on both devices under bundle19.6.0.0,
+  with four Watcher dumps, but RX BRISC JIT failed resolving a source-relative
+  test header before packet checks. Two readonly diagnostic-export warnings
+  also fell outside the baseline. Native exit1, clean close/container cleanup,
+  responsive after-state800MHz/DRAM true; no retry. This is a bounded runtime-
+  layout stop, not a content mismatch or verified transfer. Follow-up #196 is
+  board-free; per-core firmware/ETH health and B3/B4 remain unmeasured/unknown.
 
-**FPGA side:** the EDM is designed for chip-to-chip links and assumes an EDM
-peer. The FPGA must mimic the initial handshake, the `erisc_info` field
-operations, and the ack handling. There is no spec document, but everything
-derives from the source.
+The2026-11-25 renewed A/Bv2 unit stopped before any native invocation on a
+false-then-true DRAM telemetry observation; no new link, packet, routing jitter
+or latency evidence was obtained. See the [preflight stop](measurements/2026-11-25-issue30-ab-v2-preflight-stop/README.md).
 
-**Caution:** the reviewed code uses the handshake in the `deprecated`
-namespace. Check at implementation time whether a newer fabric-based EDM is
-the current recommendation.
+**First content-verified TT-to-TT smoke (2026-11-25):** after fresh H1 A and
+owner-scoped five-read DRAM gates, the [corrected-layout Bv2](measurements/2026-11-25-issue30-ab-v2/README.md)
+completed the unmodified official five-packet PRNG receiver/status/byte-equality
+checks, strictFABRIC_1D on2 devices, fresh reviewed Watcher5 dumps and clean
+close/container cleanup,6.031s through cleanup (test body0.915s). All diagnostics
+matched existing baseline; owned mapping exports succeeded, no readonly warning.
+These checks are source-bound to pinned binary/source plus complete XML, native
+output, Watcher and post-state; raw packet/status/byte counters were not printed.
+JIT cache0/34hits; separate JIT/packet latency is not measured. This resolves the
+prior layout stop for this configuration, not firmware health, sustained input,
+external FPGA interoperability, loopback or B3/B4 timing. The prior A/Bv1/DRAM
+stop remains unchanged.20 fresh before/after readings were true/0x5555 with zero
+uncorrectables/800MHz/advancingARC; no generic intermittent-fault immunity claim.
 
-**Concern:** the main loop calls `run_routing()` after `SWITCH_INTERVAL`
-(4M idle iterations). With data always flowing it should never fire, but it
-is a potential jitter source across frame gaps and mode switches. Measure.
+**FPGA side remains open:** the source establishes software peer obligations,
+not a sufficient external sender specification. The legacy `erisc_info`
+fields/ack are not the fabric protocol. Fabric additionally assumes remote
+L1/register operations, firmware identities, matching credit layouts and link
+bring-up. Neither a generic FPGA MAC nor successful TT-to-TT traffic proves
+compatibility. No receive architecture or production backpressure contract
+is selected here; downstream still never makes enodia wait.
+
+**B3 correction:** continuous arrival is not a sufficient condition to prevent
+routing/context-switch calls. Legacy's idle branch tests **local progress**, not
+line activity (threshold comparison is `counter++ > 4000000`). Fabric has
+separate idle/periodic policies; the default two-ERISC Blackhole compute-router
+builder selects 32 / WAIT_FOR_IDLE, not 4M. An idle TX/master can coordinate a
+pause of the busy RX/subordinate even during receive traffic. Full routing and
+Blackhole no-sync link-status service paths also differ. Source conditions are
+known; their actual jitter cost, continuous-stream behavior on these cards and
+B4 latency remain **unverified on hardware**. See source-study section 4 for a
+later instrumented measurement proposal; B5/B6 and #105 stage 3 remain open.
+
+**Why B3 jitter is still unmeasured:** the authorized smoke has five packets,
+no receive-completion interval series and no entry/exit timestamps or counters
+for the selected routing/context-switch helper. Gtest/host durations and Watcher
+waypoints cannot isolate a service pause, establish its overhead, or estimate
+tail jitter under sustained offered traffic. Passing the smoke clears a first-
+content prerequisite, not those observability/statistical prerequisites.
+A separately proposed **B3-J0** run needs a board-free-qualified instrumented
+kernel: bounded finite packet trains/controlled gaps, sequence/content/drop and
+overflow checks, same-card receive-completion intervals and helper entry/exit
+cycle timestamps/counters, with actual generated router policy and clock units/
+wrap recorded. Distinguish full routing from the Blackhole no-sync/debounced
+path. First instrumented run Watcher on, process40s/container50s/cleanup60s,
+one invocation only under new owner approval. An overhead-control or Watcher-off
+comparison is a separately approved run, not an implicit second invocation.
+Report sample count, distributions/max and intervals near recorded calls;
+insufficient samples mean no high-percentile estimate, and correlation alone
+is not causal attribution. No instrumentation or board run is authorized here.
+
+**B4 latency boundary and prerequisite:** the Bv2 body0.915s/fixture5.286s/
+capture6.031s mix JIT, dispatch, checks and teardown; none is inter-card latency.
+There is no defined card-side TX-to-RX timestamp pair or cross-card clock
+calibration. A separately proposed **B4-L0** run first needs qualified finite
+sequence-tagged payloads and a two-card echo/RTT kernel with both boundaries on
+one card clock, explicit enqueue/send/completion definitions, payload/route/
+cache/credit conditions, content/drop checks and timestamp overhead calibration.
+RTT is not one-way latency and must not be divided by two to assert symmetry.
+One-way results additionally require B6 offset/drift/uncertainty calibration;
+host-visible timing also needs B5 ordering/fence semantics. First new kernel
+Watcher on,40/50/60s, one owner-approved invocation; any control/Watcher-off run
+needs separate scope. #13 is a distinct same-card port loopback topology, not
+this two-card unicast/echo; no recabling is implied. #105 stage 3 still needs
+real-rate frame input, B5/B6 resolution and its own prewritten acceptance criteria.
 
 ---
 
