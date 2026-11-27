@@ -84,7 +84,7 @@
     "enodia/tt/bench/issue120_runtime.py": "210afd012839f381297904c8fb13a059d6273a0280ac647141a08dcce8dc7d7a",
     "enodia/tt/bench/issue196_compile.py": "ce6e5d1d51c66d5a03079aa2461f028a225197eef1850e762a65c82c53f5d509",
     "enodia/tt/bench/issue196_compile_manifest.json": "e77efc50ff27209ed04e57918e0b331db2fd28b8952ad94397162be737c96a70",
-    "enodia/tt/bench/issue30.py": "fea4dbbeba6220e7f8b590034c3688a0fdc8fb2c985685ac7969a4c86413f23a",
+    "enodia/tt/bench/issue30.py": "2062892f2d8d08f4dae8406ba6a1a83050dbd32ff687909675ee9e83e4af794c",
     "enodia/tt/bench/issue30_admission.py": "8d594282937e18bf345edc986bbd46eef6533dafa828d1c49f66fcbaebc23e39",
     "enodia/tt/bench/issue30_build/CMakeLists.txt": "39ff5eae166f87e0d2b7d631d9fe3ba0871e8eea9b880ddcc589dccb07bf1ce2",
     "enodia/tt/bench/issue30_diagnostics.py": "98743c7d768ac8d61db10bed38474381896ad08ac5533e8eea3a59a072be047d",
@@ -115,7 +115,7 @@
   },
   "host_input_qualification": {
     "path": "docs/measurements/issue30-g0/host-input-qualification-v16.json",
-    "sha256": "82549199d30e46b0db776478b3ce2f93a2db6a15737b0e6629973b2d93503e9c"
+    "sha256": "331bbf865ec9ddb73d695907b9465b8f9f0c2feb4a5524198b1e3b7d5433ba07"
   },
   "host_snapshot_sha256": "e2ae91f24dc3bfa4a12c9055a4036e27ad9c78e73ea3365b4ec4f85c5ccd6712",
   "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",

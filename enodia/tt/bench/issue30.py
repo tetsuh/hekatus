@@ -969,7 +969,7 @@ def _captured_command(phase, execution):
     if not any(formats.equal(execution['argv'], command) for command in (runtime, original)):
         raise ValueError('execution_provenance')
     pairs = [item.split('=', 1) for item in execution['environment']]
-    root = {key: value for key, value in pairs}['TT_METAL_RUNTIME_ROOT']
+    root = dict(pairs)['TT_METAL_RUNTIME_ROOT']
     expected = '/capture/runtime' if execution['argv'] == runtime else '/opt/venv/lib/python3.12/site-packages/ttnn'
     if root != expected:
         raise ValueError('execution_provenance')

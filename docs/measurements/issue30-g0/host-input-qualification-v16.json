@@ -15,7 +15,7 @@
   "compared_source_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
   "cpu_tests": {
     "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue196.py",
-    "outcome": "322 passed in 1.21s"
+    "outcome": "322 passed in 0.74s"
   },
   "dram_freshness_proposal": {
     "basis": "see docs/measurements/issue30-evidence-replay.md; exact old create/start intervals not retained",
@@ -30,7 +30,7 @@
   },
   "full_tests": {
     "command": "uv run --with pytest-xdist pytest -n 4 -q",
-    "outcome": "7175 passed, 1057 skipped, 8 subtests passed in 230.99s (0:03:50)"
+    "outcome": "7175 passed, 1057 skipped, 8 subtests passed in 233.15s (0:03:53)"
   },
   "intentional_changes": [
     "Fixed CLI/API endpoint and ID start; explicit unknown create failure",
