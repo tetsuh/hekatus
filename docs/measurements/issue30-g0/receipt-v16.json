@@ -96,7 +96,7 @@
     "tests/test_issue196.py": "abcc1a229c729531bb5df5ec92145ed68698bb60d3fc66c6d65aa35ae0363579",
     "tests/test_issue200_201.py": "d114cab7dad12e813ab96653878c3134759455b55f8a1fe5df30447aa4a4e3b4",
     "tests/test_issue200_201_loop1.py": "aca7bac896b441c723f296d0a68f8ecffa5e3b4ed0220539f429f7c3b3c2a529",
-    "tests/test_issue200_201_loop2.py": "039b3635bf736c2949519003eb91730a05c1243bdbf943a94f9fb7855f183e4b",
+    "tests/test_issue200_201_loop2.py": "57cb956879fb86b6f39e43af607230ea6cc71bc042ae4db4f95e527b638b2910",
     "tests/test_issue200_lifecycle.py": "def51241a6d3eefa76404b82ca61c476753c089b6e3cd42ae3e53e356195f54c",
     "tests/test_issue201_sweep.py": "b8be7f341e2560b7421aa3b3832b78f7bef06aafbda11ed9d8e967394f3d6714",
     "tests/test_issue30.py": "4bd05ed5064826f0fb5783c49d43fa90e258f0d3f9e899fda705ca30d7395692",
@@ -117,7 +117,7 @@
   },
   "host_input_qualification": {
     "path": "docs/measurements/issue30-g0/host-input-qualification-v16.json",
-    "sha256": "c6f077eace92e33e9afc07e663b19065caaf671b492f3691ea39e20560cc76ec"
+    "sha256": "079a0302e51e10dd7377b2b01f7d272d001785c4037dc57ca184758cff82006a"
   },
   "host_snapshot_sha256": "e2ae91f24dc3bfa4a12c9055a4036e27ad9c78e73ea3365b4ec4f85c5ccd6712",
   "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
@@ -134,7 +134,7 @@
     "Fresh original raw series and exact phase/head/boot/receipt approval before any future mapping",
     "Clean pushed/tested head, all CI and public Sonar0/0/OK before any separately authorized run"
   ],
-  "review_limit": "At qualification: prior-head convergence and adversarial returned FIX BEFORE MERGE, safety not run. Loop2 is the last authorized correction loop; fresh gates follow successful checks. No finding acceptance or muting.",
+  "review_limit": "Two correction loops exhausted; four test-only analyzer clarity changes separately authorized. Final review-only follows exact-head checks and Sonar0/0/OK; no further fixes authorized. No finding acceptance or muting.",
   "runtime_library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
   "sandbox": {
     "capabilities": "all dropped",

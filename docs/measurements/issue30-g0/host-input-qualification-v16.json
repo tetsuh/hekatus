@@ -13,8 +13,8 @@
     "test_system_health": "10acd9257a39ab5bf8998bcdd87a1a926d3d9bbc5d9b0545b4368f85d43cc741"
   },
   "clean_checkout_tests": {
-    "after_evidence_sha256": "9d9945569535af1863803b04cf6c040b9cb51f63bd9d344d9b852ef41f393df4",
-    "before_evidence_sha256": "5cf4706f115d3f6b4d74767eaf6cced1542f91045f8fc46456253cd898d90781",
+    "after_evidence_sha256": "2c3685a32adde5d2ea19e7b9ce33ff062414362eb5c590f19b28609fd59cce78",
+    "before_evidence_sha256": "c71bb07d441a045e5f90426abb1c8d0adcb9e3c68263359daac279c3768763f3",
     "generated_empty_out_directories": [
       "issue146"
     ],
@@ -22,15 +22,15 @@
     "out_non_directory_entries_after": [],
     "out_present_after": true,
     "out_present_before": false,
-    "program_sources_sha256": "c51533f676534b24fbf3ba3c2db95c65ab0d4da6d7aec8daab891276660caaf9",
+    "program_sources_sha256": "01099faf978d4f225978414ad634a4d3903b4fb4a1401b96567773009c91e165",
     "qualified_program_sources_identical": true,
-    "source_revision": "5614f88f67e7df6d324e202d1330aab1b0d0d7fa",
+    "source_revision": "cbec2baca8d45777be11f9f7e885cda159c97af9",
     "wrapper_postcheck_note": "This loop checks no output files/links after pytest, allowing test-generated empty directories; loop1 had an overstrict directory-absence postcheck"
   },
   "compared_source_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
   "cpu_tests": {
     "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue196.py",
-    "outcome": "514 passed in 1.47s"
+    "outcome": "514 passed in 1.46s"
   },
   "dram_freshness_decision": {
     "applies_to": "Both phases at admission and immediately before create/start; value60s unchanged; loop2 strengthens the same approved enforcement rule",
@@ -55,8 +55,8 @@
   },
   "full_tests": {
     "command": "uv run --locked --with pytest-xdist pytest -n 4 -q",
-    "outcome": "7367 passed, 1057 skipped, 8 subtests passed in 233.98s (0:03:53)",
-    "stdout_sha256": "e16d517facaa671ad44753698988329c0d14aa60d4c89dcfe454a3621698953d"
+    "outcome": "7367 passed, 1057 skipped, 8 subtests passed in 232.39s (0:03:52)",
+    "stdout_sha256": "fca910f7d00f40d72f476f9f72697837ddb248ba307c0c876d845688b0babcda"
   },
   "intentional_changes": [
     "Fixed CLI/API endpoint and ID start; explicit unknown create failure",
@@ -121,7 +121,7 @@
       "sha256": "11f364e45c6090f9533946f326688d4d075f2eaac7c6782283945990d7464e5e"
     }
   },
-  "loop2_review_status": "At qualification: prior-head convergence1 and adversarial1 returned FIX BEFORE MERGE (6 Major/2 Minor), safety not run; bounded loop2 corrections implemented, fresh post-correction gates await successful checks",
+  "loop2_review_status": "Two correction loops exhausted; subsequent test-clarity exception expressly authorized, not a new correction loop. Final read-only gates await exact-head checks and Sonar0/0/OK; no further fixes afterward",
   "method": "Host-only CPU/AST qualification, artifact-free clean-checkout tests and separate incomplete offline audit; no native/container rerun",
   "native_order_precision": {
     "basis": "Native XML root timestamp grammar has exactly three fractional digits; one representation quantum, not drift or freshness slack",
@@ -138,7 +138,7 @@
   },
   "root_tests": {
     "method": "UID0 in unprivileged user namespace, same focused selection; production UID0 refusal retained",
-    "outcome": "514 passed in 1.47s"
+    "outcome": "514 passed in 1.45s"
   },
   "run_client_proof": {
     "checked_prestart_statements_sha256": "a031381ef3e26216e06315d06c32ab762f4cd4887754d19c23597fabf2abc43e",
@@ -148,6 +148,20 @@
   },
   "schema": "issue30-host-input-qualification-v1",
   "supersedes": "host-input-qualification-v15.json",
+  "test_clarity_refactor": {
+    "after_trace_sha256": "e75f7308797fa035dc59c83817e96cea0a403f4682a19c87a4b03c3819db1a90",
+    "before_trace_sha256": "e75f7308797fa035dc59c83817e96cea0a403f4682a19c87a4b03c3819db1a90",
+    "changed_program_sources": [
+      "tests/test_issue200_201_loop2.py"
+    ],
+    "classification": "Test-writing-only cleanup; not behavioral RED or a production fix",
+    "refusals": {
+      "dram_launch_freshness": 4,
+      "test_result": 11
+    },
+    "same_test_ids_inputs_reasons": true,
+    "scope": "Only S5778 three contexts and S9073 one assertion; no production source changes from bf725ef"
+  },
   "unchanged_constants": {
     "ACCEPTED": "99675d06b2e12c7c6c6b2b0f348110e4beef0aaea47785f98bf4588b843d827d",
     "BINARIES": "dee00f82ce546728b7bf68e33936bc8c3b9691342d0d1bfd79d925cfde03d862",
