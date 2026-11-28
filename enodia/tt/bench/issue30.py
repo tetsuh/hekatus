@@ -77,6 +77,7 @@ PROGRAM_FILES = ("enodia/tt/bench/issue30.py", "enodia/tt/bench/issue30_build/CM
                  "tests/test_issue30_replay_paths.py", "tests/test_issue30_final_binding.py",
                  "enodia/tt/bench/issue30_formats.py", "tests/test_issue200_201.py",
                  "tests/test_issue200_201_loop1.py", "tests/test_issue200_201_loop2.py",
+                 "tests/test_issue202_final_fix.py",
                  "tests/test_issue200_lifecycle.py", "tests/test_issue201_sweep.py",
                  "docs/adr/0022-issue30-incomplete-offline-audit.md")
 
@@ -814,19 +815,31 @@ def _captured_files(output):
     return [artifact(p, output) for p in sorted(files)]
 
 
-def _request_clock(samples, event, clocks, state=None):
-    wall, mono = time.time(), time.monotonic()
-    if samples is not None:
-        evidence.launch_freshness(samples, wall, mono)
+def _save_request_clock(event, clocks, wall, mono, state=None):
     clocks.update({event + '_wall': wall, event + '_monotonic': mono})
     if state is not None:
         state['create_status'] = 'pending'
     return mono
 
 
+def _request_clock(samples, event, clocks, state=None):
+    if samples is None:
+        raise ValueError('dram_live_series_required')
+    wall, mono = time.time(), time.monotonic()
+    evidence.launch_freshness(samples, wall, mono)
+    return _save_request_clock(event, clocks, wall, mono, state)
+
+
+def _device_free_request_clock(event, clocks, state=None):
+    return _save_request_clock(event, clocks, time.time(), time.monotonic(), state)
+
+
 def _create_container(name, payload, start, state, samples, clocks, observed):
     def boundary():
-        _request_clock(samples, 'create', clocks, state)
+        if observed:
+            _request_clock(samples, 'create', clocks, state)
+        else:
+            _device_free_request_clock('create', clocks, state)
     timeout = remaining(start, 15, time.monotonic())
     if observed:
         return _api('POST', CONTAINERS + 'create?name=' + name, payload,
@@ -858,6 +871,8 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
              "binary_sha256": artifact(binary, assets)["sha256"] if binary.is_file() else None,
              "argv": payload["Cmd"], "environment": payload["Env"]}
     try:
+        if not state['device_free'] and observations is None:
+            raise ValueError('dram_live_series_required')
         _docker_ps(output / "docker-before.txt", remaining(start, 5, time.monotonic()))
         before = _api("GET", CONTAINERS + "json?all=1", timeout=remaining(start, 8, time.monotonic()))
         publish(output / "docker-before.json", {"containers": before})
@@ -877,7 +892,7 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
             _run_client(name, cid, output, start, state,
                         before_start=lambda: _request_clock(samples, 'launch', create_clock))
         else:
-            _request_clock(None, 'launch', create_clock)
+            _device_free_request_clock('launch', create_clock)
             _run_client(name, cid, output, start, state)
     except (OSError, subprocess.SubprocessError, KeyError, TypeError, ValueError) as exc:
         state["error_type"] = type(exc).__name__
@@ -927,7 +942,7 @@ def _renewed_gate(phase, inputs):
 
 def _admit_series(phase, inputs, env):
     if "owner_unit" not in env:
-        return
+        raise ValueError('dram_live_series_required')
     samples = _raw_series(env, phase, "before", inputs)
     if phase == "B":
         _, ain = _slots(env["owner_unit"]["A"], True)
@@ -993,7 +1008,7 @@ def _observed_clock_proof(phase, output, execution, before, after):
 
 def _series_proof(phase, output, inputs, execution, before, after):
     if "owner_unit" not in before:
-        return
+        raise ValueError('dram_live_series_required')
     first = _raw_series(before, phase, "before", inputs)
     last = _raw_series(after, phase, "after", inputs)
     clock = _capture_clock(output, execution)

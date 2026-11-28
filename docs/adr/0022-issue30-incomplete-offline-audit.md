@@ -27,15 +27,19 @@ live raw binding, substituting public derivatives or modifying original records.
 
 ## Decision
 
-1. Live judge, fresh-A reevaluation and B admission retain the raw series proof.
-   Missing original raw refuses. There is no live CLI or approval flag that
-   disables that proof.
+1. Live admission, prepared request guards, judge and fresh-A reevaluation
+   require owner-unit raw series in both phases. Owner-unit-absent legacy input
+   refuses as `dram_live_series_required`; missing original raw also refuses.
+   Device-free G0 clock recording is separate and cannot qualify board evidence.
+   There is no live CLI or approval flag that disables the proof.
 2. The offline replay tool may report non-raw conclusions using the shared
    verified capture reader and evaluator. Its own audit envelope reports each
    unavailable check and `validation_complete=false` for the renewed unit,
    never a fully passed or admission-eligible result. It does not publish live
    verdicts or change original result slots. A v1/B v1 retain their full
-   historical-scope checks because they precede the five-reading rule.
+   historical-scope checks because they precede the five-reading rule, but only
+   through the offline audit reader/evaluator, never live judgment. These legacy
+   results also remain explicitly `eligible_for_admission=false`.
 3. The partial audit still verifies manifest fingerprints, observations/review,
    native XML/markers/Watcher/diagnostics/topology, strict types and canonical
    fresh-A recomputation for B. Shared pure comparison checks remain common;

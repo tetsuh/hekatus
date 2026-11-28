@@ -214,7 +214,7 @@ def test_B_Watcher_requires_captured_fresh_dump_and_clean_hash_bound_review(tmp_
               "before_sha256": m.digest((inputs / "before.json").read_bytes()),
               "after_sha256": m.digest((inputs / "after.json").read_bytes())}
     m.publish(inputs / "review.json", review)
-    assert m._review("B", "synthetic-a", output, inputs)[0]["watcher_clean"] is True
+    assert m._review_capture("B", "synthetic-a", output, inputs)[0]["watcher_clean"] is True
     # Each case mutates only one underlying fact and updates fingerprints as needed;
     # a matching review digest cannot create missing dumps or captured provenance.
     if change == "missing":
@@ -234,7 +234,7 @@ def test_B_Watcher_requires_captured_fresh_dump_and_clean_hash_bound_review(tmp_
     (output / "execution.json").write_text(json.dumps(execution))
     review["execution_sha256"] = m.digest((output / "execution.json").read_bytes())
     (inputs / "review.json").write_text(json.dumps(review))
-    assert m._review("B", "synthetic-a", output, inputs)[0]["watcher_clean"] is False
+    assert m._review_capture("B", "synthetic-a", output, inputs)[0]["watcher_clean"] is False
 
 
 def test_B_authority_does_not_inherit_A_or_a_second_invocation(tmp_path):

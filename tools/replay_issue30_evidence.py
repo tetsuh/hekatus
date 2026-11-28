@@ -75,7 +75,7 @@ def _audit_capture(phase, identity):
     execution, review = m._review_capture(phase, identity, output, inputs)
     before, after = m._observations(inputs, review)
     discovery = m._load(inputs / DISCOVERY_FILE, inputs) if phase == 'B' else None
-    if phase == 'B':
+    if phase == 'B' and 'owner_unit' in before:
         aid = before['owner_unit']['A']
         aout, _ = m._slots(aid, True)
         original = m._load(aout / 'result.json', aout)
@@ -89,13 +89,15 @@ def _judge(phase, identity):
     staged, inputs = m._slots(identity, True)
     before = m._load(inputs / 'before.json', inputs)
     if 'owner_unit' in before and not (inputs / 'telemetry').exists():
-        return _audit_capture(phase, identity)
+        return _audit_capture(phase, identity) | {'eligible_for_admission': False}
     discovery = m._load(inputs / DISCOVERY_FILE, inputs) if phase == 'B' else None
     if phase == 'B' and 'owner_unit' not in before:
         expected = m._load(m.ROOT / m.OWNER_ACCEPTANCE, m.ROOT)
         if not formats.equal(discovery, expected):
             raise ValueError('owner_acceptance_binding')
-    return m._judgment(phase, identity, staged, inputs, discovery)
+    if 'owner_unit' not in before:
+        return _audit_capture(phase, identity) | {'eligible_for_admission': False}
+    return m._judgment(phase, identity, staged, inputs, discovery) | {'eligible_for_admission': False}
 
 
 def _conclusion(result):
@@ -194,19 +196,24 @@ def _identity_negative(label, expected):
 
 
 def _finding_negative(label, expected):
-    phase, identity = CASES[2] if label == 'down_diagnostic' else CASES[3]
+    phase, identity = CASES[2] if label in ('down_diagnostic', 'native_xml_cdata_A') else CASES[3]
     output, inputs = m._slots(identity, True)
     names = {'watcher_completion': 'logs/generated/watcher/watcher.log',
-             'native_xml_exactness': 'native/gtest.xml', 'down_diagnostic': m.STDOUT_FILE,
+             'native_xml_exactness': 'native/gtest.xml',
+             'native_xml_cdata_A': 'native/gtest.xml', 'native_xml_cdata_B': 'native/gtest.xml',
+             'down_diagnostic': m.STDOUT_FILE,
              'canonical_json_types': 'observations-before.json'}
     path = output / names[label]
     saved = {path: path.read_bytes()}
     raw = saved[path]
     required = {'watcher_completion': 'watcher', 'native_xml_exactness': 'test_result',
+                'native_xml_cdata_A': 'test_result', 'native_xml_cdata_B': 'test_result',
                 'down_diagnostic': 'diagnostic',
                 'canonical_json_types': 'captured before observation mismatch'}[label]
     if label == 'watcher_completion':
         changed = b'Dump #1 at 0.919s\n'
+    elif label in ('native_xml_cdata_A', 'native_xml_cdata_B'):
+        changed = raw.replace(b'</testsuites>', b'<![CDATA[ \t\n]]></testsuites>', 1)
     elif label == 'native_xml_exactness':
         changed = raw.replace(b' />', b'><x:failure xmlns:x="urn:counterexample"/></testcase>', 1)
     elif label == 'down_diagnostic':
@@ -235,6 +242,26 @@ def _finding_negative(label, expected):
         raise ValueError('restored finding positive failed: ' + label)
     return {'mutation': label, 'expected_refusal': required, 'actual_refusal': reason,
             'derived_fingerprints_updated': True, 'original_data_copy': True}
+
+
+def _legacy_live_negative(phase, identity, expected):
+    output, inputs = m._slots(identity, True)
+    if not formats.equal(_conclusion(_judge(phase, identity)), expected[identity]):
+        raise ValueError('legacy replay control failed')
+    discovery = m._load(inputs / DISCOVERY_FILE, inputs) if phase == 'B' else None
+    try:
+        m._judgment(phase, identity, output, inputs, discovery)
+    except ValueError as exc:
+        reason = str(exc)
+    else:
+        raise ValueError('legacy live judgment was admitted')
+    if reason != 'dram_live_series_required':
+        raise ValueError('legacy live refusal reason: ' + reason)
+    if not formats.equal(_conclusion(_judge(phase, identity)), expected[identity]):
+        raise ValueError('legacy replay restoration failed')
+    return {'mutation': 'legacy_live_' + phase, 'expected_refusal': reason,
+            'actual_refusal': reason, 'control': 'historical replay only',
+            'eligible_for_admission': False, 'original_data_copy': True}
 
 
 def _private_root(value):
@@ -317,7 +344,12 @@ def replay(source, snapshots, output, baseline):
                       ('watcher_completion', 'native_xml_exactness', 'down_diagnostic', 'canonical_json_types')]
         negatives += [_identity_negative(label, expected) for label in
                       ('warning_bus', 'discovery_attempt', 'discovery_capture_fingerprint')]
+        final_fix_negatives = [_legacy_live_negative(phase, identity, expected)
+                               for phase, identity in CASES[:2]]
+        final_fix_negatives += [_finding_negative(label, expected)
+                               for label in ('native_xml_cdata_A', 'native_xml_cdata_B')]
         record = {'schema': 'issue30-offline-audit-v2', 'results': results, 'negatives': negatives,
+                  'final_fix_negatives': final_fix_negatives,
                   'validation_complete': snapshots is not None, 'eligible_for_admission': False,
                   'unavailable_dram': UNAVAILABLE_DRAM if snapshots is None else None,
                   'unavailable_negatives': ['Raw role-swap unavailable; launch freshness uses synthetic fixtures']

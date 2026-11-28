@@ -202,6 +202,9 @@ def test_cli_rejects_arbitrary_path_flags(monkeypatch):
 def test_B_authorization_rechecks_A_before_preparing_device_mapping(tmp_path, monkeypatch):
     from tests.test_issue30_topology import certified, env, judge, records
 
+    # Isolate canonical A/device-map ordering after a mocked DRAM admission.
+    # Real mandatory-series admission and legacy refusal have separate controls.
+    monkeypatch.setattr(m, '_admit_series', Mock(return_value=None))
     before = env()
     discovery = [certified(judge(records()))]
     fake_receipt = {"source_commit": m.SOURCE_COMMIT, "runtime_library_sha256": m.LIBRARY_SHA256}

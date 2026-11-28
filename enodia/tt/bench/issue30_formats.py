@@ -277,6 +277,8 @@ def _xml_values(node):
 
 def _xml_text(raw):
     text = raw.decode('utf-8')
+    if '<!' in text:
+        raise ValueError('test_result')
     # NUL-interleaved UTF-16 can decode as UTF-8 and be redetected by Expat.
     if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', text):
         raise ValueError('test_result')

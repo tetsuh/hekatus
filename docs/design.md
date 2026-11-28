@@ -408,6 +408,13 @@ malformed control records refuse. DOWN summaries cannot hide behind another
 severity; A UID projection uses both streams and accepted native digests. The
 common capture reader checks present clocks even in incomplete audits and hashes
 optional listed A Watcher artifacts without making A's Watcher mandatory.
+The owner's2026-11-28 cutoff limits the final correction to two findings:
+owner-unit-absent records now refuse live admission/request/judge proof, with
+legacy acceptance confined to non-admissible historical offline audit; the base
+XML `<!` lexical exclusion (including whitespace CDATA) is restored alongside
+tree checks. The60s bound and device-free G0 scope stay unchanged. Remaining
+review findings are tracked in Issue203; numeric references and XML1.1 spelling
+policy are not changed by this correction.
 
 **B3 correction:** continuous arrival is not a sufficient condition to prevent
 routing/context-switch calls. Legacy's idle branch tests **local progress**, not

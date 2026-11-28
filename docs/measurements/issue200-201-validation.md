@@ -230,6 +230,43 @@ was skipped or weakened. Ordinary tests use only committed or synthesized data;
 retained originals remain in the separate audit. Qualification records carry final
 artifact-free full-suite/source-identity results after the source is committed.
 
+## Owner cutoff: two final fixes only (2026-11-28)
+
+The owner directs only mandatory live DRAM series/freshness and restoration of
+the base `<!` XML refusal; no new formal review follows. Remaining final-review
+findings are tracked in Issue203. Numeric references and XML1.1 policy are not
+changed or added to that follow-up by this patch. Safety has not run.
+
+Live `_admit_series`, prepared request guards and judge/fresh-A proof no longer
+skip owner-unit-absent input: `dram_live_series_required` is the named refusal.
+Device-free G0 clock recording is separate; a device-bound payload cannot omit
+observations. Existing B owner-scope gates can still reject earlier by their
+existing named reason. New raw series within the unchanged inclusive60s bound
+remain positive. Historical legacy records use only the offline audit reader;
+all offline routes explicitly return `eligible_for_admission=false`.
+
+The XML lexical gate again rejects all literal `<!`, including whitespace CDATA,
+without removing current encoding/tree/namespace/decimal checks. A/B positives
+and single-addition CDATA negatives cover direct parsing and full live judgment.
+
+Invariant inventory preceded tests and implementation. Initial RED had14 real
+behavioral failures plus4 synthetic-fixture overwrite errors: atomic `publish`
+correctly refused rewriting existing files. Only the private synthetic fixture
+rewrite was corrected. The corrected18 controls all fail against unmodified
+ed33532 in a separate external checkout and all18 pass with the implementation.
+That later baseline run is not falsely described as preceding implementation.
+Existing Watcher-only tests now isolate `_review_capture`, not a legacy live raw
+proof; the canonical-A/device-map unit explicitly mocks prior DRAM admission.
+The mandatory unmocked paths are covered by the new end-to-end controls.
+
+Audit20 retains four scoped conclusions and the same eight refusal records,
+adds legacy-live A/B and coherent CDATA A/B negatives, and verifies78 originals
+unchanged. The existing Watcher-negative stale review digest remains deferred to
+Issue203: unchanged refusal status is not independent semantic-completion proof.
+The renewed raw loss, incomplete/non-admissible status and exit3 remain explicit.
+Successor v16 qualification records the committed-source clean-checkout/full-suite
+results; no original measurement, archive, native binary or old receipt changes.
+
 ## Operator decision: unavailable raw telemetry
 
 The owner retained `out/issue30` before cleanup on November 27. The 20 original

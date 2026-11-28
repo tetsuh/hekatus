@@ -52,8 +52,10 @@ permissions refuse before staging. This also bounds LLM-supplied CLI arguments.
 The fresh output directory must not exist. The tool stages copied original
 capture/review/input files at canonical attempt slots. Supplying original raw
 with `--snapshots` additionally stages twenty raw files; none is supplied for the
-current incomplete audit. Ordinary A v1/B v1 use `_judgment`. Renewed A/B without
-raw use the separate audit boundary over `_review_capture`, `_capture_result`
+current incomplete audit. Historical owner-unit-absent A v1/B v1 now use only
+the separate audit boundary; the live `_judgment` refuses those shapes with
+`dram_live_series_required`. Renewed A/B without raw also use that boundary over
+`_review_capture`, `_capture_result`
 and the shared strict fresh-A comparison. Both routes verify original manifest
 entries, native bytes and independent review/observation bindings. The separate
 audit is not a successful live judgment and never authorizes capture or publishes
@@ -78,9 +80,15 @@ positive result. Discovery must equal the canonical, independently rejudged A ca
 both offline and live paths; only live additionally checks physical authority.
 A motherboard chip/bus pair must identify the same admitted card, not independent
 members of allowed sets. Unit controls additionally cover XML/DTD/marker/severity/pairing,
-container and compiler provenance mutations. The current audit also coherently
-mutates copied Watcher completion, XML hierarchy, DOWN logger component and the
-captured-before integer type, checking specific refusals and restored positives.
+container and compiler provenance mutations. The current audit records copied
+Watcher completion, XML hierarchy, DOWN logger component and captured-before
+integer-type refusals and restored positives. The Watcher negative's stale
+review digest remains a known Issue203 limitation: its refusal status is not
+independent semantic-completion proof. This final correction does not repair it.
+Additional `final_fix_negatives` demonstrate historical A/B refusing through
+live judgment while their offline controls remain non-admissible, and coherent
+A/B whitespace-CDATA copies refusing `test_result`. The prior `<!` exclusion is
+restored alongside tree checks; numeric references/XML1.1 policy is unchanged.
 DRAM freshness uses synthetic raw fixtures for both phases, not a substitute for
 the lost real raw. No daemon/device is accessed.
 
