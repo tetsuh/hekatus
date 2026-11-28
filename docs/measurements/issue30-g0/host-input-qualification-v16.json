@@ -13,8 +13,8 @@
     "test_system_health": "10acd9257a39ab5bf8998bcdd87a1a926d3d9bbc5d9b0545b4368f85d43cc741"
   },
   "clean_checkout_tests": {
-    "after_evidence_sha256": "2c3685a32adde5d2ea19e7b9ce33ff062414362eb5c590f19b28609fd59cce78",
-    "before_evidence_sha256": "c71bb07d441a045e5f90426abb1c8d0adcb9e3c68263359daac279c3768763f3",
+    "after_evidence_sha256": "c017746c8958672b177e09a4898708c99807b10ad55f78ee8a74560d829ff317",
+    "before_evidence_sha256": "f28f31b1f4050d085ef7f5c94066a6d5ff5e5412a3616facf0262a82b8f2de40",
     "generated_empty_out_directories": [
       "issue146"
     ],
@@ -22,15 +22,15 @@
     "out_non_directory_entries_after": [],
     "out_present_after": true,
     "out_present_before": false,
-    "program_sources_sha256": "01099faf978d4f225978414ad634a4d3903b4fb4a1401b96567773009c91e165",
+    "program_sources_sha256": "b8443873dd2ebd557d0f4829ce4b62b7a3d4cf9db6f1da6d453e442a8984c483",
     "qualified_program_sources_identical": true,
-    "source_revision": "cbec2baca8d45777be11f9f7e885cda159c97af9",
+    "source_revision": "b70ff63c6898f6ba96fb764437fa49f9afcf0ddf",
     "wrapper_postcheck_note": "This loop checks no output files/links after pytest, allowing test-generated empty directories; loop1 had an overstrict directory-absence postcheck"
   },
   "compared_source_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
   "cpu_tests": {
-    "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue196.py",
-    "outcome": "514 passed in 1.46s"
+    "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue202_final_fix.py tests/test_issue196.py",
+    "outcome": "532 passed in 1.77s"
   },
   "dram_freshness_decision": {
     "applies_to": "Both phases at admission and immediately before create/start; value60s unchanged; loop2 strengthens the same approved enforcement rule",
@@ -44,8 +44,36 @@
   "evidence_replay": {
     "eligible_for_admission": false,
     "path": "docs/measurements/issue30-g0/evidence-replay-v16.json",
-    "sha256": "53b82ee1f111099fd226640c1cbc71853daaec11cd5e82662f1cd8a00f7b0cbd",
+    "sha256": "c28481d4f089d48d49f17bb427bdc79d23446e514874b2300e41d204cbe4d9bb",
     "validation_complete": false
+  },
+  "final_owner_fix": {
+    "changed_program_sources": [
+      "docs/adr/0022-issue30-incomplete-offline-audit.md",
+      "enodia/tt/bench/issue30.py",
+      "enodia/tt/bench/issue30_formats.py",
+      "tests/test_issue202_final_fix.py",
+      "tests/test_issue30_capture.py",
+      "tests/test_issue30_owner.py",
+      "tools/replay_issue30_evidence.py"
+    ],
+    "date": "2026-11-28",
+    "deferred": "Issue203, including confounded Watcher-negative binding; no claim of independent Watcher semantic proof",
+    "formal_review": "Not rerun by explicit owner instruction; previous safety gate unexecuted",
+    "green_stdout_sha256": "79e4ba00e63fc08d8d512c2fa4b1016cef741ad8e43a8c7970419d5fd5578dff",
+    "invariant_inventory_sha256": "f0ce588d459545a7e8503ee6902dd07dbe97c08a8ac962d72955a2b7277c3133",
+    "new_audit_negatives": 4,
+    "red": {
+      "command": "uv run pytest -q tests/test_issue202_final_fix.py",
+      "corrected_baseline": "18 failed against unchanged ed33532 in external checkout after fixture rewrite; this confirmation followed implementation",
+      "corrected_stdout_sha256": "f9262fd36441956f9709f5b933a7dd48b1eeb1e0ddd564f302d76b0c19f5f813",
+      "initial_outcome": "14 behavioral failures plus4 synthetic-fixture overwrite errors before implementation",
+      "initial_stdout_sha256": "20aec6ff4376e01b7ae940e12571181bba510b861acdfc58f10dd5ef44033fdb"
+    },
+    "scope": [
+      "Mandatory raw series and existing60s freshness in live admission/request/judge; legacy only offline non-eligible",
+      "Restore all literal <! lexical refusals including CDATA; leave numeric references/XML1.1 policy unchanged"
+    ]
   },
   "fixture_isolation": {
     "method": "Ordinary binary-map tests use synthetic tmp_path files and matching SHA256 only; retained-original validation remains outside tests in offline audit",
@@ -55,23 +83,41 @@
   },
   "full_tests": {
     "command": "uv run --locked --with pytest-xdist pytest -n 4 -q",
-    "outcome": "7367 passed, 1057 skipped, 8 subtests passed in 232.39s (0:03:52)",
-    "stdout_sha256": "fca910f7d00f40d72f476f9f72697837ddb248ba307c0c876d845688b0babcda"
+    "outcome": "7385 passed, 1057 skipped, 8 subtests passed in 233.27s (0:03:53)",
+    "stdout_sha256": "494b1360aa08570c9d0ca986c2079ed05dfe4c580317dbc6578dc5eb0e0d8b43"
+  },
+  "historical_test_clarity_refactor": {
+    "after_trace_sha256": "e75f7308797fa035dc59c83817e96cea0a403f4682a19c87a4b03c3819db1a90",
+    "before_trace_sha256": "e75f7308797fa035dc59c83817e96cea0a403f4682a19c87a4b03c3819db1a90",
+    "changed_program_sources": [
+      "tests/test_issue200_201_loop2.py"
+    ],
+    "classification": "Test-writing-only cleanup; not behavioral RED or a production fix",
+    "refusals": {
+      "dram_launch_freshness": 4,
+      "test_result": 11
+    },
+    "same_test_ids_inputs_reasons": true,
+    "scope": "Only S5778 three contexts and S9073 one assertion; no production source changes from bf725ef"
   },
   "intentional_changes": [
     "Fixed CLI/API endpoint and ID start; explicit unknown create failure",
     "Owned pre-rename staging cleanup, without removing later staging after success",
     "Sysfs association and exact evidence type/format/time/freshness checks",
-    "Separate explicitly incomplete offline audit; live raw proof unchanged",
+    "Separate explicitly incomplete offline audit; live raw binding is not relaxed",
     "Loop1: non-whitespace Watcher rows; UTF-8 declaration whitespace; early judge XML validation",
     "Loop1: request-to-native ordering within one millisecond representation quantum; no freshness slack",
     "Loop1: nested object/scalar guards, shape-preserving rejection fingerprints and clock overflow refusals",
     "Loop2: prepared request clock pair, finite operands and pre-start50s refusal without changing deadlines",
     "Loop2: exact UTF-8/markup/namespace/decimal XML and source-shaped Watcher records",
     "Loop2: severity-independent DOWN summary classification and canonical A native digest/stream projection",
-    "Loop2: shared available clock checks, optional A artifact hashes and nested raw shape refusals"
+    "Loop2: shared available clock checks, optional A artifact hashes and nested raw shape refusals",
+    "Final owner scope: reject legacy shape in all live DRAM boundaries; historical offline-only non-eligible path",
+    "Final owner scope: restore prior literal <! XML exclusion, including whitespace CDATA, alongside tree checks"
   ],
   "limits": [
+    "Remaining formal findings deferred to Issue203; safety gate unexecuted; no new formal review",
+    "Existing Watcher replay negative has a stale review digest; status refusal is not independent completion proof",
     "Historical raw-dependent renewed DRAM proof unavailable, not passed",
     "No board authority, hardware health, jitter or latency assertion",
     "Historical records, archives, assets and previous receipts unchanged"
@@ -121,7 +167,7 @@
       "sha256": "11f364e45c6090f9533946f326688d4d075f2eaac7c6782283945990d7464e5e"
     }
   },
-  "loop2_review_status": "Two correction loops exhausted; subsequent test-clarity exception expressly authorized, not a new correction loop. Final read-only gates await exact-head checks and Sonar0/0/OK; no further fixes afterward",
+  "loop2_review_status": "Final formal review at ed33532 returned FIX BEFORE MERGE; safety not run. Owner2026-11-28 cutoff authorizes only live-legacy DRAM and CDATA fixes, defers remaining findings to Issue203, forbids further formal review",
   "method": "Host-only CPU/AST qualification, artifact-free clean-checkout tests and separate incomplete offline audit; no native/container rerun",
   "native_order_precision": {
     "basis": "Native XML root timestamp grammar has exactly three fractional digits; one representation quantum, not drift or freshness slack",
@@ -138,7 +184,7 @@
   },
   "root_tests": {
     "method": "UID0 in unprivileged user namespace, same focused selection; production UID0 refusal retained",
-    "outcome": "514 passed in 1.45s"
+    "outcome": "532 passed in 1.77s"
   },
   "run_client_proof": {
     "checked_prestart_statements_sha256": "a031381ef3e26216e06315d06c32ab762f4cd4887754d19c23597fabf2abc43e",
@@ -148,20 +194,6 @@
   },
   "schema": "issue30-host-input-qualification-v1",
   "supersedes": "host-input-qualification-v15.json",
-  "test_clarity_refactor": {
-    "after_trace_sha256": "e75f7308797fa035dc59c83817e96cea0a403f4682a19c87a4b03c3819db1a90",
-    "before_trace_sha256": "e75f7308797fa035dc59c83817e96cea0a403f4682a19c87a4b03c3819db1a90",
-    "changed_program_sources": [
-      "tests/test_issue200_201_loop2.py"
-    ],
-    "classification": "Test-writing-only cleanup; not behavioral RED or a production fix",
-    "refusals": {
-      "dram_launch_freshness": 4,
-      "test_result": 11
-    },
-    "same_test_ids_inputs_reasons": true,
-    "scope": "Only S5778 three contexts and S9073 one assertion; no production source changes from bf725ef"
-  },
   "unchanged_constants": {
     "ACCEPTED": "99675d06b2e12c7c6c6b2b0f348110e4beef0aaea47785f98bf4588b843d827d",
     "BINARIES": "dee00f82ce546728b7bf68e33936bc8c3b9691342d0d1bfd79d925cfde03d862",

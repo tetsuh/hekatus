@@ -15,6 +15,38 @@
     "test": "tests/test_issue200_201.py::test_stale_dram_admission_has_a_positive_control"
   },
   "eligible_for_admission": false,
+  "final_fix_negatives": [
+    {
+      "actual_refusal": "dram_live_series_required",
+      "control": "historical replay only",
+      "eligible_for_admission": false,
+      "expected_refusal": "dram_live_series_required",
+      "mutation": "legacy_live_A",
+      "original_data_copy": true
+    },
+    {
+      "actual_refusal": "dram_live_series_required",
+      "control": "historical replay only",
+      "eligible_for_admission": false,
+      "expected_refusal": "dram_live_series_required",
+      "mutation": "legacy_live_B",
+      "original_data_copy": true
+    },
+    {
+      "actual_refusal": "test_result",
+      "derived_fingerprints_updated": true,
+      "expected_refusal": "test_result",
+      "mutation": "native_xml_cdata_A",
+      "original_data_copy": true
+    },
+    {
+      "actual_refusal": "test_result",
+      "derived_fingerprints_updated": true,
+      "expected_refusal": "test_result",
+      "mutation": "native_xml_cdata_B",
+      "original_data_copy": true
+    }
+  ],
   "historical_difference": "A v1 originally rejected/watcher; current baseline accepts discovery. This is the prospective correction in ADR-0021:57-63,80-84, not a rewritten record or a historical-policy branch.",
   "negatives": [
     {
