@@ -23,8 +23,9 @@ WATCHER = b'At 0.000s starting\nDump #1 at 0.100s\n' + ROW + b'\nDump #1 complet
 def test_native_encoding_is_not_redetected_after_utf8_decode(phase, encoding):
     original = xml(phase)
     m._xml(phase, original)
+    changed = original.decode().encode(encoding)
     with pytest.raises(ValueError, match='^test_result$'):
-        m._xml(phase, original.decode().encode(encoding))
+        m._xml(phase, changed)
 
 
 @pytest.mark.parametrize('phase', ['A', 'B'])
@@ -42,15 +43,17 @@ def test_native_ignored_markup_cannot_become_success(phase, markup):
 def test_unused_namespace_declarations_are_not_dropped(declaration):
     original = xml()
     m._xml('A', original)
+    changed = original.replace(b'<testsuites ', b'<testsuites' + declaration + b' ', 1)
     with pytest.raises(ValueError, match='^test_result$'):
-        m._xml('A', original.replace(b'<testsuites ', b'<testsuites' + declaration + b' ', 1))
+        m._xml('A', changed)
 
 
 def test_native_duration_exact_decimal_cap():
     original = xml().replace(b'<testsuites ', b'<testsuites time="40" ', 1)
     m._xml('A', original)
+    changed = original.replace(b'time="40"', b'time="40.0000000000000001"', 1)
     with pytest.raises(ValueError, match='^test_result$'):
-        m._xml('A', original.replace(b'time="40"', b'time="40.0000000000000001"', 1))
+        m._xml('A', changed)
 
 
 @pytest.mark.parametrize('row', [b'Device banana', b'Device 99 waypoint', b'Device 0',
@@ -344,7 +347,8 @@ def test_request_clock_pair_is_checked_after_all_preparation(tmp_path, monkeypat
     h.install(monkeypatch, tmp_path)
     positive_out = tmp_path / 'positive'
     positive = m.capture(phase, h.before['attempt'], tmp_path, positive_out, observations=h.before)
-    assert positive['started'] and h.requests == [('create', 10.0), ('start', 10.0)]
+    assert positive['started']
+    assert h.requests == [('create', 10.0), ('start', 10.0)]
     clock = json.loads((positive_out / 'capture-clock.json').read_bytes())
     for event in ('create', 'launch'):
         assert clock[event + '_wall'] == h.last['monotonic_seconds'] + 10
