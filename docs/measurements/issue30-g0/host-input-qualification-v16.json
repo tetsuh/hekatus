@@ -13,8 +13,8 @@
     "test_system_health": "10acd9257a39ab5bf8998bcdd87a1a926d3d9bbc5d9b0545b4368f85d43cc741"
   },
   "clean_checkout_tests": {
-    "after_evidence_sha256": "c017746c8958672b177e09a4898708c99807b10ad55f78ee8a74560d829ff317",
-    "before_evidence_sha256": "f28f31b1f4050d085ef7f5c94066a6d5ff5e5412a3616facf0262a82b8f2de40",
+    "after_evidence_sha256": "f9db44aecaf3f88ee30df16fcbe2734188ea958d9e1ac25956f6d9e998566203",
+    "before_evidence_sha256": "91d5b43a3c4bf9ad08be87a7116cb2848e7d2802dff8f630e3e55a61386f0991",
     "generated_empty_out_directories": [
       "issue146"
     ],
@@ -22,15 +22,15 @@
     "out_non_directory_entries_after": [],
     "out_present_after": true,
     "out_present_before": false,
-    "program_sources_sha256": "b8443873dd2ebd557d0f4829ce4b62b7a3d4cf9db6f1da6d453e442a8984c483",
+    "program_sources_sha256": "685afa1f71ae17a8293bbaee8704d1d63dcf921bdb6732daa81e1a7ea2dc09b2",
     "qualified_program_sources_identical": true,
-    "source_revision": "b70ff63c6898f6ba96fb764437fa49f9afcf0ddf",
+    "source_revision": "f2f042f6bed6622871645dcb5f036a7799b3e968",
     "wrapper_postcheck_note": "This loop checks no output files/links after pytest, allowing test-generated empty directories; loop1 had an overstrict directory-absence postcheck"
   },
   "compared_source_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
   "cpu_tests": {
     "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue202_final_fix.py tests/test_issue196.py",
-    "outcome": "532 passed in 1.77s"
+    "outcome": "532 passed in 2.25s"
   },
   "dram_freshness_decision": {
     "applies_to": "Both phases at admission and immediately before create/start; value60s unchanged; loop2 strengthens the same approved enforcement rule",
@@ -83,8 +83,8 @@
   },
   "full_tests": {
     "command": "uv run --locked --with pytest-xdist pytest -n 4 -q",
-    "outcome": "7385 passed, 1057 skipped, 8 subtests passed in 233.27s (0:03:53)",
-    "stdout_sha256": "494b1360aa08570c9d0ca986c2079ed05dfe4c580317dbc6578dc5eb0e0d8b43"
+    "outcome": "7385 passed, 1057 skipped, 8 subtests passed in 232.66s (0:03:52)",
+    "stdout_sha256": "7614a46f621d0fd468a5f9fc7785e21b5d63fadfb52c87d7638781d4165f5ade"
   },
   "historical_test_clarity_refactor": {
     "after_trace_sha256": "e75f7308797fa035dc59c83817e96cea0a403f4682a19c87a4b03c3819db1a90",
@@ -184,7 +184,7 @@
   },
   "root_tests": {
     "method": "UID0 in unprivileged user namespace, same focused selection; production UID0 refusal retained",
-    "outcome": "532 passed in 1.77s"
+    "outcome": "532 passed in 1.76s"
   },
   "run_client_proof": {
     "checked_prestart_statements_sha256": "a031381ef3e26216e06315d06c32ab762f4cd4887754d19c23597fabf2abc43e",
@@ -193,6 +193,34 @@
     "sha256": "b4ac39871d983b24151d701fdd6c4ae2cb7139cf93a5061fd07ef46c208f98cd"
   },
   "schema": "issue30-host-input-qualification-v1",
+  "sonar_mechanical_finish": {
+    "after_trace_sha256": "89f9e6e1b78fbe5b39d87f5fe3d706e367f2111b3f4d2262b0030c2ac993c6fc",
+    "audit": "Four scoped results,eight existing and four final negatives identical;78 originals unchanged",
+    "baseline_revision": "2fb482e4e21c3aa7466d867e39f0bcc590232ba4",
+    "before_trace_sha256": "89f9e6e1b78fbe5b39d87f5fe3d706e367f2111b3f4d2262b0030c2ac993c6fc",
+    "changed_program_sources": [
+      "enodia/tt/bench/issue30.py",
+      "tools/replay_issue30_evidence.py"
+    ],
+    "formal_review": "Not rerun; CodeRabbit skipped is reported, not treated as failure, per owner",
+    "inventory_sha256": "f792dbc701ae8d24abdafb3b76a53f0cc2eddf06c82a7cd768bc7394c38047bc",
+    "proof_script_sha256": "fe10da1582031b3f937b42443561f6a873a46e76e37f2742a13332a7b4973ce0",
+    "same_18_test_outcomes_and_real_exception_reasons": true,
+    "scope": "Only S3776 guard extraction and S1192 XML path constant, no behavioral change or new correction loop",
+    "structural_proof": {
+      "baseline": "2fb482e4e21c3aa7466d867e39f0bcc590232ba4",
+      "capture_module": {
+        "method": "Inline exact original predicate/raise at same try-body position; remove only helper; entire module AST equals baseline",
+        "normalized_ast_sha256": "0e877702acf1e476d89cb46e7b57e6fdd386ab8db6ab508bf8d50eada12f064e",
+        "source_sha256": "3324f20d538da181285dca5390d4f3e218a2145946759bb5ea6fe804a6441aff"
+      },
+      "replay_module": {
+        "method": "Fold exactly three constant reads and remove only new constant; entire replay AST equals baseline",
+        "normalized_ast_sha256": "6b4fe61383f5b6c5a09ad963d5fedc0053cf9051bc16c94b8e7ea82cca89d18c",
+        "source_sha256": "4f4d3c269a16bc724e122aa7cce748fde3e5c6d7a7dde88077b1b215c25e8d3f"
+      }
+    }
+  },
   "supersedes": "host-input-qualification-v15.json",
   "unchanged_constants": {
     "ACCEPTED": "99675d06b2e12c7c6c6b2b0f348110e4beef0aaea47785f98bf4588b843d827d",

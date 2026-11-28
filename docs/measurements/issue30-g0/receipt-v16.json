@@ -84,7 +84,7 @@
     "enodia/tt/bench/issue120_runtime.py": "210afd012839f381297904c8fb13a059d6273a0280ac647141a08dcce8dc7d7a",
     "enodia/tt/bench/issue196_compile.py": "ce6e5d1d51c66d5a03079aa2461f028a225197eef1850e762a65c82c53f5d509",
     "enodia/tt/bench/issue196_compile_manifest.json": "e77efc50ff27209ed04e57918e0b331db2fd28b8952ad94397162be737c96a70",
-    "enodia/tt/bench/issue30.py": "d0b4cc83fe5bd97d3b005da323398fec0978ea62c82bcca39eb7203535bf862c",
+    "enodia/tt/bench/issue30.py": "3324f20d538da181285dca5390d4f3e218a2145946759bb5ea6fe804a6441aff",
     "enodia/tt/bench/issue30_admission.py": "9c6d9eb321b55c70f9bb9e6d1b3cca99f014c158ba145d07ceede48f80ef3738",
     "enodia/tt/bench/issue30_build/CMakeLists.txt": "39ff5eae166f87e0d2b7d631d9fe3ba0871e8eea9b880ddcc589dccb07bf1ce2",
     "enodia/tt/bench/issue30_diagnostics.py": "b7dbbb8c3a6958f2fc09d5297b7a1734de1d9b1a87e54fefa4bbc562d0824237",
@@ -113,12 +113,12 @@
     "tests/test_issue30_topology.py": "a35ba639540ad4cc5981157c0ec528eec3a7d58bf25876830b2d79a846f2b1e7",
     "tools/build_issue30.py": "4d66359150bc5355472c12e6e0b7d6ec8673d35ebab653f88e31cddd07a61e17",
     "tools/check_issue196_device_kernels.py": "6c52a16e8d63b0efd5de4751960363d47e9595d5662551a9331c16696ecc03c5",
-    "tools/replay_issue30_evidence.py": "607da6554f8f89a888977983ce82ac181c093935fafcaee45bfb60929437834d",
+    "tools/replay_issue30_evidence.py": "4f4d3c269a16bc724e122aa7cce748fde3e5c6d7a7dde88077b1b215c25e8d3f",
     "uv.lock": "38280f1eb5db500af067b776d0fa2608a827c688ec69cefeef49539c967f7b63"
   },
   "host_input_qualification": {
     "path": "docs/measurements/issue30-g0/host-input-qualification-v16.json",
-    "sha256": "b7de1dad3d926f031ed5186927d4ff2fa51625f2abfc24593689dc7c1ab2a604"
+    "sha256": "405838180dd23c0d8fe872d7ebe1cc92424fa12bfacafd1adc7f37f30118ce13"
   },
   "host_snapshot_sha256": "e2ae91f24dc3bfa4a12c9055a4036e27ad9c78e73ea3365b4ec4f85c5ccd6712",
   "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
@@ -135,7 +135,7 @@
     "Fresh original raw series and exact phase/head/boot/receipt approval before any future mapping",
     "Clean pushed/tested head, all CI and public Sonar0/0/OK before any separately authorized run"
   ],
-  "review_limit": "Owner2026-11-28 cutoff: only mandatory live DRAM proof and CDATA regression corrected; remaining findings tracked in Issue203. No formal review rerun; previous safety gate unexecuted. No finding acceptance or muting.",
+  "review_limit": "Owner2026-11-28 cutoff: only live DRAM and CDATA behavioral fixes plus separately authorized behavior-identical S3776/S1192 cleanup; remaining findings in Issue203. No formal review rerun; safety unexecuted. No finding acceptance or muting.",
   "runtime_library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
   "sandbox": {
     "capabilities": "all dropped",
