@@ -381,6 +381,41 @@ bring-up. Neither a generic FPGA MAC nor successful TT-to-TT traffic proves
 compatibility. No receive architecture or production backpressure contract
 is selected here; downstream still never makes enodia wait.
 
+**Host-only evidence hardening (Issues 200/201):** strict type/format/time checks
+and attempt-ID/daemon/node binding do not change the measured workload or native
+assets. The twenty renewed raw telemetry snapshots were omitted from the durable
+archive and lost with temporary storage on reboot; restored native artifacts
+support only an explicitly incomplete offline audit ([ADR-0022](adr/0022-issue30-incomplete-offline-audit.md)).
+Live raw binding remains mandatory. The owner approved the unchanged60s
+pre-launch age bound on2026-11-28 in [Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817),
+for both phases at admission and immediately before create/start. Exact
+historical create/start times were not retained,
+so only conservative native/capture-derived bounds can be reported. Future
+fingerprint-bound raw inputs and capture/create clocks require durable retention.
+No receipt or audit supplies another hardware authorization. Loop1 additionally
+requires non-whitespace Watcher row payloads, UTF-8 XML declarations with XML
+whitespace recognized, and typed nested evidence before lookup. Each recorded
+create/pre-start boundary must be no later than native root time plus1ms: one
+quantum of the native timestamp's three fractional digits, not clock-drift or
+freshness slack. Existing outer capture bounds and the approved60s parameter are
+unchanged. The repaired object/range paths produce named refusals rather than
+type tracebacks; malformed rejection fingerprints do not become valid evidence.
+Loop2 checks and records the same request clock pair after preparation and refuses
+an expired50s start budget before process launch;60s/1ms/40-50-60s values are
+unchanged. XML byte encoding, discarded markup/namespaces and decimal duration
+bounds are explicit. Watcher rows use the pinned source-shaped grammar and
+malformed control records refuse. DOWN summaries cannot hide behind another
+severity; A UID projection uses both streams and accepted native digests. The
+common capture reader checks present clocks even in incomplete audits and hashes
+optional listed A Watcher artifacts without making A's Watcher mandatory.
+The owner's2026-11-28 cutoff limits the final correction to two findings:
+owner-unit-absent records now refuse live admission/request/judge proof, with
+legacy acceptance confined to non-admissible historical offline audit; the base
+XML `<!` lexical exclusion (including whitespace CDATA) is restored alongside
+tree checks. The60s bound and device-free G0 scope stay unchanged. Remaining
+review findings are tracked in Issue203; numeric references and XML1.1 spelling
+policy are not changed by this correction.
+
 **B3 correction:** continuous arrival is not a sufficient condition to prevent
 routing/context-switch calls. Legacy's idle branch tests **local progress**, not
 line activity (threshold comparison is `counter++ > 4000000`). Fabric has

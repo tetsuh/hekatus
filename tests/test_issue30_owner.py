@@ -9,7 +9,7 @@ import pytest
 
 from enodia.tt.bench import issue30 as m
 from enodia.tt.bench.issue120_production import checks
-from tests.test_issue30 import xml
+from tests.test_issue30 import WATCHER_DUMP, log, xml
 from tests.test_issue30_admission import discovery_env
 from tests.test_issue30_topology import records, report
 
@@ -33,13 +33,19 @@ def baseline_lines():
             for condition in baseline["evidence"]]
 
 
+def captured_environment():
+    return m.request('B', 'synthetic-a', m.ASSETS, m.WORK, uid=1000, gid=1000)['Env'] + [
+        'TT_VISIBLE_DEVICES=0000:06:00.0,0000:09:00.0']
+
+
 def smoke_stdout():
-    return (b"Running main() from gmock_main.cc\n"
-            b"info | Running fabric api tests with fast dispatch\n"
-            b"info | Fabric Reliability Mode: STRICT_SYSTEM_HEALTH_SETUP_MODE\n"
-            b"[ RUN      ] Fabric1DFixture.TestUnicastConnAPI1DSmoke\n"
-            b"[       OK ] Fabric1DFixture.TestUnicastConnAPI1DSmoke (125 ms)\n"
-            b"[  PASSED  ] 1 test.\n")
+    return ('Running main() from gmock_main.cc\n'
+            + log('info', 'Running fabric api tests with fast dispatch', location='fabric_fixture.hpp:87')
+            + '\n' + log('info', 'Fabric Reliability Mode: STRICT_SYSTEM_HEALTH_SETUP_MODE',
+                         location='fabric_fixture.hpp:100') + '\n'
+            + '[ RUN      ] Fabric1DFixture.TestUnicastConnAPI1DSmoke\n'
+            + '[       OK ] Fabric1DFixture.TestUnicastConnAPI1DSmoke (125 ms)\n'
+            + '[  PASSED  ] 1 test.\n').encode()
 
 
 def transfer(*, before=None, owner=None, stdout=None, execution=None, raw_xml=None):
@@ -47,7 +53,7 @@ def transfer(*, before=None, owner=None, stdout=None, execution=None, raw_xml=No
     return m.evaluate("B", "synthetic-a", before, before, xml("B") if raw_xml is None else raw_xml,
                       smoke_stdout() if stdout is None else stdout, b"",
                       m.GOOD_EXECUTION if execution is None else execution,
-                      accepted(before) if owner is None else owner)
+                      accepted(before) if owner is None else owner, {0: '0', 1: '1'})
 
 
 def test_owner_accepted_A_releases_only_same_boot_B_without_firmware_invention():
@@ -109,7 +115,7 @@ def test_exact_three_baselines_and_observed_down_are_allowed():
     lines = [line.replace("physical_device_id: 1", "physical_device_id: 0")
              .replace("chip_id=1", "chip_id=0").replace("bus_id=0x9", "bus_id=0x6")
              .replace("pid: 1 tid: 136557857326912", "pid: 7 tid: 99") for line in lines]
-    down = [line for line in report(records()).decode().splitlines() if line.startswith("warning |")]
+    down = [line for line in report(records()).decode().splitlines() if '| warning  |' in line]
     raw = ("\n".join(lines + down) + "\n").encode() + smoke_stdout()
     assert transfer(stdout=raw)["verdict"] == "accepted_transfer"
 
@@ -137,7 +143,8 @@ def test_numa_fallback_must_be_adjacent_and_same_device():
 
 
 def test_B_down_warning_requires_exact_owner_A_channel_core_and_identity():
-    good = b"warning | Chip: 0 PCIe: 0 Unique ID: 0 eth channel 8 core 1-28 link DOWN/unconnected (QSFP)\n"
+    good = (log('warning', 'Chip: 0 PCIe: 0 Unique ID: 0 eth channel 8 core 1-28 link DOWN/unconnected (QSFP)',
+                location='test_system_health.cpp:361') + '\n').encode()
     assert transfer(stdout=good + smoke_stdout())["reason"] == "accepted"
     for old, new in [(b"channel 8 core 1-28", b"channel 4 core 1-24"),
                      (b"core 1-28", b"core 99-99"), (b"PCIe: 0", b"PCIe: 9")]:
@@ -191,11 +198,13 @@ def test_B_Watcher_requires_captured_fresh_dump_and_clean_hash_bound_review(tmp_
     other_entries = [m.artifact(path, output) for path in output.iterdir() if path.is_file()]
     watcher = output / "logs/generated/watcher/watcher.log"
     watcher.parent.mkdir(parents=True)
-    raw = b"Dump #1 at synthetic time\nsynthetic healthy waypoint\n"
+    raw = WATCHER_DUMP
     watcher.write_bytes(raw)
     entry = m.artifact(watcher, output)
     execution = m.GOOD_EXECUTION | {"schema": "issue30-execution-v1", "attempt": "synthetic-a",
                                      "device_free": False, "artifacts": other_entries + [entry],
+                                     'argv': m.request('B', 'synthetic-a', output, output, uid=1000, gid=1000)['Cmd'],
+                                     'environment': captured_environment(),
                                      "image": m.IMAGE,
                                      "binary_sha256": m._load(m.CURRENT_RECEIPT, m.ROOT)['binaries'][m.BINARIES['B']]}
     m.publish(output / "execution.json", execution)
@@ -205,7 +214,7 @@ def test_B_Watcher_requires_captured_fresh_dump_and_clean_hash_bound_review(tmp_
               "before_sha256": m.digest((inputs / "before.json").read_bytes()),
               "after_sha256": m.digest((inputs / "after.json").read_bytes())}
     m.publish(inputs / "review.json", review)
-    assert m._review("B", "synthetic-a", output, inputs)[0]["watcher_clean"] is True
+    assert m._review_capture("B", "synthetic-a", output, inputs)[0]["watcher_clean"] is True
     # Each case mutates only one underlying fact and updates fingerprints as needed;
     # a matching review digest cannot create missing dumps or captured provenance.
     if change == "missing":
@@ -225,7 +234,7 @@ def test_B_Watcher_requires_captured_fresh_dump_and_clean_hash_bound_review(tmp_
     (output / "execution.json").write_text(json.dumps(execution))
     review["execution_sha256"] = m.digest((output / "execution.json").read_bytes())
     (inputs / "review.json").write_text(json.dumps(review))
-    assert m._review("B", "synthetic-a", output, inputs)[0]["watcher_clean"] is False
+    assert m._review_capture("B", "synthetic-a", output, inputs)[0]["watcher_clean"] is False
 
 
 def test_B_authority_does_not_inherit_A_or_a_second_invocation(tmp_path):

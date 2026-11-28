@@ -1,6 +1,6 @@
 # Issue #30 G0: device-free preparation
 
-**Authority status (2026-11-26): historical preparation, not an open approval.**
+**Authority status (2026-11-27): historical preparation, not an open approval.**
 The [completed A/Bv2 record](../2026-11-25-issue30-ab-v2/README.md) is the latest
 executed scope; both one-use approvals are consumed. Earlier final v1 health
 requirements and approval screens below are superseded by the owner amendments
@@ -17,22 +17,38 @@ visible chips and fail there; they never open an actual device.
 required selectors listed with eager symbol binding, and both rooted absence
 probes exited 1 at `No chips detected in the cluster` (T tt_cluster.cpp:122),
 with empty local chip/PCIe enumeration. The wrapper returned 2, not acceptance.
-The original [build receipt](build-receipt.json) / [G0 receipt](receipt.json)
-remain immutable evidence for their original head. Hardened admission selects
-[G0 receipt v15](receipt-v15.json). V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14 remain immutable.
-V15 binds39 sources: warning chip/bus identity, discovery attempt and canonical
+The original [build receipt](build-receipt.json) / [historical G0 receipt](receipt.json)
+remain immutable evidence for their original head. **Current host admission selects
+[G0 receipt v16](receipt-v16.json)** and its source-bound CPU qualification.
+Issues 200/201 tighten types/formats/time, ID/endpoint lifecycle, publication
+cleanup and mocked node/PCI binding; tests also run with UID 0 in a user namespace
+without changing production UID-0 refusal. There is no native/container rerun.
+
+The [current incomplete offline audit](evidence-replay-v16.json) checks restored
+original captures. Renewed A/B's twenty raw telemetry snapshots were omitted from
+the retained archive and lost with private temporary storage on reboot; raw proof
+is **unavailable, not passed**. Four conclusions match only with that explicit
+raw-dependent exclusion for renewed A/B. Live raw checks remain mandatory.
+The [validation inventory](../issue200-201-validation.md) records controls, scope
+and the unchanged60-second freshness bound, approved by the owner on
+2026-11-28 in [Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
+It applies in both phases at admission and immediately before create/start.
+Neither a receipt nor this parameter approval authorizes future hardware use. See
+[ADR-0022](../../adr/0022-issue30-incomplete-offline-audit.md).
+
+All earlier receipt versions remain immutable historical qualification.
+V15 bound39 sources: warning chip/bus identity, discovery attempt and canonical
 captured A result are enforced across offline/live judgments. OS temporary-root
 selection retains canonical ownership/0700/prefix/non-checkout checks. Its
 [offline proof](evidence-replay-v15.json) records four unchanged conclusions and
 five copied-data refusals, including coherently fingerprinted bus and discovery
-mutations. No native operation/deadline or measurement is changed. Other lifecycle,
-publication/device-node/document/root-test follow-ups are explicitly tracked in
-#200 and must precede any future board use. Earlier qualification is historical:
+mutations. Its pending lifecycle/publication/node/document/root-test follow-ups
+are addressed by the current host-only correction. Earlier qualification is historical:
 V14 binds38 sources, constrains replay CLI paths to fixed evidence/private task
 roots, and retains identical ASCII numeric checks while satisfying static
 analysis. Its cleanup proof additionally normalizes only the intentionally
 unused parameter name; native operations/deadlines are unchanged. The
-[current offline proof](evidence-replay-v14.json) retains four baseline matches
+[historical v14 offline proof](evidence-replay-v14.json) retains four baseline matches
 and copied-data refusals. V13's preceding qualification remains historical:
 V13 binds37 sources and the [offline evidence replay](evidence-replay-v13.json):
 four current-baseline conclusions unchanged, two copied-data mutations refused,
@@ -140,15 +156,22 @@ There are **no arbitrary path CLI flags**. Assets are fixed at
 hardware outputs at `out/issue30/runs/<attempt>`. Owner inputs have fixed slots
 under `out/issue30/observations/<attempt>`: `before.json`, `after.json`,
 `approval.json`, `review.json`, and B's `discovery.json`. The selected G0 receipt is fixed
-at this document's `receipt-v12.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
+at this document's current `receipt-v16.json`; historical receipts are never overwritten. Paths must remain canonical, beneath their
 program-owned roots; identity is validated before any file/process operation.
 
 `capture` defaults to device-free; **`--approved-board`** additionally requires
 all separate owner/admission gates. No such branch was invoked in G0. Current
 wrapper/build/test/lock-file hashes must match the receipt, not just binary
 hashes. Source/device nodes never come from inherited TT variables; only the
-two approved nodes and fixed BDF visibility are allowed. Docker arguments have
+two approved nodes and fixed BDF visibility are allowed. Node names must resolve
+through the corresponding sysfs class-device link to the approved PCI function;
+admission does not open a device node or read a PCI register. Docker arguments have
 an option terminator and returned container IDs must be 64 lowercase hex digits.
+Start uses that ID, not the attempt name. API and CLI use the same fixed Unix
+socket; inherited Docker routing variables are excluded from CLI calls. An
+unobserved/invalid create response records an unknown lifecycle and cannot claim
+clean termination, even if a subsequent listing is empty. Unidentified or
+unrelated containers are never deleted.
 Canonical path, stale-receipt and daemon-ID mutations have negative tests.
 
 - `issue30-environment-v1`: attempt/boot/image/KMD/Watcher plus exactly the two

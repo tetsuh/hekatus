@@ -32,9 +32,10 @@ def result(before=None, after=None, raw=None):
                       report(records()) if raw is None else raw, b"", m.GOOD_EXECUTION)
 
 
-def test_A_payload_and_authority_scope_admit_reasoned_unknown_without_execution(tmp_path):
-    from tests.test_issue30_capture import approval_inputs
+def test_A_payload_and_authority_scope_admit_reasoned_unknown_without_execution(tmp_path, monkeypatch):
+    from tests.test_issue30_capture import approval_inputs, mock_admission_identity
 
+    mock_admission_identity(monkeypatch)
     _, receipt, _ = approval_inputs(tmp_path)
     before = discovery_env()
     for i, card in enumerate(before["cards"]):
