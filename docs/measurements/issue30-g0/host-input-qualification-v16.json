@@ -13,8 +13,8 @@
     "test_system_health": "10acd9257a39ab5bf8998bcdd87a1a926d3d9bbc5d9b0545b4368f85d43cc741"
   },
   "clean_checkout_tests": {
-    "after_evidence_sha256": "443ca42ae3c95d7a4c98ad35e39d3e8315ba4e8e87a0d01efdbf745de78088f1",
-    "before_evidence_sha256": "0e41935ea97b08b2a0750d19fc8656bff90ba4e6f8b200aa63ff8912261bcb57",
+    "after_evidence_sha256": "9d9945569535af1863803b04cf6c040b9cb51f63bd9d344d9b852ef41f393df4",
+    "before_evidence_sha256": "5cf4706f115d3f6b4d74767eaf6cced1542f91045f8fc46456253cd898d90781",
     "generated_empty_out_directories": [
       "issue146"
     ],
@@ -22,18 +22,18 @@
     "out_non_directory_entries_after": [],
     "out_present_after": true,
     "out_present_before": false,
-    "program_sources_sha256": "626a7b1bfe00be0825d5021c0fdb64165447464ec90f25f08972bc456821c710",
+    "program_sources_sha256": "c51533f676534b24fbf3ba3c2db95c65ab0d4da6d7aec8daab891276660caaf9",
     "qualified_program_sources_identical": true,
-    "source_revision": "999d43653befebfa64c5fb5354988ec5d5a2696c",
-    "wrapper_postcheck_note": "Initial postcheck required out directory absence and failed after successful pytest; inspection found only empty issue146 directory, no retained files or links"
+    "source_revision": "5614f88f67e7df6d324e202d1330aab1b0d0d7fa",
+    "wrapper_postcheck_note": "This loop checks no output files/links after pytest, allowing test-generated empty directories; loop1 had an overstrict directory-absence postcheck"
   },
   "compared_source_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
   "cpu_tests": {
     "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue196.py",
-    "outcome": "420 passed in 1.33s"
+    "outcome": "514 passed in 1.47s"
   },
   "dram_freshness_decision": {
-    "applies_to": "Both phases at admission and immediately before create/start; value and implementation unchanged",
+    "applies_to": "Both phases at admission and immediately before create/start; value60s unchanged; loop2 strengthens the same approved enforcement rule",
     "basis": "Owner decision cites retained bounds; exact old create/start intervals not retained; no workload cap extension, resampling or retry authority",
     "comment_body_sha256": "794096d43b1541e2a7848a49fe3f7601610f401d0042bebf06facf2f58447a54",
     "decision_date": "2026-11-28",
@@ -55,8 +55,8 @@
   },
   "full_tests": {
     "command": "uv run --locked --with pytest-xdist pytest -n 4 -q",
-    "outcome": "7273 passed, 1057 skipped, 8 subtests passed in 232.69s (0:03:52)",
-    "stdout_sha256": "0d669d2adf26a29503dbb6f02e1a3465a1b8b495105fd4e6cb655a7ee275119a"
+    "outcome": "7367 passed, 1057 skipped, 8 subtests passed in 233.98s (0:03:53)",
+    "stdout_sha256": "e16d517facaa671ad44753698988329c0d14aa60d4c89dcfe454a3621698953d"
   },
   "intentional_changes": [
     "Fixed CLI/API endpoint and ID start; explicit unknown create failure",
@@ -65,7 +65,11 @@
     "Separate explicitly incomplete offline audit; live raw proof unchanged",
     "Loop1: non-whitespace Watcher rows; UTF-8 declaration whitespace; early judge XML validation",
     "Loop1: request-to-native ordering within one millisecond representation quantum; no freshness slack",
-    "Loop1: nested object/scalar guards, shape-preserving rejection fingerprints and clock overflow refusals"
+    "Loop1: nested object/scalar guards, shape-preserving rejection fingerprints and clock overflow refusals",
+    "Loop2: prepared request clock pair, finite operands and pre-start50s refusal without changing deadlines",
+    "Loop2: exact UTF-8/markup/namespace/decimal XML and source-shaped Watcher records",
+    "Loop2: severity-independent DOWN summary classification and canonical A native digest/stream projection",
+    "Loop2: shared available clock checks, optional A artifact hashes and nested raw shape refusals"
   ],
   "limits": [
     "Historical raw-dependent renewed DRAM proof unavailable, not passed",
@@ -101,7 +105,23 @@
       "sha256": "16023eeb345a1626b203550f31f3ff116044082a2ba5eaf4635cefd27ac1e51a"
     }
   },
-  "loop1_review_status": "At qualification: prior-head convergence NEEDS DECISION; owner parameter approval now recorded; fresh review-only authorized after successful checks, not yet run",
+  "loop2_red": {
+    "classification": "Phased behavioral RED before the affected correction; later selections may include other independent fixes; not all claimed at a clean prior head",
+    "coverage_only": "Endpoint commands, existing refusals and unchanged60s boundaries are review-driven regression controls, not invented RED",
+    "files": {
+      "red-canonical-UIDs.log": "3e780c9eea4a8ac650e5d64f03988c63dba1348d3be3a3143e1c394933332221",
+      "red-formats-types.log": "58e053d2ccba06923547d42a9957fb1d69143c0510a59779fc890ae6d81170d5",
+      "red-raw-shapes.log": "a4d18fae9524f39d6ff559735ee6a5c5c82f13abef4f9ffbd09329a7f3184066",
+      "red-request-boundaries.log": "c74d1dac85521824e45a6edde997490e4bb9ac23287144df767e82ace843286a",
+      "red-shared-readers.log": "76ae30285f650a6aaad4cf57800e3ecead3257b765bba197e5702d23ccaebc88",
+      "red-start-budget.log": "8a806ef97de9ad0d84209343e9d3df94d546e0527e48bac16e7519e695281858"
+    },
+    "interim_regression": {
+      "scope": "New classifier briefly rejected legitimate gtest tear-down; corrected to summary shapes, no baseline relaxation",
+      "sha256": "11f364e45c6090f9533946f326688d4d075f2eaac7c6782283945990d7464e5e"
+    }
+  },
+  "loop2_review_status": "At qualification: prior-head convergence1 and adversarial1 returned FIX BEFORE MERGE (6 Major/2 Minor), safety not run; bounded loop2 corrections implemented, fresh post-correction gates await successful checks",
   "method": "Host-only CPU/AST qualification, artifact-free clean-checkout tests and separate incomplete offline audit; no native/container rerun",
   "native_order_precision": {
     "basis": "Native XML root timestamp grammar has exactly three fractional digits; one representation quantum, not drift or freshness slack",
@@ -118,10 +138,12 @@
   },
   "root_tests": {
     "method": "UID0 in unprivileged user namespace, same focused selection; production UID0 refusal retained",
-    "outcome": "420 passed in 0.90s"
+    "outcome": "514 passed in 1.47s"
   },
   "run_client_proof": {
-    "method": "Restore only the former start argv/environment and unused parameter name; watchdog/wait/inspect AST otherwise equal",
+    "checked_prestart_statements_sha256": "a031381ef3e26216e06315d06c32ab762f4cd4887754d19c23597fabf2abc43e",
+    "method": "Check the optional observer keyword and four exact preparation/pre-start budget statements, then remove them and restore the former start argv/environment and unused parameter name; post-start watchdog/wait/inspect AST otherwise equal",
+    "prestart_budget_seconds": 50,
     "sha256": "b4ac39871d983b24151d701fdd6c4ae2cb7139cf93a5061fd07ef46c208f98cd"
   },
   "schema": "issue30-host-input-qualification-v1",
