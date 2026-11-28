@@ -165,12 +165,16 @@ def test_receipt_object_before_approval_lookup(value):
 
 
 @pytest.mark.parametrize('value', [None, [], 'binaries'])
-def test_binary_receipt_mapping_before_lookup(value):
-    receipt = m._load(m.CURRENT_RECEIPT, m.ROOT)
-    m._binary_binding(m.ASSETS, receipt)
+def test_binary_receipt_mapping_before_lookup(value, tmp_path):
+    receipt = {'binaries': {}}
+    for name in m.BINARIES.values():
+        raw = ('synthetic binary fixture: ' + name).encode('ascii')
+        (tmp_path / name).write_bytes(raw)
+        receipt['binaries'][name] = m.digest(raw)
+    m._binary_binding(tmp_path, receipt)
     receipt['binaries'] = value
     with pytest.raises(ValueError, match='^binary_binding$'):
-        m._binary_binding(m.ASSETS, receipt)
+        m._binary_binding(tmp_path, receipt)
 
 
 @pytest.mark.parametrize('value', [None, False, [], 'execution'])

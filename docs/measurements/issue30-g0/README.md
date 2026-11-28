@@ -30,8 +30,10 @@ the retained archive and lost with private temporary storage on reboot; raw proo
 is **unavailable, not passed**. Four conclusions match only with that explicit
 raw-dependent exclusion for renewed A/B. Live raw checks remain mandatory.
 The [validation inventory](../issue200-201-validation.md) records controls, scope
-and the proposed 60-second freshness bound, **pending owner approval**. No future
-hardware use is authorized by a receipt or this proposal. See
+and the unchanged60-second freshness bound, approved by the owner on
+2026-11-28 in [Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
+It applies in both phases at admission and immediately before create/start.
+Neither a receipt nor this parameter approval authorizes future hardware use. See
 [ADR-0022](../../adr/0022-issue30-incomplete-offline-audit.md).
 
 All earlier receipt versions remain immutable historical qualification.

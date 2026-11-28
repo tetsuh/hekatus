@@ -10,7 +10,7 @@ from defusedxml import ElementTree as ET
 from enodia.tt.bench import issue30_admission as admission
 from enodia.tt.bench import issue30_formats as formats
 
-# Proposal pending owner approval; never extends the native 40/50/60s caps.
+# Owner-approved 2026-11-28: Issue201 comment7233987817; native caps stay unchanged.
 DRAM_LAUNCH_MAX_AGE_SECONDS = 60
 # Native root timestamps carry exactly three fractional digits (formats.STAMP).
 # One quantum covers representation precision, not clock drift or freshness slack.

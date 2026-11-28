@@ -29,7 +29,7 @@ The listed seams were corrected; this is a bounded inspection, not a claim that
 all possible malformed evidence has been found.
 
 - DRAM: typed closed summary objects; exact raw/summary comparison; valid calendar
-  timestamps; bounded ordered clocks; proposed60s freshness at admission, before
+  timestamps; bounded ordered clocks; owner-approved60s freshness at admission, before
   create and after create before start. With no pre-start clock, native root is
   the conservative latest launch, rather than the earlier capture enclosure.
 - Watcher: strict UTF-8, complete numbered start/end pairs, nonempty device rows,
@@ -120,9 +120,10 @@ factored without changing refusal conditions; test assertions and exception
 boundaries are explicit. AST fingerprints use function/SHA256 records rather
 than a function-name-to-hash map, avoiding a credential false positive without
 changing digest values. The same controls and scoped original-data audit are
-rerun. The60s proposal remains pending owner approval.
+rerun. At this2026-11-27 checkpoint the60s proposal was still pending; see the
+2026-11-28 owner decision below for its later approval.
 
-## Loop1: operator-authorized corrections while60s remains pending
+## Loop1: corrections while60s was pending (2026-11-27 checkpoint)
 
 The preliminary convergence gate at46a2754 returned NEEDS DECISION, including the
 unapproved60s parameter. The operator separately authorized these independent
@@ -163,6 +164,25 @@ rejected and cannot become discovery evidence.
   unchanged specific refusal reasons, exit3, unavailable raw still not passed.
 - New unmerged v16 qualification is regenerated after full tests; prior evidence
   remains immutable. No post-correction review is authorized by this loop.
+
+## Loop1 fixture finish and owner decision (2026-11-28)
+
+CI found that the new binary-map positive fixture read local `out/issue30`
+assets absent from a clean checkout (the same isolation class as Issue186).
+The repaired test creates its two synthetic files and matching SHA256 map in
+pytest `tmp_path`; its one malformed-map mutation is unchanged. No test is
+skipped and production binary binding is not mocked or relaxed. Retained-original
+checks belong to the existing offline audit, not ordinary tests. A fresh external
+checkout with no retained `out/` is used for full-suite validation; original
+`out/` contents are not moved, renamed or deleted. Logs and source identity are
+recorded in the unmerged v16 qualification and the operator report.
+
+The owner approved the existing **60-second maximum series age** on **2026-11-28**
+in [Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
+It applies to both phases at admission and immediately before container
+create/start. Value and enforcement are unchanged. This parameter decision
+neither extends workload caps nor authorizes resampling, retry or another board
+run. Earlier pending-approval statements above describe their historical time.
 
 ## Operator decision: unavailable raw telemetry
 

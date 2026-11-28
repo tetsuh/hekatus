@@ -32,12 +32,14 @@ snapshots were omitted from durable retention and lost on reboot. Their public
 metadata-removed derivatives do not satisfy raw binding. That limitation is
 reported explicitly, never treated as a passed live gate.
 
-A prospective **60-second maximum pre-launch DRAM age** is implemented for both
-phases at admission and immediately before create, **pending owner approval**.
+The owner approved the existing **60-second maximum pre-launch DRAM age** on
+**2026-11-28** in [Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
+It applies to both phases at admission and immediately before container
+create/start; the value and implementation are unchanged.
 The replay document gives remaining timestamps, conservative bounds and why
 exact original container create/start times cannot be recovered. No old record,
-health baseline or authority is changed; another run still requires new owner
-scope and approval of that parameter. Preserve all future fingerprint-bound raw
+health baseline or consumed authority is changed; another run still requires
+new owner scope. Parameter approval is not another hardware authorization. Preserve all future fingerprint-bound raw
 inputs and actual capture/create clocks in durable evidence, not only temporary
 task storage. Current container start is by returned ID on the same fixed
 API/CLI endpoint; unknown create completion fails closed without deleting

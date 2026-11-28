@@ -132,7 +132,7 @@ fractional digits; one millisecond is therefore one representation quantum. The
 comparison is inclusive at `native + 0.001`, with a next-representable-float
 negative and a coherent five-second negative (both wall/monotonic fields of the
 same event are moved). This is not a clock-drift allowance. Capture enclosure,
-wall/monotonic consistency and the proposed60s freshness limit are not widened.
+wall/monotonic consistency and the owner-approved60s freshness limit are not widened.
 Legacy evidence without those request boundaries retains its existing enclosure
 and conservative freshness checks; no timestamps are invented.
 
@@ -143,7 +143,7 @@ this is not normalization into acceptable evidence. Overflowing clock integers
 produce named clock refusals. These checks are shared by the full judge/fresh-A/B
 paths and, where the evidence is available, the separate incomplete audit.
 
-## Pre-launch time analysis and proposal (owner approval pending)
+## Pre-launch time analysis and owner-approved parameter (2026-11-28)
 
 Raw snapshot `time` is recording-host local naive ISO (JST); public derivatives
 explicitly preserve selected values, including that time. Native gtest root
@@ -167,14 +167,17 @@ raw timestamp: A approximately28.606846..29.789586 s; B approximately
 31.141938..37.173367 s. These are bounds derived from retained observations,
 not separately measured create/start times or sample-completion delays.
 
-Propose **60 seconds maximum age**, checked against both last raw wall time and
+The owner approved **60 seconds maximum age** on **2026-11-28** in
+[Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
+The unchanged implementation checks both last raw wall time and
 last reported monotonic completion at admission, immediately before the create
 request and again after its response before the start request, for both phases. It covers the retained native-root gaps up to37.174 s
 with about22.8 s margin for host validation/launch, while rejecting a one-day
 clock advance and stale evidence. It is not a health guarantee or a new workload
 budget. Failure stops without automatic resampling, retry or extension. The
-numeric proposal is implemented but **pending owner approval** before any future
-hardware use. Existing 40/50/60-second native/container/cleanup caps are unchanged.
+approved numeric parameter does not grant another hardware use. Existing
+40/50/60-second native/container/cleanup caps are unchanged, and no resampling or
+retry is authorized by that decision.
 New captures persist pre-create and pre-start request wall/monotonic boundaries
 as well as capture clocks; live and complete replay check their freshness and
 ordering. These host decision boundaries are not claims about an independently

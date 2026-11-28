@@ -45,10 +45,13 @@ live raw binding, substituting public derivatives or modifying original records.
    findings use coherent mutations of temporary copies of original evidence.
    Restoration must recover each positive conclusion. Original files are
    fingerprinted and checked unchanged even on refusal.
-5. The proposed pre-launch freshness parameter remains pending owner approval.
-   Its implementation is a prospective fail-stop bound, not permission for
-   another board run. Exact historical container creation/start times are not
-   invented from a boolean `started`, XML or elapsed duration.
+5. The owner approved the **60-second** maximum pre-launch series age on
+   **2026-11-28** in [Issue201's owner decision](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
+   It applies to both phases at admission and immediately before container
+   create/start. The value and implementation are unchanged. This fail-stop
+   parameter is not permission for another board run or an extension of workload
+   caps, resampling or retry. Exact historical create/start times are not invented
+   from a boolean `started`, XML or elapsed duration.
 
 ## Consequences
 
@@ -64,4 +67,8 @@ and ADR-0018's attempt-bound atomic publication is not weakened.
 
 - 2026-11-27: Operator directs the separate incomplete audit in the Issues
   200/201 task. Accepted records the carrying PR decision, effective at owner
-  merge, not an independent approval of the proposed freshness value or hardware.
+  merge, not an independent approval of the then-proposed freshness value or hardware.
+- 2026-11-28: The owner separately approves the existing60-second parameter in
+  [Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
+  This is parameter approval, not new hardware authority; the value and enforcement
+  at admission and pre-create/pre-start in both phases remain unchanged.
