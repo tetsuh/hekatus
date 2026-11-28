@@ -848,6 +848,11 @@ def _create_container(name, payload, start, state, samples, clocks, observed):
     return _api('POST', CONTAINERS + 'create?name=' + name, payload, timeout=timeout)
 
 
+def _require_capture_observations(state, observations):
+    if not state['device_free'] and observations is None:
+        raise ValueError('dram_live_series_required')
+
+
 def capture(phase, identity, assets, output, *, listing=False, approved_payload=None, observations=None):
     identity = _identity(identity)  # Validate BEFORE creating any files or process arguments.
     output = _owned(output)
@@ -871,8 +876,7 @@ def capture(phase, identity, assets, output, *, listing=False, approved_payload=
              "binary_sha256": artifact(binary, assets)["sha256"] if binary.is_file() else None,
              "argv": payload["Cmd"], "environment": payload["Env"]}
     try:
-        if not state['device_free'] and observations is None:
-            raise ValueError('dram_live_series_required')
+        _require_capture_observations(state, observations)
         _docker_ps(output / "docker-before.txt", remaining(start, 5, time.monotonic()))
         before = _api("GET", CONTAINERS + "json?all=1", timeout=remaining(start, 8, time.monotonic()))
         publish(output / "docker-before.json", {"containers": before})

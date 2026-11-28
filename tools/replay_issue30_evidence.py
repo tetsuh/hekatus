@@ -23,6 +23,7 @@ CASES = (("A", "issue30-a-discovery-watcher-v1-789de6a8faf8"),
          ("A", "issue30-a-discovery-watcher-v2-c1f49b70"),
          ("B", "issue30-b-fabric1d-smoke-watcher-v2-c1f49b70"))
 DISCOVERY_FILE = 'discovery.json'
+NATIVE_XML_FILE = 'native/gtest.xml'
 CONCLUSIONS = ({'verdict': 'accepted_discovery', 'reason': 'accepted'},
                {'verdict': 'rejected', 'reason': 'execution'},
                {'verdict': 'accepted_discovery', 'reason': 'accepted'},
@@ -199,8 +200,8 @@ def _finding_negative(label, expected):
     phase, identity = CASES[2] if label in ('down_diagnostic', 'native_xml_cdata_A') else CASES[3]
     output, inputs = m._slots(identity, True)
     names = {'watcher_completion': 'logs/generated/watcher/watcher.log',
-             'native_xml_exactness': 'native/gtest.xml',
-             'native_xml_cdata_A': 'native/gtest.xml', 'native_xml_cdata_B': 'native/gtest.xml',
+             'native_xml_exactness': NATIVE_XML_FILE,
+             'native_xml_cdata_A': NATIVE_XML_FILE, 'native_xml_cdata_B': NATIVE_XML_FILE,
              'down_diagnostic': m.STDOUT_FILE,
              'canonical_json_types': 'observations-before.json'}
     path = output / names[label]
