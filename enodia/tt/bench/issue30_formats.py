@@ -5,6 +5,8 @@ import json
 import math
 import re
 from datetime import UTC, datetime
+from decimal import Decimal
+from io import BytesIO
 from xml.etree.ElementTree import ParseError
 
 from defusedxml import ElementTree as ET
@@ -267,7 +269,7 @@ def _xml_values(node):
             raise ValueError('test_result')
     if 'time' in node.attrib:
         value = node.get('time')
-        if not re.fullmatch(r'\d+(?:\.\d+)?', value, re.ASCII) or not 0 <= float(value) <= 40:
+        if not re.fullmatch(r'\d+(?:\.\d+)?', value, re.ASCII) or not 0 <= Decimal(value) <= 40:
             raise ValueError('test_result')
     if 'timestamp' in node.attrib:
         stamp(node.get('timestamp'), reason='test_result')
@@ -275,6 +277,9 @@ def _xml_values(node):
 
 def _xml_text(raw):
     text = raw.decode('utf-8')
+    # NUL-interleaved UTF-16 can decode as UTF-8 and be redetected by Expat.
+    if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', text):
+        raise ValueError('test_result')
     # Extend the prior lexical refusal with XML whitespace, rather than narrowing
     # its scope to the leading declaration and admitting previously refused PIs.
     encoding = re.search(r'<\?xml[^>]*encoding[ \t\r\n]*=[ \t\r\n]*[\'"](?!UTF-8[\'"])[^\'"]+',
@@ -288,7 +293,11 @@ def xml(raw, selector):
     if len(raw) > 1024 * 1024:
         raise ValueError('test_result')
     try:
-        root = ET.fromstring(_xml_text(raw), forbid_dtd=True)
+        _xml_text(raw)
+        reader = ET.iterparse(BytesIO(raw), events=('start-ns', 'comment', 'pi'), forbid_dtd=True)
+        for _ in reader:
+            raise ValueError('test_result')
+        root = reader.root
     except (UnicodeError, ParseError, DefusedXmlException) as exc:
         raise ValueError('test_result') from exc
     suite, name = selector.split('.')

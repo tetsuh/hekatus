@@ -78,6 +78,8 @@ def _watcher_event(line):
         if match is None:
             raise ValueError('watcher_dump')
         return 'end' if match[2] else 'start', int(match[1]), float(match[3])
+    if re.match(r'(?:At|Dump)\b', line.lstrip()):
+        raise ValueError('watcher_time')
     return None
 
 
@@ -93,9 +95,17 @@ def _dump_step(state, kind, number):
 
 
 def _device_row(line):
-    if not line.startswith('Device '):
+    if not line.lstrip().startswith('Device'):
         return False
-    if not line.removeprefix('Device ').strip():
+    # Pinned watcher_device_reader.cpp Core::Create / DumpLaunchMessage (d9a6881).
+    # Waypoints are printable report-only data; launch fields have fixed syntax.
+    coord = r'\(x=(?: \d|\d{2,10}),y=(?: \d|\d{2,10})\)'
+    header = r'Device [01] (?:worker|acteth|idleth|dram) core' + coord
+    header += r' virtual' + coord + r'(?: phys' + coord + r')?: [ -~]*'
+    head, separator, launch = line.partition('rmsg:')
+    if (not separator or not re.fullmatch(header, head, re.ASCII)
+            or not re.fullmatch(r'[DH][01][IGDRHTLWS]\|[A-Za-z]+ h_id: *\d+ (?:smsg:[IGDRHTLWS]+ )?',
+                                launch, re.ASCII)):
         raise ValueError('watcher_dump')
     return True
 
@@ -105,7 +115,9 @@ def _watcher_dumps(text, bound):
     for line in text.splitlines():
         event = _watcher_event(line)
         if event is None:
-            if state['active'] is not None and _device_row(line):
+            if _device_row(line):
+                if state['active'] is None:
+                    raise ValueError('watcher_dump')
                 state['body'] = True
             continue
         kind, number, stamp = event

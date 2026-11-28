@@ -48,7 +48,9 @@ live raw binding, substituting public derivatives or modifying original records.
 5. The owner approved the **60-second** maximum pre-launch series age on
    **2026-11-28** in [Issue201's owner decision](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
    It applies to both phases at admission and immediately before container
-   create/start. The value and implementation are unchanged. This fail-stop
+   create/start. Approval itself changed no value or implementation; subsequent
+   validator corrections enforce that same60-second rule at the prepared host
+   request boundaries. This fail-stop
    parameter is not permission for another board run or an extension of workload
    caps, resampling or retry. Exact historical create/start times are not invented
    from a boolean `started`, XML or elapsed duration.

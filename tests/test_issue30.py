@@ -9,6 +9,10 @@ import pytest
 
 from enodia.tt.bench import issue30 as m
 
+WATCHER_ROW = (b'Device 0 worker core(x= 0,y= 0) virtual(x= 1,y= 2): '
+               b'  GW,   W,   W,   W,   W  rmsg:D0D|bnt h_id:  0 smsg:DDDD ')
+WATCHER_DUMP = b'Dump #1 at 0.100s\n' + WATCHER_ROW + b'\nDump #1 completed at 0.200s\n'
+
 
 def environment():
     return {"schema": "issue30-environment-v1", "attempt": "synthetic-a", "boot": "synthetic-boot",

@@ -123,9 +123,9 @@ def test_cross_series_reuse_order_heartbeat_and_capture_window():
         e.ordered(a, changed)
 
 
-def test_full_judge_fresh_A_and_B_evidence_chain(tmp_path, monkeypatch):
+def capture_chain(tmp_path, monkeypatch):
     from enodia.tt.bench import issue30 as m
-    from tests.test_issue30 import xml
+    from tests.test_issue30 import WATCHER_DUMP, xml
     from tests.test_issue30_owner import captured_environment, smoke_stdout
     from tests.test_issue30_topology import records, report
 
@@ -160,7 +160,7 @@ def test_full_judge_fresh_A_and_B_evidence_chain(tmp_path, monkeypatch):
         if phase == 'B':
             watcher = output / 'logs/generated/watcher/watcher.log'
             watcher.parent.mkdir(parents=True)
-            watcher.write_bytes(b'Dump #1 at 0.100s\nDevice 0 synthetic waypoint\nDump #1 completed at 0.200s\n')
+            watcher.write_bytes(WATCHER_DUMP)
             review |= {'watcher_clean': True, 'watcher_sha256': m.digest(watcher.read_bytes())}
             m.publish(inputs / 'discovery.json', a_result)
         execution = m.GOOD_EXECUTION | {'schema': 'issue30-execution-v1', 'attempt': identity,
@@ -179,6 +179,13 @@ def test_full_judge_fresh_A_and_B_evidence_chain(tmp_path, monkeypatch):
             a_result = result
             m.publish(output / 'result.json', result)
             m.publish(inputs / 'approval.json', {'synthetic': True})
+    return a_result
+
+
+def test_full_judge_fresh_A_and_B_evidence_chain(tmp_path, monkeypatch):
+    from enodia.tt.bench import issue30 as m
+    a_result = capture_chain(tmp_path, monkeypatch)
+    _, inputs = m._slots(unit()['B'], True)
     monkeypatch.setattr(m, '_approval', lambda *args: None)
     monkeypatch.setattr(m, '_git', lambda *args: 'synthetic-head')
     assert m._bound_discovery(inputs) == a_result

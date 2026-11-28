@@ -35,7 +35,9 @@ reported explicitly, never treated as a passed live gate.
 The owner approved the existing **60-second maximum pre-launch DRAM age** on
 **2026-11-28** in [Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
 It applies to both phases at admission and immediately before container
-create/start; the value and implementation are unchanged.
+create/start. Approval itself changed no value or implementation. Subsequent
+host-only corrections check and record one clock pair after request preparation;
+the60-second parameter and workload caps remain unchanged.
 The replay document gives remaining timestamps, conservative bounds and why
 exact original container create/start times cannot be recovered. No old record,
 health baseline or consumed authority is changed; another run still requires

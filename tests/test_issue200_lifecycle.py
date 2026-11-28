@@ -147,14 +147,20 @@ def test_dram_is_rechecked_after_prelaunch_work_before_create(tmp_path, monkeypa
             age[0] = 61.0
         path.write_bytes(b'')
     def api(method, path, *args, **kwargs):
+        boundary = kwargs.get('before_request')
+        if boundary is not None:
+            boundary()
         calls.append(path)
         if delay[0] and when == 'after_create' and path.startswith('containers/create'):
             age[0] = 61.0
         return {'Id': 'a' * 64} if path.startswith('containers/create') else []
+    def client(name, cid, out, start, state, *, before_start=None):
+        if before_start is not None:
+            before_start()
+        state.update(started=True, terminated=True, exit=0, client_exit=0)
     monkeypatch.setattr(m, '_docker_ps', ps)
     monkeypatch.setattr(m, '_api', api)
-    monkeypatch.setattr(m, '_run_client', lambda name, cid, out, start, state: state.update(
-        started=True, terminated=True, exit=0, client_exit=0))
+    monkeypatch.setattr(m, '_run_client', client)
     identity = before['attempt']
     positive = m.capture('A', identity, tmp_path, tmp_path / 'positive', observations=before)
     assert positive['create_status'] == 'identified'

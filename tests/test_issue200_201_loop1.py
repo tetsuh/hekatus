@@ -11,7 +11,7 @@ from enodia.tt.bench import issue30_admission as a
 from enodia.tt.bench import issue30_diagnostics as d
 from enodia.tt.bench import issue30_evidence as e
 from enodia.tt.bench import issue30_formats as f
-from tests.test_issue30 import environment, transcript, xml
+from tests.test_issue30 import WATCHER_DUMP, WATCHER_ROW, environment, transcript, xml
 from tests.test_issue30_owner import accepted
 from tests.test_issue30_raw_evidence import fixture
 from tests.test_issue30_topology import records, report
@@ -20,9 +20,9 @@ from tools import replay_issue30_evidence as replay
 
 @pytest.mark.parametrize('payload', [b'', b' ', b'\t', b'\xc2\xa0'])
 def test_watcher_device_prefix_needs_nonwhitespace_payload(payload):
-    raw = b'Dump #1 at 0.100s\nDevice 0 waypoint\nDump #1 completed at 0.200s\n'
+    raw = WATCHER_DUMP
     assert d.watcher_observation(raw)['scan_passed']
-    changed = raw.replace(b'Device 0 waypoint', b'Device ' + payload, 1)
+    changed = raw.replace(WATCHER_ROW, b'Device ' + payload, 1)
     assert d.watcher_observation(changed) == {'fresh': False, 'scan_passed': False, 'dump_count': 0}
 
 
@@ -227,11 +227,11 @@ def test_reported_sample_clock_overflow_has_named_refusal():
 
 
 def test_hash_bound_watcher_review_uses_the_same_row_validator(monkeypatch, tmp_path):
-    data = {'raw': b'Dump #1 at 0.100s\nDevice 0 waypoint\nDump #1 completed at 0.200s\n'}
+    data = {'raw': WATCHER_DUMP}
     monkeypatch.setattr(m, '_captured', lambda *args: data['raw'])
     review = {'watcher_clean': True, 'watcher_sha256': m.digest(data['raw'])}
     assert m._watcher_review('B', tmp_path, m.GOOD_EXECUTION, review)
-    data['raw'] = data['raw'].replace(b'Device 0 waypoint', b'Device ', 1)
+    data['raw'] = data['raw'].replace(WATCHER_ROW, b'Device ', 1)
     review['watcher_sha256'] = m.digest(data['raw'])
     assert m._watcher_review('B', tmp_path, m.GOOD_EXECUTION, review) is False
     with pytest.raises(ValueError, match='^watcher$'):

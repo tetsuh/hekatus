@@ -6,7 +6,7 @@ import pytest
 from enodia.tt.bench import issue30 as m
 from enodia.tt.bench import issue30_admission as a
 from enodia.tt.bench import issue30_diagnostics as d
-from tests.test_issue30 import environment, transcript, xml
+from tests.test_issue30 import WATCHER_DUMP, environment, transcript, xml
 from tests.test_issue30_owner import smoke_stdout, transfer
 from tests.test_issue30_raw_evidence import fixture
 
@@ -130,9 +130,8 @@ def test_stale_dram_admission_has_a_positive_control(tmp_path, monkeypatch, phas
 
 
 def test_watcher_requires_completed_dump_utf8_and_sane_time():
-    raw = (b'Dump #1 at 0.100s\nDevice 0 synthetic waypoint\n'
-           b'Dump #1 completed at 0.200s\n')
+    raw = WATCHER_DUMP
     assert d.watcher_observation(raw)['scan_passed']
-    for changed in (b'Dump #1 at 0.100s\n', raw + b'\xff',
+    for changed in (raw.replace(b'Dump #1 completed at 0.200s\n', b'', 1), raw + b'\xff',
                     raw.replace(b'0.100s', b'999999.100s')):
         assert not d.watcher_observation(changed)['scan_passed']

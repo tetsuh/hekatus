@@ -400,6 +400,14 @@ quantum of the native timestamp's three fractional digits, not clock-drift or
 freshness slack. Existing outer capture bounds and the approved60s parameter are
 unchanged. The repaired object/range paths produce named refusals rather than
 type tracebacks; malformed rejection fingerprints do not become valid evidence.
+Loop2 checks and records the same request clock pair after preparation and refuses
+an expired50s start budget before process launch;60s/1ms/40-50-60s values are
+unchanged. XML byte encoding, discarded markup/namespaces and decimal duration
+bounds are explicit. Watcher rows use the pinned source-shaped grammar and
+malformed control records refuse. DOWN summaries cannot hide behind another
+severity; A UID projection uses both streams and accepted native digests. The
+common capture reader checks present clocks even in incomplete audits and hashes
+optional listed A Watcher artifacts without making A's Watcher mandatory.
 
 **B3 correction:** continuous arrival is not a sufficient condition to prevent
 routing/context-switch calls. Legacy's idle branch tests **local progress**, not

@@ -169,7 +169,7 @@ not separately measured create/start times or sample-completion delays.
 
 The owner approved **60 seconds maximum age** on **2026-11-28** in
 [Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
-The unchanged implementation checks both last raw wall time and
+The implementation checks both last raw wall time and
 last reported monotonic completion at admission, immediately before the create
 request and again after its response before the start request, for both phases. It covers the retained native-root gaps up to37.174 s
 with about22.8 s margin for host validation/launch, while rejecting a one-day
@@ -186,7 +186,33 @@ replay conservatively uses the native root as the latest possible launch, not
 the earlier capture-entry enclosure. No new clock is
 fabricated for old captures.
 
+Loop2 moves the host request checks after curl payload serialization and start
+stream/argument preparation, checking and recording the same wall/monotonic pair.
+It also refuses an exhausted50-second start budget before Popen. This strengthens
+existing checks without extending60-second freshness or40/50/60-second caps.
+Present clock content, including null, is never interpreted as legacy absence.
+The shared capture reader checks available clock schema/enclosure/request order
+and reported summary completions even in the incomplete audit; raw binding, raw
+dates and their dependent proofs remain unavailable, not replaced by summaries.
+
 ## Four-capture formats and binding
+
+Every listed Phase A artifact is fingerprint-checked, including an optional
+Watcher log. A still neither requires that log nor applies B's semantic scan.
+B's DOWN summaries are classified before severity dispatch and require the exact
+warning envelope/source. UID projection reads both A streams with A's parser and
+checks all three native digests against the immutable owner record or canonical
+fresh A result; a locally rebound capture cannot replace accepted A bytes.
+
+Watcher device rows require admitted device0/1, source-shaped core/virtual (and
+optional physical) coordinates and mandatory launch fields, not arbitrary text
+after Device. The grammar follows pinned
+[watcher_device_reader.cpp](https://github.com/tenstorrent/tt-metal/blob/d9a68815f5fcf08a5bfbffb6f1f811823fba8edd/tt_metal/impl/debug/watcher_device_reader.cpp)
+Core::Create/DumpLaunchMessage: worker/acteth/idleth/dram, printable report-only
+waypoints, rmsg mode/NOC/run state and enable letters, h_id and optional smsg.
+Malformed At/Dump/Device control records refuse instead of being ignored. Existing
+manual review and clean-content gates remain required; rows do not establish
+new per-core firmware/ETH health.
 
 Execution/review/observation/container metadata is UTF-8 JSON with unique keys.
 Execution is anchored by the independent review SHA256; consumed manifest entries
@@ -194,6 +220,12 @@ must uniquely bind path/byte count/SHA256. Image and official ELF pins match.
 Exit/client_exit are integer0 for accepted attempts, integer1 for B v1; booleans
 remain distinct. Elapsed values are finite JSON numbers. Lifecycle booleans are
 exact; empty daemon arrays and zero-byte CLI listings are mandatory observations.
+
+Native XML bytes must decode as UTF-8 without illegal control characters; Expat
+must not redetect NUL-interleaved UTF-16. Comments, processing instructions and
+namespace declarations are rejected rather than silently discarded. Duration
+strings are compared as exact decimal values against40 seconds, not rounded
+binary floats. Legitimate declaration whitespace remains accepted.
 
 All four native XML files have a `testsuites` root, one direct named `testsuite`,
 one direct expected `testcase`, decimal-string tests counts, run/completed status,

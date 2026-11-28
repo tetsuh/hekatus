@@ -7,7 +7,7 @@ from enodia.tt.bench import issue30 as m
 from enodia.tt.bench import issue30_diagnostics as d
 from enodia.tt.bench import issue30_formats as f
 from enodia.tt.bench import issue30_topology as t
-from tests.test_issue30 import environment, xml
+from tests.test_issue30 import WATCHER_DUMP, environment, xml
 from tests.test_issue30_admission import discovery_env
 from tests.test_issue30_owner import smoke_stdout, transfer
 from tests.test_issue30_topology import env, judge, records
@@ -118,7 +118,7 @@ def test_fresh_result_rejects_type_equal_canonical_copy():
 
 @pytest.mark.parametrize('line', [b'At -1.000s starting\n', b'At 90000.000s attach device 0\n'])
 def test_other_watcher_timestamps_are_not_unchecked(line):
-    raw = b'Dump #1 at 0.100s\nDevice 0 waypoint\nDump #1 completed at 0.200s\n'
+    raw = WATCHER_DUMP
     assert d.watcher_observation(raw)['scan_passed']
     assert not d.watcher_observation(line + raw)['scan_passed']
 

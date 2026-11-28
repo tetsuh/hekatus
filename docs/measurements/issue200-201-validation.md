@@ -180,9 +180,55 @@ recorded in the unmerged v16 qualification and the operator report.
 The owner approved the existing **60-second maximum series age** on **2026-11-28**
 in [Issue201 comment7233987817](https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817).
 It applies to both phases at admission and immediately before container
-create/start. Value and enforcement are unchanged. This parameter decision
+create/start. That approval-only update changed no value or implementation;
+loop2 subsequently strengthens enforcement of the same rule. This parameter decision
 neither extends workload caps nor authorizes resampling, retry or another board
 run. Earlier pending-approval statements above describe their historical time.
+
+## Loop2: final bounded corrections after fresh review (2026-11-28)
+
+At7379b68 the validated convergence/adversarial results returned FIX BEFORE MERGE
+with six Major and two Minor findings. The operator had authorized one remaining
+correction loop. No owner decision was pending; the60s source above remains the
+authority. The following are implementations of existing Issues200/201 clauses,
+not new hardware, policy or native-workload decisions.
+
+| Finding | Existing AC / invariant | Correction and controls |
+| --- | --- | --- |
+| CONV-202-ENDPOINT-TEST-COVERAGE (Minor) | Issue200 board-free endpoint tests | Exercise actual curl API and docker ps builders under hostile DOCKER variables using mocked subprocess.run; no real daemon. |
+| ADV-202-DRAM-REQUEST-AGE (Major) | Issue201 both-phase freshness; approved60s | Load/check operands before subtraction; after serialization/start preparation, check and persist one pair. Both phases reject59.999-to60.001s delays before create/start;60s remains inclusive, next-float rejects. |
+| ADV-202-XML-EXACT-FORMAT (Major) | Issue201 native UTF-8/exact grammar/time | Reject NUL redetection, comments/PI/namespace declarations; compare duration as Decimal. Positive declaration whitespace retained; one-mutation encodings/markup/bounds controls. |
+| ADV-202-WATCHER-DUMP-GRAMMAR (Major) | Issue201 complete bounded Watcher | Require source-shaped admitted-device rows and mandatory launch fields; malformed control lines refuse. Missing-footer-only and monotonically ordered over-cap mutations isolate both checks. |
+| ADV-202-DOWN-SEVERITY-CLASSIFICATION (Major) | Issue201 DOWN grammar; ADR0021.7 | Recognize summary-shaped bodies before level dispatch; exact warning envelope/source required even when changed to info/debug/trace or unwrapped. Gtest tear-down is not a DOWN summary. |
+| ADV-202-DOWN-CANONICAL-A-BYTES (Major) | ADR0021 original/canonical A bytes | Verify all native digests against immutable owner or canonical fresh result; recover headers with the same normalization and both streams as A. Locally rebound changed UID refuses; legitimate leading-space/stderr layouts agree. |
+| ADV-202-CAPTURE-CLOCK-VALIDATION (Major) | Issue201 typed bounded clocks; ADR0022.3 | Explicit absence sentinel; bound null refuses. Common reader checks available schema/enclosure/request order/reported completion bounds in live and incomplete audit; raw proof is neither disabled live nor fabricated offline. |
+| ADV-202-PHASE-A-MANIFEST-BINDING (Minor) | Every listed capture artifact fingerprinted | Optional A Watcher bytes are verified when listed; no A presence/scan requirement. Missing optional bytes refuse; B retains its specific Watcher result. |
+
+The same-class pass covered capture/admission, common reader, judge, fresh-A
+revalidation/UID projection, B and complete/incomplete replay. Additional nested
+raw snapshot objects/required fields are checked before projection; unconsumed
+native diagnostics remain unconsumed, not closed arbitrary wrapper fields. An
+exhausted50s start budget now refuses before Popen, using the same pre-start
+monotonic observation. Deadline values and post-start watchdog/cleanup paths are
+unchanged. This is a bounded pass, not a claim of exhaustive malformed-input coverage.
+
+Phased behavioral RED before each affected correction: the loop2 file first
+reported28 failed/13 passed; shared-reader selection13 failed; raw-shape selection
+28 failed; canonical-UID selection4 failed; request-boundary selection4 failed;
+expired-start-budget selection1 failed. Other independent loop2 corrections were
+already present during later targeted RED runs; these are not all claimed to be
+clean7379b68 executions. Endpoint-only coverage, existing refusals and unchanged
+60s boundaries are review-driven regression controls, not fabricated RED.
+
+A draft DOWN classifier overmatched the legitimate gtest tear-down banner and
+caused audit16 to disagree on Bv2. A one-case interim-regression test failed;
+classification was corrected to summary shapes, not a broader warning exemption.
+Audit17 restored all four scoped conclusions/eight identical refusal records.
+Original bytes and the missing-raw limitation were not changed. Old toy Watcher
+positive fixtures were replaced by shared source-shaped synthetic rows; no test
+was skipped or weakened. Ordinary tests use only committed or synthesized data;
+retained originals remain in the separate audit. Qualification records carry final
+artifact-free full-suite/source-identity results after the source is committed.
 
 ## Operator decision: unavailable raw telemetry
 

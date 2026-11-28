@@ -9,7 +9,7 @@ import pytest
 
 from enodia.tt.bench import issue30 as m
 from enodia.tt.bench.issue120_production import checks
-from tests.test_issue30 import log, xml
+from tests.test_issue30 import WATCHER_DUMP, log, xml
 from tests.test_issue30_admission import discovery_env
 from tests.test_issue30_topology import records, report
 
@@ -198,7 +198,7 @@ def test_B_Watcher_requires_captured_fresh_dump_and_clean_hash_bound_review(tmp_
     other_entries = [m.artifact(path, output) for path in output.iterdir() if path.is_file()]
     watcher = output / "logs/generated/watcher/watcher.log"
     watcher.parent.mkdir(parents=True)
-    raw = b'Dump #1 at 0.100s\nDevice 0 synthetic waypoint\nDump #1 completed at 0.200s\n'
+    raw = WATCHER_DUMP
     watcher.write_bytes(raw)
     entry = m.artifact(watcher, output)
     execution = m.GOOD_EXECUTION | {"schema": "issue30-execution-v1", "attempt": "synthetic-a",

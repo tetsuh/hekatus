@@ -15,6 +15,7 @@ DRAM_LAUNCH_MAX_AGE_SECONDS = 60
 # Native root timestamps carry exactly three fractional digits (formats.STAMP).
 # One quantum covers representation precision, not clock drift or freshness slack.
 NATIVE_TIMESTAMP_RESOLUTION_SECONDS = 0.001
+ABSENT_CLOCK = object()
 
 
 def _integer(value):
@@ -37,9 +38,21 @@ def _temperature(value):
     return result
 
 
+def _raw_fields(value, required):
+    # Other native diagnostic fields are unconsumed, not wrapper acceptance keys.
+    if type(value) is not dict or not set(required) <= value.keys():
+        raise ValueError('dram_raw_shape')
+    return value
+
+
 def _device(device, identities):
-    board, firmware = device['board_info'], device['firmwares']
-    telemetry, registers = device['telemetry'], device['smbus_telem']
+    _raw_fields(device, ('board_info', 'firmwares', 'telemetry', 'smbus_telem'))
+    board = _raw_fields(device['board_info'], ('board_id', 'bus_id', 'dram_status'))
+    firmware = _raw_fields(device['firmwares'], ('fw_bundle_version', 'cm_fw'))
+    telemetry = _raw_fields(device['telemetry'], ('heartbeat', 'aiclk', 'asic_temperature'))
+    registers = _raw_fields(device['smbus_telem'], ('DDR_STATUS', 'GDDR_UNCORR_ERRS'))
+    if type(board['board_id']) is not str:
+        raise ValueError('dram_raw_identity')
     identity = identities.get(board['board_id'], {})
     if (board['bus_id'] != identity.get('pci')
             or firmware['fw_bundle_version'] != identity.get('bundle')
@@ -71,20 +84,36 @@ def _snapshot_time(value):
     return formats.stamp(value, microseconds=True, local=True, reason='dram_snapshot_timestamp')
 
 
+def _series_setup(env, phase, role):
+    formats.environment(env)
+    if (phase not in ('A', 'B') or role not in ('before', 'after') or 'owner_unit' not in env
+            or env.get('attempt') != env['owner_unit'][phase]):
+        raise ValueError('dram_attempt_role')
+    gate = env.get('dram_admission')
+    formats.fields(gate, ('schema', 'samples'), reason='dram_gate_five_required')
+    expected = gate['samples']
+    if type(expected) is not list or len(expected) != 5 or gate['schema'] != 'issue30-dram-five-v1':
+        raise ValueError('dram_gate_five_required')
+    if len(env['cards']) != 2 or any(type(c['serial']) is not str for c in env['cards']):
+        raise ValueError('dram_raw_identity')
+    identities = {c['serial']: c for c in env['cards']}
+    if len(identities) != 2:
+        raise ValueError('dram_raw_identity')
+    return expected, identities
+
+
 def series(env, phase, role, read):
     """The caller supplies a canonical attempt/role reader, never a hash lookup."""
-    if env.get('attempt') != env['owner_unit'][phase] or role not in ('before', 'after'):
-        raise ValueError('dram_attempt_role')
-    expected = env['dram_admission']['samples']
-    if len(expected) != 5:
-        raise ValueError('dram_gate_five_required')
+    expected, identities = _series_setup(env, phase, role)
     normalized, temperatures = [], {}
-    identities = {c['serial']: c for c in env['cards']}
     for index, sample in enumerate(expected, 1):
+        admission._dram_sample(sample, set(identities))
         raw = read(f'telemetry/{role}-{phase}/snapshot{index}.stdout')
         if hashlib.sha256(raw).hexdigest() != sample['raw_sha256']:
             raise ValueError('dram_raw_binding')
-        value = formats.load(raw)
+        value = _raw_fields(formats.load(raw), ('time', 'device_info'))
+        if type(value['device_info']) is not list:
+            raise ValueError('dram_raw_shape')
         cards = []
         for device in value['device_info']:
             card, temperature = _device(device, identities)
@@ -135,7 +164,7 @@ def _sample_clock(group, boundary, offset, before):
             raise ValueError('dram_summary_clock')
 
 
-def _clock_bounds(clock, execution, native, before, after):
+def _clock_bounds(clock, execution, native, before=None, after=None):
     fields = ('start_wall', 'end_wall', 'start_monotonic', 'end_monotonic')
     formats.fields(clock, ('schema', 'attempt', *fields),
                    ('create_wall', 'create_monotonic', 'launch_wall', 'launch_monotonic'), 'dram_capture_clock')
@@ -150,8 +179,9 @@ def _clock_bounds(clock, execution, native, before, after):
             or abs((upper - lower) - (end - start)) > 1):
         raise ValueError('dram_capture_clock')
     _launch_clocks(clock, before, native)
-    _sample_clock(before, start, lower - start, True)
-    _sample_clock(after, end, lower - start, False)
+    if before is not None:
+        _sample_clock(before, start, lower - start, True)
+        _sample_clock(after, end, lower - start, False)
     return lower, upper
 
 
@@ -169,37 +199,62 @@ def _launch_clocks(clock, before, native):
                 or abs((wall - mono) - offset) > 1
                 or wall > native + NATIVE_TIMESTAMP_RESOLUTION_SECONDS):
             raise ValueError('dram_capture_clock')
-        launch_freshness(before, wall, mono)
+        if before is not None:
+            launch_freshness(before, wall, mono)
         low_wall, low_mono = wall, mono
 
 
-def bracket(before, after, xml, execution, clock=None):
-    """Native XML time is inside capture; total elapsed conservatively bounds it.
-
-    Exact manifest-bound clock observations narrow that enclosure when present.
-    No file mtimes, fabricated historical events or old-policy profiles are used.
-    """
+def capture_window(xml, execution, clock=ABSENT_CLOCK, before=None, after=None):
+    """Available clock checks; no raw snapshot substitution or filesystem dates."""
     root = ET.fromstring(xml, forbid_dtd=True)
     native = formats.stamp(root.get('timestamp', ''), reason='dram_capture_window')
     elapsed = execution.get('elapsed_seconds')
     if not formats.finite(elapsed) or not 0 <= elapsed <= 60:
         raise ValueError('dram_capture_window')
     lower, upper = native - elapsed, native + elapsed
-    if clock is not None:
+    if clock is not ABSENT_CLOCK:
         lower, upper = _clock_bounds(clock, execution, native, before, after)
+    return native, lower, upper
+
+
+def bracket(before, after, xml, execution, clock=ABSENT_CLOCK):
+    """Raw readings bracket the conservative native/capture enclosure."""
+    native, lower, upper = capture_window(xml, execution, clock, before, after)
     if (before[-1]['monotonic_seconds'] >= lower or after[0]['monotonic_seconds'] <= upper):
         raise ValueError('dram_capture_window')
     # Without an observed pre-start request boundary, native start is the
     # conservative latest launch, not the earlier capture-entry enclosure.
-    if ((clock is None or 'launch_wall' not in clock)
+    if ((clock is ABSENT_CLOCK or 'launch_wall' not in clock)
             and native - before[-1]['monotonic_seconds'] > DRAM_LAUNCH_MAX_AGE_SECONDS):
         raise ValueError('dram_launch_freshness')
     ordered(before, after)
 
 
 def launch_freshness(samples, wall, monotonic):
-    last = samples[-1]
-    ages = (wall - last['monotonic_seconds'], monotonic - last['reported_monotonic_seconds'])
-    if (not formats.finite(wall) or not formats.finite(monotonic)
-            or any(not formats.finite(age) or not 0 <= age <= DRAM_LAUNCH_MAX_AGE_SECONDS for age in ages)):
+    if type(samples) is not list or not samples or type(samples[-1]) is not dict:
         raise ValueError('dram_launch_freshness')
+    last = samples[-1]
+    operands = (wall, monotonic, last.get('monotonic_seconds'), last.get('reported_monotonic_seconds'))
+    if any(not formats.finite(v) for v in operands):
+        raise ValueError('dram_launch_freshness')
+    ages = (wall - operands[2], monotonic - operands[3])
+    if any(not formats.finite(age) or not 0 <= age <= DRAM_LAUNCH_MAX_AGE_SECONDS for age in ages):
+        raise ValueError('dram_launch_freshness')
+
+
+def _summary_completions(env, boundary, before):
+    admission.dram_gate(env)
+    for sample in env['dram_admission']['samples']:
+        stamp = sample['monotonic_seconds']
+        if (stamp >= boundary if before else stamp <= boundary):
+            raise ValueError('dram_summary_clock')
+
+
+def summary_clocks(clock, before, after):
+    """Check available reported completions, never pretend they are raw dates."""
+    _summary_completions(before, clock['start_monotonic'], True)
+    _summary_completions(after, clock['end_monotonic'], False)
+    last = before['dram_admission']['samples'][-1]['monotonic_seconds']
+    for field in ('create_monotonic', 'launch_monotonic'):
+        if field in clock and not 0 <= clock[field] - last <= DRAM_LAUNCH_MAX_AGE_SECONDS:
+            raise ValueError('dram_launch_freshness')
