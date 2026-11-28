@@ -12,15 +12,34 @@
     "fabric_smoke_tests": "dbdda98ffbd566f845ead7a2bbf759545dc07fbe2d8aa000f55ce47f77cb5cf5",
     "test_system_health": "10acd9257a39ab5bf8998bcdd87a1a926d3d9bbc5d9b0545b4368f85d43cc741"
   },
+  "clean_checkout_tests": {
+    "after_evidence_sha256": "443ca42ae3c95d7a4c98ad35e39d3e8315ba4e8e87a0d01efdbf745de78088f1",
+    "before_evidence_sha256": "0e41935ea97b08b2a0750d19fc8656bff90ba4e6f8b200aa63ff8912261bcb57",
+    "generated_empty_out_directories": [
+      "issue146"
+    ],
+    "method": "Fresh external checkout; module root verified; PYTHONPATH, VIRTUAL_ENV and PYTEST_ADDOPTS unset; no initial out and no output files/links after tests",
+    "out_non_directory_entries_after": [],
+    "out_present_after": true,
+    "out_present_before": false,
+    "program_sources_sha256": "626a7b1bfe00be0825d5021c0fdb64165447464ec90f25f08972bc456821c710",
+    "qualified_program_sources_identical": true,
+    "source_revision": "999d43653befebfa64c5fb5354988ec5d5a2696c",
+    "wrapper_postcheck_note": "Initial postcheck required out directory absence and failed after successful pytest; inspection found only empty issue146 directory, no retained files or links"
+  },
   "compared_source_revision": "fd4d4ec158854fd6c46cd9a14c1ff3dfdde74d75",
   "cpu_tests": {
     "command": "uv run pytest -q tests/test_issue30*.py tests/test_issue200*.py tests/test_issue201_sweep.py tests/test_issue196.py",
-    "outcome": "420 passed in 0.85s"
+    "outcome": "420 passed in 1.33s"
   },
-  "dram_freshness_proposal": {
-    "basis": "see docs/measurements/issue30-evidence-replay.md; exact old create/start intervals not retained",
+  "dram_freshness_decision": {
+    "applies_to": "Both phases at admission and immediately before create/start; value and implementation unchanged",
+    "basis": "Owner decision cites retained bounds; exact old create/start intervals not retained; no workload cap extension, resampling or retry authority",
+    "comment_body_sha256": "794096d43b1541e2a7848a49fe3f7601610f401d0042bebf06facf2f58447a54",
+    "decision_date": "2026-11-28",
     "max_age_seconds": 60,
-    "status": "pending owner approval"
+    "source_url": "https://github.com/tetsuh/hekatus/issues/201#issuecomment-7233987817",
+    "status": "owner_approved"
   },
   "evidence_replay": {
     "eligible_for_admission": false,
@@ -28,9 +47,16 @@
     "sha256": "53b82ee1f111099fd226640c1cbc71853daaec11cd5e82662f1cd8a00f7b0cbd",
     "validation_complete": false
   },
+  "fixture_isolation": {
+    "method": "Ordinary binary-map tests use synthetic tmp_path files and matching SHA256 only; retained-original validation remains outside tests in offline audit",
+    "red_command": "uv run pytest -q tests/test_issue200_201_loop1.py -k binary_receipt_mapping_before_lookup",
+    "red_outcome": "3 failed, 95 deselected in clean checkout at2997cc2 with no out before fixture repair",
+    "red_stdout_sha256": "91057463c8457d8b6e1b7aa9c840db16f9ae19b9f291ef6b8a3c52d9dbdb81bd"
+  },
   "full_tests": {
-    "command": "uv run --with pytest-xdist pytest -n 4 -q",
-    "outcome": "7273 passed, 1057 skipped, 8 subtests passed in 230.00s (0:03:49)"
+    "command": "uv run --locked --with pytest-xdist pytest -n 4 -q",
+    "outcome": "7273 passed, 1057 skipped, 8 subtests passed in 232.69s (0:03:52)",
+    "stdout_sha256": "0d669d2adf26a29503dbb6f02e1a3465a1b8b495105fd4e6cb655a7ee275119a"
   },
   "intentional_changes": [
     "Fixed CLI/API endpoint and ID start; explicit unknown create failure",
@@ -75,8 +101,8 @@
       "sha256": "16023eeb345a1626b203550f31f3ff116044082a2ba5eaf4635cefd27ac1e51a"
     }
   },
-  "loop1_review_status": "Prior-head convergence NEEDS DECISION; independent corrections operator-authorized, no post-correction gate run",
-  "method": "Host-only CPU/AST qualification and incomplete offline audit; no native/container rerun",
+  "loop1_review_status": "At qualification: prior-head convergence NEEDS DECISION; owner parameter approval now recorded; fresh review-only authorized after successful checks, not yet run",
+  "method": "Host-only CPU/AST qualification, artifact-free clean-checkout tests and separate incomplete offline audit; no native/container rerun",
   "native_order_precision": {
     "basis": "Native XML root timestamp grammar has exactly three fractional digits; one representation quantum, not drift or freshness slack",
     "seconds": 0.001
@@ -92,7 +118,7 @@
   },
   "root_tests": {
     "method": "UID0 in unprivileged user namespace, same focused selection; production UID0 refusal retained",
-    "outcome": "420 passed in 0.85s"
+    "outcome": "420 passed in 0.90s"
   },
   "run_client_proof": {
     "method": "Restore only the former start argv/environment and unused parameter name; watchdog/wait/inspect AST otherwise equal",

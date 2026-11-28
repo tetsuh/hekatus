@@ -69,7 +69,7 @@
   ],
   "current_wrapper_sources": {
     "docs/adr/0021-discovery-observability-gate.md": "8810f4f8b6aa73f9d291fb509b43c71ce9d6bd84e21d322c2021831d457fd43f",
-    "docs/adr/0022-issue30-incomplete-offline-audit.md": "31f1f9bd7f4f920138fbacc6b4c04cd488555c1259cc776f43592891d3087e35",
+    "docs/adr/0022-issue30-incomplete-offline-audit.md": "adb87657b400a32b8a2649a58fa904b92ba614db6cb1f229b99f46a29f68bb82",
     "docs/measurements/2026-11-14-p150a-issue120-p6-api-lock-semaphore-v3-baseline-verification.json": "6d246afc424a3fe5640dd0ae5c39cd7a3d40b5eda300cc542f6268d344ec877f",
     "docs/measurements/2026-11-24-issue30-a-discovery/A-discovery.json": "a965a6934f9180cc5205687f55c93d600e6b1b6146cd09e12041a5003eef3df7",
     "docs/measurements/2026-11-24-issue30-a-discovery/A-native-evidence.tar.gz": "91535dd7f2820ed28183f256255948202d2fffb9d515a0cea5a863f0a86de92e",
@@ -88,14 +88,14 @@
     "enodia/tt/bench/issue30_admission.py": "9c6d9eb321b55c70f9bb9e6d1b3cca99f014c158ba145d07ceede48f80ef3738",
     "enodia/tt/bench/issue30_build/CMakeLists.txt": "39ff5eae166f87e0d2b7d631d9fe3ba0871e8eea9b880ddcc589dccb07bf1ce2",
     "enodia/tt/bench/issue30_diagnostics.py": "1f61a623f9b5316b8798cb6d54f39c1f3697bdd2e691396ad8818134d8536bc1",
-    "enodia/tt/bench/issue30_evidence.py": "0d1be9b1f5d4abe6dc38651515f60595592702911f9098082760e553b6980b0b",
+    "enodia/tt/bench/issue30_evidence.py": "d393468a11fb5ae245311ebd76741eb9f3be2728fceb4dec89303e0f131c34f0",
     "enodia/tt/bench/issue30_formats.py": "29e9bc2aae1afe797499f64e8ce77fb8ba2e4204069d20aa9853c296161b2e33",
     "enodia/tt/bench/issue30_runtime.py": "73f609b0f3f9b3a0f8e8eea33dd2f9d3f9c7e1682c7d340ee0066cb57c5cf631",
     "enodia/tt/bench/issue30_topology.py": "287bec33454b418f7f0f819b5514db51f23df31dff5ef4b7ba71c8fd7f436c48",
     "pyproject.toml": "69636528b6bbbe805f2e4e64e66b9db49e52bc0a6dd6e1aa957971a28580415d",
     "tests/test_issue196.py": "abcc1a229c729531bb5df5ec92145ed68698bb60d3fc66c6d65aa35ae0363579",
     "tests/test_issue200_201.py": "c69e6ee95b2ff6c233872981e133bc3823f0fda563e44d62f1d3cb34c50e5abc",
-    "tests/test_issue200_201_loop1.py": "be8d50cef7c8fd117a2496780e27e13ae3262a7cc35a5382632f25f64d1c1bf7",
+    "tests/test_issue200_201_loop1.py": "dad835e6b6c8ef287ed3ef8cb16cfc429c754abe142c66c2b7c71b2ee1aaa285",
     "tests/test_issue200_lifecycle.py": "c28086534ffa7daa59415f4becfd493ff1820f608e478dc70c12dcafd4bd61b1",
     "tests/test_issue201_sweep.py": "44d60b378fdb3c51b35fd9f7f6e3e71e3160fc63f63ce5a881c7c1f41ff87c5c",
     "tests/test_issue30.py": "76229419f616971789099350f3e989f4258f4d151370db745257eeecefead946",
@@ -116,7 +116,7 @@
   },
   "host_input_qualification": {
     "path": "docs/measurements/issue30-g0/host-input-qualification-v16.json",
-    "sha256": "c98d0681f403ce4f65724991b6df4193a73dfb25f2b0236e2a99fc03edb7b318"
+    "sha256": "9fac465ec9e8a570d22b1fb57b21344c31ceb15f20c59aa272cc64e15266460b"
   },
   "host_snapshot_sha256": "e2ae91f24dc3bfa4a12c9055a4036e27ad9c78e73ea3365b4ec4f85c5ccd6712",
   "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
@@ -129,11 +129,11 @@
   "old_evidence_policy": "original receipt files, assets and attempts remain byte-exact; v1 missing-root negative checks remain unqualified",
   "remaining_hardware_gates": [
     "All prior scopes consumed; new owner authority required",
-    "Proposed60s DRAM freshness bound pending owner approval",
+    "60s freshness parameter owner-approved 2026-11-28 in Issue201 comment7233987817; not hardware invocation authority",
     "Fresh original raw series and exact phase/head/boot/receipt approval before any future mapping",
     "Clean pushed/tested head, all CI and public Sonar0/0/OK before any separately authorized run"
   ],
-  "review_limit": "Prior-head convergence returned NEEDS DECISION. Loop1 independent corrections authorized; no post-correction review run. Adversarial/safety gates not run; no finding acceptance or muting.",
+  "review_limit": "At qualification: prior-head convergence returned NEEDS DECISION. Owner parameter approval now recorded. Fresh review-only authorized only after successful checks; no post-correction gate has run at this checkpoint. No finding acceptance or muting.",
   "runtime_library_sha256": "daa26f51aa60299d914d7fb91fbf055394faea321b2b876a4d189a3407f15141",
   "sandbox": {
     "capabilities": "all dropped",
